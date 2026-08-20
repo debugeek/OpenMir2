@@ -1,0 +1,26 @@
+{
+  "id": "魔血项链",
+  "name": "魔血项链",
+  "kind": "misc",
+  "weight": 2,
+  "stats": {
+    "min_attack": 2,
+    "max_attack": 2,
+    "defense": 0,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 1,
+    "magic_attack_max": 3,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 20,
+  "shape": 135,
+  "looks": 428,
+  "dura_max": 4000,
+  "need_level": 33,
+  "price": 10000,
+  "stock": 5,
+  "color": 251
+}

@@ -1,0 +1,39 @@
+{
+  "id": "蜜蜂",
+  "name": "蜜蜂",
+  "race": 81,
+  "race_img": 31,
+  "appr": 42,
+  "level": 45,
+  "undead": 0,
+  "cool_eye": 0,
+  "experience": 100,
+  "hp": 100,
+  "mp": 0,
+  "defense": 6,
+  "magic_defense": 10,
+  "min_attack": 15,
+  "max_attack": 30,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 15,
+  "hit": 18,
+  "walk_speed_ms": 1200,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 1500,
+  "drops": [
+    {
+      "item_id": "金币",
+      "chance": "1/5",
+      "min_count": 500,
+      "max_count": 500
+    },
+    {
+      "item_id": "回城卷",
+      "chance": "1/37",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

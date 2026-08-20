@@ -1,0 +1,26 @@
+{
+  "id": "M101",
+  "name": "姻缘神殿",
+  "width": 50,
+  "height": 64,
+  "spawn_x": 0,
+  "spawn_y": 0,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "M100",
+      "from_x": 12,
+      "from_y": 43,
+      "to_x": 30,
+      "to_y": 82
+    },
+    {
+      "to_map": "M100",
+      "from_x": 13,
+      "from_y": 44,
+      "to_x": 30,
+      "to_y": 82
+    }
+  ],
+  "monster_spawns": []
+}

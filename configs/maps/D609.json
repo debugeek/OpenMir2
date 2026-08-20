@@ -1,0 +1,33 @@
+{
+  "id": "D609",
+  "name": "石墓小溪",
+  "width": 50,
+  "height": 54,
+  "spawn_x": 0,
+  "spawn_y": 0,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D605",
+      "from_x": 14,
+      "from_y": 34,
+      "to_x": 43,
+      "to_y": 125
+    },
+    {
+      "to_map": "D606",
+      "from_x": 22,
+      "from_y": 13,
+      "to_x": 192,
+      "to_y": 123
+    },
+    {
+      "to_map": "D612",
+      "from_x": 22,
+      "from_y": 13,
+      "to_x": 200,
+      "to_y": 52
+    }
+  ],
+  "monster_spawns": []
+}

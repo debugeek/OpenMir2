@@ -1,0 +1,11 @@
+{
+  "id": "召唤神兽",
+  "name": "召唤神兽",
+  "job": 2,
+  "power": 0,
+  "max_power": 0,
+  "spell": 16,
+  "delay": 120,
+  "need_level_1": 35,
+  "train_level_1": 100
+}

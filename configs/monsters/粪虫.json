@@ -1,0 +1,45 @@
+{
+  "id": "粪虫",
+  "name": "粪虫",
+  "race": 106,
+  "race_img": 52,
+  "appr": 29,
+  "level": 26,
+  "undead": 1,
+  "cool_eye": 1,
+  "experience": 180,
+  "hp": 155,
+  "mp": 0,
+  "defense": 3,
+  "magic_defense": 2,
+  "min_attack": 9,
+  "max_attack": 17,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 15,
+  "hit": 11,
+  "walk_speed_ms": 1500,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 2500,
+  "drops": [
+    {
+      "item_id": "金创药(中量)",
+      "chance": "1/8",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔法药(中量)",
+      "chance": "1/7",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "太阳水",
+      "chance": "1/9",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

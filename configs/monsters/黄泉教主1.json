@@ -1,0 +1,381 @@
+{
+  "id": "黄泉教主1",
+  "name": "黄泉教主",
+  "race": 92,
+  "race_img": 19,
+  "appr": 148,
+  "level": 60,
+  "undead": 1,
+  "cool_eye": 1,
+  "experience": 6000,
+  "hp": 8000,
+  "mp": 0,
+  "defense": 20,
+  "magic_defense": 24,
+  "min_attack": 45,
+  "max_attack": 70,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 25,
+  "hit": 18,
+  "walk_speed_ms": 400,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 2000,
+  "drops": [
+    {
+      "item_id": "金币",
+      "chance": "1/1",
+      "min_count": 8000,
+      "max_count": 8000
+    },
+    {
+      "item_id": "金币",
+      "chance": "1/2",
+      "min_count": 6000,
+      "max_count": 6000
+    },
+    {
+      "item_id": "金币",
+      "chance": "1/4",
+      "min_count": 8000,
+      "max_count": 8000
+    },
+    {
+      "item_id": "强效太阳水",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效太阳水",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效金创药",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效金创药",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效魔法药",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效太阳水",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效魔法药",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效太阳水",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效太阳水",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效金创药",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效魔法药",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效金创药",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效魔法药",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效金创药",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效魔法药",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "祝福油",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "三眼手镯",
+      "chance": "1/61",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "骑士手镯",
+      "chance": "1/60",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "绿色项链",
+      "chance": "1/69",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "灵魂项链",
+      "chance": "1/69",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "恶魔铃铛",
+      "chance": "1/69",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "阎罗手套",
+      "chance": "1/60",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "龙之手镯",
+      "chance": "1/69",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "黑铁头盔",
+      "chance": "1/69",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "炼狱",
+      "chance": "1/19",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "幽灵项链",
+      "chance": "1/16",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "阎罗手套",
+      "chance": "1/16",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "龙之戒指",
+      "chance": "1/19",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔杖",
+      "chance": "1/19",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "生命项链",
+      "chance": "1/19",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "思贝儿手镯",
+      "chance": "1/19",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "红宝石戒指",
+      "chance": "1/19",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "银蛇",
+      "chance": "1/19",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "天珠项链",
+      "chance": "1/19",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "心灵手镯",
+      "chance": "1/19",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "铂金戒指",
+      "chance": "1/19",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "荣誉勋章11号",
+      "chance": "1/30",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "荣誉勋章12号",
+      "chance": "1/31",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "荣誉勋章13号",
+      "chance": "1/30",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "荣誉勋章14号",
+      "chance": "1/33",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "荣誉勋章15号",
+      "chance": "1/32",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "荣誉勋章21号",
+      "chance": "1/60",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "荣誉勋章22号",
+      "chance": "1/60",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "荣誉勋章23号",
+      "chance": "1/70",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "荣誉勋章24号",
+      "chance": "1/70",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "荣誉勋章25号",
+      "chance": "1/70",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "荣誉勋章31号",
+      "chance": "1/340",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "荣誉勋章32号",
+      "chance": "1/340",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "荣誉勋章33号",
+      "chance": "1/342",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "荣誉勋章34号",
+      "chance": "1/333",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "荣誉勋章35号",
+      "chance": "1/341",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "荣誉勋章41号",
+      "chance": "1/685",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "荣誉勋章42号",
+      "chance": "1/685",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "荣誉勋章43号",
+      "chance": "1/685",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "荣誉勋章44号",
+      "chance": "1/685",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "荣誉勋章45号",
+      "chance": "1/685",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

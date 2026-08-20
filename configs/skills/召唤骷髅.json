@@ -1,0 +1,11 @@
+{
+  "id": "召唤骷髅",
+  "name": "召唤骷髅",
+  "job": 2,
+  "power": 0,
+  "max_power": 0,
+  "spell": 16,
+  "delay": 50,
+  "need_level_1": 19,
+  "train_level_1": 100
+}

@@ -1,0 +1,24 @@
+{
+  "id": "神水",
+  "name": "神水",
+  "kind": "consumable",
+  "weight": 1,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 0,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "shape": 2,
+  "looks": 119,
+  "dura_max": 1,
+  "price": 100,
+  "stock": 5,
+  "color": 251
+}

@@ -1,0 +1,19 @@
+{
+  "id": "0113",
+  "name": "高级道士之家",
+  "width": 50,
+  "height": 50,
+  "spawn_x": 0,
+  "spawn_y": 0,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "0",
+      "from_x": 13,
+      "from_y": 16,
+      "to_x": 544,
+      "to_y": 561
+    }
+  ],
+  "monster_spawns": []
+}

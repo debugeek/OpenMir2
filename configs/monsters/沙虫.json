@@ -1,0 +1,81 @@
+{
+  "id": "沙虫",
+  "name": "沙虫",
+  "race": 82,
+  "race_img": 19,
+  "appr": 48,
+  "level": 16,
+  "undead": 0,
+  "cool_eye": 0,
+  "experience": 42,
+  "hp": 50,
+  "mp": 0,
+  "defense": 2,
+  "magic_defense": 1,
+  "min_attack": 6,
+  "max_attack": 9,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 15,
+  "hit": 12,
+  "walk_speed_ms": 1000,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 2300,
+  "drops": [
+    {
+      "item_id": "金币",
+      "chance": "1/9",
+      "min_count": 900,
+      "max_count": 900
+    },
+    {
+      "item_id": "金创药(小量)",
+      "chance": "1/9",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔法药(小量)",
+      "chance": "1/9",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "古铜戒指",
+      "chance": "1/39",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "六角戒指",
+      "chance": "1/39",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "小手镯",
+      "chance": "1/39",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "银手镯",
+      "chance": "1/39",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "黑色水晶项链",
+      "chance": "1/39",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "乌木剑",
+      "chance": "1/60",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

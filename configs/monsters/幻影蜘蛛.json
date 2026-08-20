@@ -1,0 +1,145 @@
+{
+  "id": "幻影蜘蛛",
+  "name": "幻影蜘蛛",
+  "race": 116,
+  "race_img": 35,
+  "appr": 132,
+  "level": 53,
+  "undead": 0,
+  "cool_eye": 0,
+  "animal": true,
+  "view_range": 9,
+  "search_no_target_ms": 2500,
+  "search_has_target_ms": 2500,
+  "experience": 350,
+  "hp": 300,
+  "mp": 0,
+  "defense": 3,
+  "magic_defense": 10,
+  "min_attack": 0,
+  "max_attack": 0,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 1,
+  "hit": 1,
+  "walk_speed_ms": 250,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 2500,
+  "drops": [
+    {
+      "item_id": "金币",
+      "chance": "1/2",
+      "min_count": 1000,
+      "max_count": 1000
+    },
+    {
+      "item_id": "强效金创药",
+      "chance": "1/5",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效魔法药",
+      "chance": "1/8",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效金创药",
+      "chance": "1/5",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效魔法药",
+      "chance": "1/8",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "放大镜",
+      "chance": "1/17",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "竹笛",
+      "chance": "1/13",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "道士头盔",
+      "chance": "1/13",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "凝霜",
+      "chance": "1/13",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "珊瑚戒指",
+      "chance": "1/47",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "降妖除魔戒指",
+      "chance": "1/13",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "骷髅头盔",
+      "chance": "1/25",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "死神手套",
+      "chance": "1/25",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "修罗",
+      "chance": "1/25",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "金戒指",
+      "chance": "1/32",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "蓝翡翠项链",
+      "chance": "1/32",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "金手镯",
+      "chance": "1/32",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "道德戒指",
+      "chance": "1/32",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魅力戒指",
+      "chance": "1/32",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

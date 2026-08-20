@@ -1,0 +1,26 @@
+{
+  "id": "E001",
+  "name": "沃玛自然洞穴",
+  "width": 105,
+  "height": 50,
+  "spawn_x": 0,
+  "spawn_y": 0,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D003",
+      "from_x": 8,
+      "from_y": 13,
+      "to_x": 77,
+      "to_y": 230
+    },
+    {
+      "to_map": "E002",
+      "from_x": 85,
+      "from_y": 15,
+      "to_x": 85,
+      "to_y": 10
+    }
+  ],
+  "monster_spawns": []
+}

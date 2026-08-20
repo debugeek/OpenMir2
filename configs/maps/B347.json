@@ -1,0 +1,19 @@
+{
+  "id": "B347",
+  "name": "恶魔钱庄",
+  "width": 50,
+  "height": 50,
+  "spawn_x": 0,
+  "spawn_y": 0,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "4",
+      "from_x": 14,
+      "from_y": 15,
+      "to_x": 236,
+      "to_y": 182
+    }
+  ],
+  "monster_spawns": []
+}

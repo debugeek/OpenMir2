@@ -1,0 +1,11 @@
+{
+  "id": "地狱雷光",
+  "name": "地狱雷光",
+  "job": 1,
+  "power": 15,
+  "max_power": 19,
+  "spell": 35,
+  "delay": 60,
+  "need_level_1": 30,
+  "train_level_1": 100
+}

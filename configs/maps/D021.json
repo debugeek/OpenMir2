@@ -1,0 +1,65 @@
+{
+  "id": "D021",
+  "name": "沃玛寺庙入口",
+  "width": 97,
+  "height": 96,
+  "spawn_x": 50,
+  "spawn_y": 44,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D022",
+      "from_x": 26,
+      "from_y": 26,
+      "to_x": 339,
+      "to_y": 355
+    },
+    {
+      "to_map": "D022",
+      "from_x": 26,
+      "from_y": 27,
+      "to_x": 338,
+      "to_y": 356
+    },
+    {
+      "to_map": "1",
+      "from_x": 77,
+      "from_y": 75,
+      "to_x": 85,
+      "to_y": 278
+    },
+    {
+      "to_map": "1",
+      "from_x": 77,
+      "from_y": 76,
+      "to_x": 85,
+      "to_y": 279
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "山洞蝙蝠",
+      "x": 50,
+      "y": 44,
+      "range": 90,
+      "count": 18,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "山洞蝙蝠1",
+      "x": 50,
+      "y": 44,
+      "range": 90,
+      "count": 3,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "洞蛆",
+      "x": 50,
+      "y": 44,
+      "range": 60,
+      "count": 18,
+      "respawn_seconds": 20
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "id": "洞蛆",
+  "name": "洞蛆",
+  "race": 90,
+  "race_img": 16,
+  "appr": 24,
+  "level": 21,
+  "undead": 0,
+  "cool_eye": 100,
+  "experience": 60,
+  "hp": 65,
+  "mp": 0,
+  "defense": 0,
+  "magic_defense": 0,
+  "min_attack": 6,
+  "max_attack": 8,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 12,
+  "hit": 10,
+  "walk_speed_ms": 1000,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 2500,
+  "drops": [
+    {
+      "item_id": "蛆卵",
+      "chance": "1/5",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "蛆卵",
+      "chance": "1/10",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "蛆卵",
+      "chance": "1/15",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "蛆卵",
+      "chance": "1/20",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

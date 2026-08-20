@@ -1,0 +1,26 @@
+{
+  "id": "天师长袍",
+  "name": "天师长袍",
+  "kind": "armor",
+  "weight": 37,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 4,
+    "defense_max": 9,
+    "magic_defense": 4,
+    "magic_defense_max": 6,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 2,
+    "tao_attack_max": 5
+  },
+  "std_mode": 11,
+  "shape": 8,
+  "looks": 90,
+  "dura_max": 30000,
+  "need_level": 40,
+  "price": 35000,
+  "stock": 5,
+  "color": 251
+}

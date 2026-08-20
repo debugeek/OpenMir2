@@ -1,0 +1,26 @@
+{
+  "id": "魔法长袍(女)",
+  "name": "魔法长袍(女)",
+  "kind": "armor",
+  "weight": 12,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 3,
+    "defense_max": 5,
+    "magic_defense": 3,
+    "magic_defense_max": 4,
+    "magic_attack": 0,
+    "magic_attack_max": 2,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 11,
+  "shape": 4,
+  "looks": 83,
+  "dura_max": 20000,
+  "need_level": 22,
+  "price": 10000,
+  "stock": 20,
+  "color": 251
+}

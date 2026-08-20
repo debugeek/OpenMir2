@@ -1,0 +1,123 @@
+{
+  "id": "僵尸4",
+  "name": "僵尸",
+  "race": 96,
+  "race_img": 42,
+  "appr": 53,
+  "level": 25,
+  "undead": 1,
+  "cool_eye": 0,
+  "experience": 160,
+  "hp": 155,
+  "mp": 0,
+  "defense": 2,
+  "magic_defense": 1,
+  "min_attack": 6,
+  "max_attack": 17,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 15,
+  "hit": 11,
+  "walk_speed_ms": 1500,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 3000,
+  "drops": [
+    {
+      "item_id": "金币",
+      "chance": "1/31",
+      "min_count": 1000,
+      "max_count": 1000
+    },
+    {
+      "item_id": "金创药(中量)",
+      "chance": "1/9",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔法药(中量)",
+      "chance": "1/9",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "太阳水",
+      "chance": "1/10",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "太阳水",
+      "chance": "1/13",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "疾光电影",
+      "chance": "1/98",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "幽灵盾",
+      "chance": "1/99",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "爆裂火焰",
+      "chance": "1/100",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "集体隐身术",
+      "chance": "1/100",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "施毒术",
+      "chance": "1/96",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "攻杀剑术",
+      "chance": "1/82",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "雷电术",
+      "chance": "1/36",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "生铁戒指",
+      "chance": "1/90",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "金戒指",
+      "chance": "1/90",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "凤凰明珠",
+      "chance": "1/90",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "琥珀项链",
+      "chance": "1/90",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

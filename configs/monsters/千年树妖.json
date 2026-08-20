@@ -1,0 +1,195 @@
+{
+  "id": "千年树妖",
+  "name": "千年树妖",
+  "race": 115,
+  "race_img": 34,
+  "appr": 141,
+  "level": 60,
+  "undead": 1,
+  "cool_eye": 100,
+  "experience": 5000,
+  "hp": 5000,
+  "mp": 0,
+  "defense": 20,
+  "magic_defense": 0,
+  "min_attack": 20,
+  "max_attack": 50,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 35,
+  "hit": 35,
+  "walk_speed_ms": 400,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 2000,
+  "drops": [
+    {
+      "item_id": "金币",
+      "chance": "1/1",
+      "min_count": 10000,
+      "max_count": 10000
+    },
+    {
+      "item_id": "金币",
+      "chance": "1/2",
+      "min_count": 10000,
+      "max_count": 10000
+    },
+    {
+      "item_id": "金币",
+      "chance": "1/4",
+      "min_count": 10000,
+      "max_count": 10000
+    },
+    {
+      "item_id": "强效太阳水",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效金创药",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效魔法药",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效金创药",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效金创药",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效魔法药",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效太阳水",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效太阳水",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效金创药",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效魔法药",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "井中月",
+      "chance": "1/66",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "无极棍",
+      "chance": "1/55",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "力量戒指",
+      "chance": "1/93",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "紫碧螺",
+      "chance": "1/93",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "泰坦戒指",
+      "chance": "1/94",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "绿色项链",
+      "chance": "1/92",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "灵魂项链",
+      "chance": "1/96",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "恶魔铃铛",
+      "chance": "1/99",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "战神盔甲(男)",
+      "chance": "1/23",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "战神盔甲(女)",
+      "chance": "1/23",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "幽灵战衣(男)",
+      "chance": "1/23",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "幽灵战衣(女)",
+      "chance": "1/23",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "恶魔长袍(男)",
+      "chance": "1/23",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "恶魔长袍(女)",
+      "chance": "1/23",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "祝福油",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

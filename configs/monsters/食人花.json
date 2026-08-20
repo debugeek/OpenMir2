@@ -1,0 +1,72 @@
+{
+  "id": "食人花",
+  "name": "食人花",
+  "race": 85,
+  "race_img": 13,
+  "appr": 10,
+  "level": 15,
+  "undead": 0,
+  "cool_eye": 0,
+  "stone_mode": true,
+  "fixed_hide_mode": true,
+  "hidden": true,
+  "experience": 28,
+  "hp": 28,
+  "mp": 0,
+  "defense": 2,
+  "magic_defense": 0,
+  "min_attack": 6,
+  "max_attack": 9,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 14,
+  "hit": 9,
+  "walk_speed_ms": 1500,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 2500,
+  "drops": [
+    {
+      "item_id": "食人树叶",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "食人树叶",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "食人树叶",
+      "chance": "1/4",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "食人树叶",
+      "chance": "1/8",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "食人树果实",
+      "chance": "1/3",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "食人树果实",
+      "chance": "1/6",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "食人树果实",
+      "chance": "1/9",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

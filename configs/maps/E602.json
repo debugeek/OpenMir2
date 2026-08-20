@@ -1,0 +1,139 @@
+{
+  "id": "E602",
+  "name": "连接通道",
+  "width": 95,
+  "height": 95,
+  "spawn_x": 75,
+  "spawn_y": 75,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "E603",
+      "from_x": 10,
+      "from_y": 9,
+      "to_x": 25,
+      "to_y": 27
+    },
+    {
+      "to_map": "E601",
+      "from_x": 72,
+      "from_y": 65,
+      "to_x": 12,
+      "to_y": 51
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "僵尸",
+      "x": 75,
+      "y": 75,
+      "range": 75,
+      "count": 40,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "僵尸1",
+      "x": 75,
+      "y": 75,
+      "range": 75,
+      "count": 35,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "僵尸2",
+      "x": 75,
+      "y": 75,
+      "range": 75,
+      "count": 35,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "僵尸3",
+      "x": 75,
+      "y": 75,
+      "range": 75,
+      "count": 35,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "僵尸4",
+      "x": 75,
+      "y": 75,
+      "range": 75,
+      "count": 35,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "僵尸5",
+      "x": 75,
+      "y": 75,
+      "range": 75,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "僵尸6",
+      "x": 75,
+      "y": 75,
+      "range": 75,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "蜈蚣",
+      "x": 75,
+      "y": 75,
+      "range": 75,
+      "count": 35,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "蜈蚣1",
+      "x": 75,
+      "y": 75,
+      "range": 75,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "跳跳蜂",
+      "x": 75,
+      "y": 75,
+      "range": 75,
+      "count": 35,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "跳跳蜂1",
+      "x": 75,
+      "y": 75,
+      "range": 75,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "钳虫",
+      "x": 75,
+      "y": 75,
+      "range": 75,
+      "count": 35,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "钳虫1",
+      "x": 75,
+      "y": 75,
+      "range": 75,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "黑色恶蛆",
+      "x": 75,
+      "y": 75,
+      "range": 75,
+      "count": 35,
+      "respawn_seconds": 23
+    }
+  ]
+}

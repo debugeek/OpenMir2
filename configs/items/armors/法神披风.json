@@ -1,0 +1,26 @@
+{
+  "id": "法神披风",
+  "name": "法神披风",
+  "kind": "armor",
+  "weight": 21,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 4,
+    "defense_max": 9,
+    "magic_defense": 4,
+    "magic_defense_max": 6,
+    "magic_attack": 2,
+    "magic_attack_max": 5,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 10,
+  "shape": 7,
+  "looks": 86,
+  "dura_max": 26000,
+  "need_level": 40,
+  "price": 35000,
+  "stock": 5,
+  "color": 251
+}

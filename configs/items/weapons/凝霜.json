@@ -1,0 +1,26 @@
+{
+  "id": "凝霜",
+  "name": "凝霜",
+  "kind": "weapon",
+  "weight": 20,
+  "stats": {
+    "min_attack": 10,
+    "max_attack": 13,
+    "defense": 0,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 5,
+  "shape": 13,
+  "looks": 45,
+  "dura_max": 20000,
+  "need_level": 25,
+  "price": 8000,
+  "stock": 50,
+  "color": 251
+}

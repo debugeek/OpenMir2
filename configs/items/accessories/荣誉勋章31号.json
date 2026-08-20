@@ -1,0 +1,25 @@
+{
+  "id": "荣誉勋章31号",
+  "name": "荣誉勋章31号",
+  "kind": "misc",
+  "weight": 0,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 1,
+    "defense_max": 2,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 30,
+  "looks": 393,
+  "dura_max": 50000,
+  "need_level": 21,
+  "price": 5000,
+  "stock": 5,
+  "color": 251
+}

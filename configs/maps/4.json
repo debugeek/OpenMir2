@@ -1,0 +1,445 @@
+{
+  "id": "4",
+  "name": "封魔谷",
+  "width": 470,
+  "height": 424,
+  "spawn_x": 255,
+  "spawn_y": 230,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D2000",
+      "from_x": 56,
+      "from_y": 66,
+      "to_x": 179,
+      "to_y": 108
+    },
+    {
+      "to_map": "D2000",
+      "from_x": 140,
+      "from_y": 67,
+      "to_x": 24,
+      "to_y": 181
+    },
+    {
+      "to_map": "B346",
+      "from_x": 192,
+      "from_y": 218,
+      "to_x": 5,
+      "to_y": 18
+    },
+    {
+      "to_map": "T218",
+      "from_x": 205,
+      "from_y": 218,
+      "to_x": 14,
+      "to_y": 16
+    },
+    {
+      "to_map": "B341",
+      "from_x": 212,
+      "from_y": 192,
+      "to_x": 11,
+      "to_y": 29
+    },
+    {
+      "to_map": "B341",
+      "from_x": 213,
+      "from_y": 191,
+      "to_x": 11,
+      "to_y": 29
+    },
+    {
+      "to_map": "B341",
+      "from_x": 213,
+      "from_y": 192,
+      "to_x": 11,
+      "to_y": 29
+    },
+    {
+      "to_map": "B342",
+      "from_x": 217,
+      "from_y": 238,
+      "to_x": 10,
+      "to_y": 21
+    },
+    {
+      "to_map": "B341",
+      "from_x": 218,
+      "from_y": 197,
+      "to_x": 25,
+      "to_y": 31
+    },
+    {
+      "to_map": "B341",
+      "from_x": 219,
+      "from_y": 196,
+      "to_x": 26,
+      "to_y": 30
+    },
+    {
+      "to_map": "B342",
+      "from_x": 221,
+      "from_y": 234,
+      "to_x": 18,
+      "to_y": 13
+    },
+    {
+      "to_map": "B343",
+      "from_x": 226,
+      "from_y": 252,
+      "to_x": 10,
+      "to_y": 21
+    },
+    {
+      "to_map": "B344",
+      "from_x": 233,
+      "from_y": 234,
+      "to_x": 6,
+      "to_y": 11
+    },
+    {
+      "to_map": "B343",
+      "from_x": 233,
+      "from_y": 250,
+      "to_x": 18,
+      "to_y": 13
+    },
+    {
+      "to_map": "B347",
+      "from_x": 236,
+      "from_y": 181,
+      "to_x": 14,
+      "to_y": 15
+    },
+    {
+      "to_map": "B344",
+      "from_x": 238,
+      "from_y": 238,
+      "to_x": 13,
+      "to_y": 18
+    },
+    {
+      "to_map": "B345",
+      "from_x": 251,
+      "from_y": 199,
+      "to_x": 6,
+      "to_y": 11
+    },
+    {
+      "to_map": "B345",
+      "from_x": 258,
+      "from_y": 204,
+      "to_x": 13,
+      "to_y": 18
+    },
+    {
+      "to_map": "1",
+      "from_x": 445,
+      "from_y": 193,
+      "to_x": 69,
+      "to_y": 164
+    },
+    {
+      "to_map": "1",
+      "from_x": 446,
+      "from_y": 192,
+      "to_x": 70,
+      "to_y": 163
+    },
+    {
+      "to_map": "1",
+      "from_x": 447,
+      "from_y": 191,
+      "to_x": 71,
+      "to_y": 162
+    },
+    {
+      "to_map": "1",
+      "from_x": 448,
+      "from_y": 190,
+      "to_x": 72,
+      "to_y": 161
+    },
+    {
+      "to_map": "1",
+      "from_x": 449,
+      "from_y": 189,
+      "to_x": 73,
+      "to_y": 160
+    },
+    {
+      "to_map": "1",
+      "from_x": 450,
+      "from_y": 188,
+      "to_x": 74,
+      "to_y": 159
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "千年树妖",
+      "x": 123,
+      "y": 404,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 360
+    },
+    {
+      "monster_id": "恶魔弓箭手",
+      "x": 215,
+      "y": 193,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "恶魔弓箭手",
+      "x": 219,
+      "y": 189,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "恶魔弓箭手",
+      "x": 247,
+      "y": 232,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "恶魔弓箭手",
+      "x": 248,
+      "y": 233,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "恶魔弓箭手",
+      "x": 249,
+      "y": 187,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "恶魔弓箭手",
+      "x": 249,
+      "y": 234,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "恶魔弓箭手",
+      "x": 250,
+      "y": 186,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "恶魔弓箭手",
+      "x": 250,
+      "y": 235,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "恶魔弓箭手",
+      "x": 251,
+      "y": 185,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "恶魔弓箭手",
+      "x": 251,
+      "y": 236,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "恶魔弓箭手",
+      "x": 252,
+      "y": 184,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "恶魔弓箭手",
+      "x": 252,
+      "y": 227,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "恶魔弓箭手",
+      "x": 253,
+      "y": 183,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "恶魔弓箭手",
+      "x": 253,
+      "y": 190,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "恶魔弓箭手",
+      "x": 253,
+      "y": 228,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "恶魔弓箭手",
+      "x": 254,
+      "y": 189,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "恶魔弓箭手",
+      "x": 254,
+      "y": 229,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "恶魔弓箭手",
+      "x": 255,
+      "y": 188,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "僵尸",
+      "x": 255,
+      "y": 230,
+      "range": 200,
+      "count": 40,
+      "respawn_seconds": 24
+    },
+    {
+      "monster_id": "僵尸1",
+      "x": 255,
+      "y": 230,
+      "range": 200,
+      "count": 40,
+      "respawn_seconds": 24
+    },
+    {
+      "monster_id": "僵尸2",
+      "x": 255,
+      "y": 230,
+      "range": 200,
+      "count": 40,
+      "respawn_seconds": 24
+    },
+    {
+      "monster_id": "半兽勇士2",
+      "x": 255,
+      "y": 230,
+      "range": 200,
+      "count": 30,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "半兽统领",
+      "x": 255,
+      "y": 230,
+      "range": 200,
+      "count": 3,
+      "respawn_seconds": 100
+    },
+    {
+      "monster_id": "恶魔弓箭手",
+      "x": 255,
+      "y": 230,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "掷斧骷髅",
+      "x": 255,
+      "y": 230,
+      "range": 200,
+      "count": 30,
+      "respawn_seconds": 50
+    },
+    {
+      "monster_id": "骷髅",
+      "x": 255,
+      "y": 230,
+      "range": 200,
+      "count": 30,
+      "respawn_seconds": 70
+    },
+    {
+      "monster_id": "骷髅战士",
+      "x": 255,
+      "y": 230,
+      "range": 200,
+      "count": 30,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "骷髅战将",
+      "x": 255,
+      "y": 230,
+      "range": 200,
+      "count": 30,
+      "respawn_seconds": 40
+    },
+    {
+      "monster_id": "骷髅精灵",
+      "x": 255,
+      "y": 230,
+      "range": 200,
+      "count": 2,
+      "respawn_seconds": 90
+    },
+    {
+      "monster_id": "恶魔弓箭手",
+      "x": 256,
+      "y": 187,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "恶魔弓箭手",
+      "x": 256,
+      "y": 231,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "恶魔弓箭手",
+      "x": 257,
+      "y": 186,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    }
+  ]
+}

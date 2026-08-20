@@ -1,0 +1,75 @@
+{
+  "id": "D10051",
+  "name": "山谷秘道",
+  "width": 199,
+  "height": 209,
+  "spawn_x": 150,
+  "spawn_y": 150,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D1004",
+      "from_x": 47,
+      "from_y": 189,
+      "to_x": 145,
+      "to_y": 111
+    },
+    {
+      "to_map": "D10061",
+      "from_x": 178,
+      "from_y": 53,
+      "to_x": 20,
+      "to_y": 25
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "幻影蜘蛛",
+      "x": 150,
+      "y": 150,
+      "range": 200,
+      "count": 10,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "月魔蜘蛛",
+      "x": 150,
+      "y": 150,
+      "range": 150,
+      "count": 15,
+      "respawn_seconds": 9
+    },
+    {
+      "monster_id": "血巨人",
+      "x": 150,
+      "y": 150,
+      "range": 150,
+      "count": 5,
+      "respawn_seconds": 9
+    },
+    {
+      "monster_id": "血巨人",
+      "x": 150,
+      "y": 150,
+      "range": 150,
+      "count": 5,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "黑锷蜘蛛",
+      "x": 150,
+      "y": 150,
+      "range": 150,
+      "count": 15,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "黑锷蜘蛛1",
+      "x": 150,
+      "y": 150,
+      "range": 150,
+      "count": 15,
+      "respawn_seconds": 60
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "combat": {
+    "hit_impact_delay_ms": 200
+  },
+  "progression": {
+    "required_experience_per_level": 20
+  },
+  "monster": {
+    "tick_ms": 100
+  },
+  "item": {
+    "floor_drop_max_stack_per_tile": 5,
+    "floor_item_can_pick_up_ms": 120000,
+    "max_bag_item": 46
+  }
+}

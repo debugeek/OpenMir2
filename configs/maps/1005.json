@@ -1,0 +1,19 @@
+{
+  "id": "1005",
+  "name": "首饰店",
+  "width": 50,
+  "height": 50,
+  "spawn_x": 0,
+  "spawn_y": 0,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "11",
+      "from_x": 12,
+      "from_y": 16,
+      "to_x": 146,
+      "to_y": 325
+    }
+  ],
+  "monster_spawns": []
+}

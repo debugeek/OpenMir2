@@ -1,0 +1,26 @@
+{
+  "id": "记忆头盔",
+  "name": "记忆头盔",
+  "kind": "misc",
+  "weight": 7,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 3,
+    "defense_max": 3,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 15,
+  "shape": 125,
+  "looks": 109,
+  "dura_max": 8000,
+  "need_level": 26,
+  "price": 10000,
+  "stock": 5,
+  "color": 251
+}

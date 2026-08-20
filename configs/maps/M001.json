@@ -1,0 +1,188 @@
+{
+  "id": "M001",
+  "name": "未知暗殿",
+  "width": 220,
+  "height": 220,
+  "spawn_x": 200,
+  "spawn_y": 200,
+  "blocked": [],
+  "connections": [],
+  "monster_spawns": [
+    {
+      "monster_id": "半兽勇士",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 1,
+      "respawn_seconds": 180
+    },
+    {
+      "monster_id": "半兽勇士1",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 4,
+      "respawn_seconds": 50
+    },
+    {
+      "monster_id": "尸王",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 1,
+      "respawn_seconds": 180
+    },
+    {
+      "monster_id": "尸王1",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 10,
+      "respawn_seconds": 50
+    },
+    {
+      "monster_id": "巨型多角虫",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 1,
+      "respawn_seconds": 180
+    },
+    {
+      "monster_id": "巨型多角虫1",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 9,
+      "respawn_seconds": 50
+    },
+    {
+      "monster_id": "沃玛卫士",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 1,
+      "respawn_seconds": 180
+    },
+    {
+      "monster_id": "沃玛卫士1",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 38,
+      "respawn_seconds": 50
+    },
+    {
+      "monster_id": "沃玛教主",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 1,
+      "respawn_seconds": 180
+    },
+    {
+      "monster_id": "沃玛教主1",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 400,
+      "respawn_seconds": 150
+    },
+    {
+      "monster_id": "白野猪",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 1,
+      "respawn_seconds": 180
+    },
+    {
+      "monster_id": "白野猪2",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 100,
+      "respawn_seconds": 50
+    },
+    {
+      "monster_id": "稻草人",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 1,
+      "respawn_seconds": 180
+    },
+    {
+      "monster_id": "稻草人2",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 4,
+      "respawn_seconds": 50
+    },
+    {
+      "monster_id": "邪恶毒蛇",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 1,
+      "respawn_seconds": 180
+    },
+    {
+      "monster_id": "邪恶毒蛇1",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 200,
+      "respawn_seconds": 50
+    },
+    {
+      "monster_id": "邪恶钳虫",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 1,
+      "respawn_seconds": 180
+    },
+    {
+      "monster_id": "邪恶钳虫1",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 38,
+      "respawn_seconds": 50
+    },
+    {
+      "monster_id": "骷髅精灵",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 1,
+      "respawn_seconds": 180
+    },
+    {
+      "monster_id": "骷髅精灵1",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 10,
+      "respawn_seconds": 50
+    },
+    {
+      "monster_id": "鹿",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 1,
+      "respawn_seconds": 180
+    },
+    {
+      "monster_id": "鹿1",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 2,
+      "respawn_seconds": 50
+    }
+  ]
+}

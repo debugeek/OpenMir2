@@ -1,0 +1,26 @@
+{
+  "id": "麻痹戒指",
+  "name": "麻痹戒指",
+  "kind": "misc",
+  "weight": 1,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 1,
+    "defense": 0,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 22,
+  "shape": 113,
+  "looks": 168,
+  "dura_max": 5000,
+  "need_level": 16,
+  "price": 20000,
+  "stock": 5,
+  "color": 251
+}

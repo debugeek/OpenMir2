@@ -1,0 +1,59 @@
+{
+  "id": "鹿",
+  "name": "鹿",
+  "race": 52,
+  "race_img": 11,
+  "appr": 161,
+  "level": 12,
+  "undead": 0,
+  "cool_eye": 0,
+  "animal": true,
+  "flee_on_sight": true,
+  "experience": 15,
+  "hp": 25,
+  "mp": 0,
+  "defense": 0,
+  "magic_defense": 0,
+  "min_attack": 2,
+  "max_attack": 4,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 7,
+  "hit": 4,
+  "walk_speed_ms": 1400,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 3000,
+  "drops": [
+    {
+      "item_id": "肉",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "肉",
+      "chance": "1/4",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "肉",
+      "chance": "1/9",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "鹿血",
+      "chance": "1/4",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "鹿血",
+      "chance": "1/8",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

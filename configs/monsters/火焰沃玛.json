@@ -1,0 +1,105 @@
+{
+  "id": "火焰沃玛",
+  "name": "火焰沃玛",
+  "race": 91,
+  "race_img": 20,
+  "appr": 31,
+  "level": 31,
+  "undead": 1,
+  "cool_eye": 0,
+  "experience": 290,
+  "hp": 340,
+  "mp": 0,
+  "defense": 0,
+  "magic_defense": 0,
+  "min_attack": 14,
+  "max_attack": 26,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 20,
+  "hit": 13,
+  "walk_speed_ms": 800,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 1700,
+  "drops": [
+    {
+      "item_id": "金币",
+      "chance": "1/9",
+      "min_count": 1000,
+      "max_count": 1000
+    },
+    {
+      "item_id": "太阳水",
+      "chance": "1/10",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "金创药(中量)",
+      "chance": "1/8",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔法药(中量)",
+      "chance": "1/7",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "道士手镯",
+      "chance": "1/44",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "黑檀手镯",
+      "chance": "1/43",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "降魔",
+      "chance": "1/44",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "黑色水晶戒指",
+      "chance": "1/44",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "生铁戒指",
+      "chance": "1/44",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "白色虎齿项链",
+      "chance": "1/44",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "凤凰明珠",
+      "chance": "1/38",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "坚固手套",
+      "chance": "1/38",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "灯笼项链",
+      "chance": "1/38",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

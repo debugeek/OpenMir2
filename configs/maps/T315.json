@@ -1,0 +1,20 @@
+{
+  "id": "T315",
+  "name": "堕落坟场",
+  "width": 170,
+  "height": 160,
+  "spawn_x": 150,
+  "spawn_y": 140,
+  "blocked": [],
+  "connections": [],
+  "monster_spawns": [
+    {
+      "monster_id": "暗之黄泉教主",
+      "x": 150,
+      "y": 140,
+      "range": 5,
+      "count": 1,
+      "respawn_seconds": 120
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "id": "金戒指",
+  "name": "金戒指",
+  "kind": "misc",
+  "weight": 1,
+  "stats": {
+    "min_attack": 1,
+    "max_attack": 1,
+    "defense": 0,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 3,
+    "magic_attack": 1,
+    "magic_attack_max": 1,
+    "tao_attack": 1,
+    "tao_attack_max": 1
+  },
+  "std_mode": 22,
+  "looks": 148,
+  "dura_max": 5000,
+  "need_level": 20,
+  "price": 8800,
+  "stock": 50,
+  "color": 251
+}

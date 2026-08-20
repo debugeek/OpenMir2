@@ -1,0 +1,19 @@
+{
+  "id": "D71650",
+  "name": "武器修理间",
+  "width": 50,
+  "height": 57,
+  "spawn_x": 0,
+  "spawn_y": 0,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D716",
+      "from_x": 13,
+      "from_y": 37,
+      "to_x": 36,
+      "to_y": 17
+    }
+  ],
+  "monster_spawns": []
+}

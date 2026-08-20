@@ -1,0 +1,26 @@
+{
+  "id": "祈祷头盔",
+  "name": "祈祷头盔",
+  "kind": "misc",
+  "weight": 2,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 3,
+    "defense_max": 4,
+    "magic_defense": 1,
+    "magic_defense_max": 2,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 15,
+  "shape": 129,
+  "looks": 110,
+  "dura_max": 5000,
+  "need_level": 18,
+  "price": 20000,
+  "stock": 5,
+  "color": 251
+}

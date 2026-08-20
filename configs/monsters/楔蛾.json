@@ -1,0 +1,51 @@
+{
+  "id": "楔蛾",
+  "name": "楔蛾",
+  "race": 105,
+  "race_img": 52,
+  "appr": 39,
+  "level": 32,
+  "undead": 0,
+  "cool_eye": 1,
+  "experience": 350,
+  "hp": 220,
+  "mp": 0,
+  "defense": 0,
+  "magic_defense": 5,
+  "min_attack": 13,
+  "max_attack": 18,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 15,
+  "hit": 12,
+  "walk_speed_ms": 600,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 2500,
+  "drops": [
+    {
+      "item_id": "金创药(中量)",
+      "chance": "1/6",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔法药(中量)",
+      "chance": "1/6",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效太阳水",
+      "chance": "1/6",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "太阳水",
+      "chance": "1/6",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

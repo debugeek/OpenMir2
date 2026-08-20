@@ -1,0 +1,169 @@
+{
+  "id": "D502",
+  "name": "祖玛寺庙二层",
+  "width": 346,
+  "height": 320,
+  "spawn_x": 200,
+  "spawn_y": 200,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D503",
+      "from_x": 112,
+      "from_y": 231,
+      "to_x": 166,
+      "to_y": 216
+    },
+    {
+      "to_map": "D501",
+      "from_x": 165,
+      "from_y": 217,
+      "to_x": 350,
+      "to_y": 171
+    },
+    {
+      "to_map": "D513",
+      "from_x": 302,
+      "from_y": 74,
+      "to_x": 29,
+      "to_y": 21
+    },
+    {
+      "to_map": "D514",
+      "from_x": 326,
+      "from_y": 97,
+      "to_x": 20,
+      "to_y": 11
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "大老鼠",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 18,
+      "respawn_seconds": 8
+    },
+    {
+      "monster_id": "大老鼠",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 16,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "楔蛾",
+      "x": 100,
+      "y": 100,
+      "range": 200,
+      "count": 13,
+      "respawn_seconds": 8
+    },
+    {
+      "monster_id": "大老鼠",
+      "x": 100,
+      "y": 300,
+      "range": 100,
+      "count": 18,
+      "respawn_seconds": 8
+    },
+    {
+      "monster_id": "楔蛾",
+      "x": 100,
+      "y": 300,
+      "range": 200,
+      "count": 13,
+      "respawn_seconds": 8
+    },
+    {
+      "monster_id": "楔蛾",
+      "x": 100,
+      "y": 300,
+      "range": 100,
+      "count": 13,
+      "respawn_seconds": 9
+    },
+    {
+      "monster_id": "大老鼠",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 18,
+      "respawn_seconds": 8
+    },
+    {
+      "monster_id": "大老鼠1",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 3,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "楔蛾",
+      "x": 200,
+      "y": 200,
+      "range": 100,
+      "count": 13,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "角蝇",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 20,
+      "respawn_seconds": 8
+    },
+    {
+      "monster_id": "大老鼠",
+      "x": 300,
+      "y": 100,
+      "range": 200,
+      "count": 18,
+      "respawn_seconds": 9
+    },
+    {
+      "monster_id": "楔蛾",
+      "x": 300,
+      "y": 100,
+      "range": 100,
+      "count": 13,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "楔蛾",
+      "x": 300,
+      "y": 100,
+      "range": 200,
+      "count": 13,
+      "respawn_seconds": 8
+    },
+    {
+      "monster_id": "大老鼠",
+      "x": 300,
+      "y": 300,
+      "range": 200,
+      "count": 16,
+      "respawn_seconds": 8
+    },
+    {
+      "monster_id": "大老鼠",
+      "x": 300,
+      "y": 300,
+      "range": 200,
+      "count": 18,
+      "respawn_seconds": 9
+    },
+    {
+      "monster_id": "楔蛾",
+      "x": 300,
+      "y": 300,
+      "range": 200,
+      "count": 13,
+      "respawn_seconds": 8
+    }
+  ]
+}

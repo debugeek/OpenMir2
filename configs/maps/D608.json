@@ -1,0 +1,33 @@
+{
+  "id": "D608",
+  "name": "紫水晶屋",
+  "width": 52,
+  "height": 53,
+  "spawn_x": 0,
+  "spawn_y": 0,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D604",
+      "from_x": 17,
+      "from_y": 33,
+      "to_x": 149,
+      "to_y": 133
+    },
+    {
+      "to_map": "D603",
+      "from_x": 18,
+      "from_y": 22,
+      "to_x": 40,
+      "to_y": 195
+    },
+    {
+      "to_map": "D605",
+      "from_x": 32,
+      "from_y": 32,
+      "to_x": 43,
+      "to_y": 20
+    }
+  ],
+  "monster_spawns": []
+}

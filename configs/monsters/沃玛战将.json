@@ -1,0 +1,93 @@
+{
+  "id": "沃玛战将",
+  "name": "沃玛战将",
+  "race": 97,
+  "race_img": 19,
+  "appr": 33,
+  "level": 30,
+  "undead": 1,
+  "cool_eye": 0,
+  "experience": 280,
+  "hp": 285,
+  "mp": 0,
+  "defense": 3,
+  "magic_defense": 2,
+  "min_attack": 15,
+  "max_attack": 29,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 15,
+  "hit": 12,
+  "walk_speed_ms": 1000,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 2000,
+  "drops": [
+    {
+      "item_id": "金币",
+      "chance": "1/16",
+      "min_count": 1200,
+      "max_count": 1200
+    },
+    {
+      "item_id": "金创药(中量)",
+      "chance": "1/6",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔法药(中量)",
+      "chance": "1/12",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "太阳水",
+      "chance": "1/6",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "道士手镯",
+      "chance": "1/99",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "大手镯",
+      "chance": "1/89",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "道士手镯",
+      "chance": "1/45",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "黑檀手镯",
+      "chance": "1/45",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "骷髅戒指",
+      "chance": "1/45",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "珊瑚戒指",
+      "chance": "1/85",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "金戒指",
+      "chance": "1/87",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

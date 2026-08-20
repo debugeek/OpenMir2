@@ -1,0 +1,51 @@
+{
+  "id": "猎鹰",
+  "name": "猎鹰",
+  "race": 81,
+  "race_img": 19,
+  "appr": 44,
+  "level": 16,
+  "undead": 0,
+  "cool_eye": 0,
+  "experience": 38,
+  "hp": 38,
+  "mp": 0,
+  "defense": 0,
+  "magic_defense": 0,
+  "min_attack": 7,
+  "max_attack": 10,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 40,
+  "hit": 13,
+  "walk_speed_ms": 1200,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 2500,
+  "drops": [
+    {
+      "item_id": "金币",
+      "chance": "1/2",
+      "min_count": 700,
+      "max_count": 700
+    },
+    {
+      "item_id": "金创药(中量)",
+      "chance": "1/4",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔法药(中量)",
+      "chance": "1/4",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "回城卷",
+      "chance": "1/8",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

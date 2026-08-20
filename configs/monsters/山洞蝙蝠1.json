@@ -1,0 +1,99 @@
+{
+  "id": "山洞蝙蝠1",
+  "name": "山洞蝙蝠",
+  "race": 81,
+  "race_img": 19,
+  "appr": 80,
+  "level": 20,
+  "undead": 0,
+  "cool_eye": 0,
+  "experience": 25,
+  "hp": 25,
+  "mp": 0,
+  "defense": 2,
+  "magic_defense": 0,
+  "min_attack": 4,
+  "max_attack": 6,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 25,
+  "hit": 10,
+  "walk_speed_ms": 1200,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 2500,
+  "drops": [
+    {
+      "item_id": "金币",
+      "chance": "1/2",
+      "min_count": 16000,
+      "max_count": 16000
+    },
+    {
+      "item_id": "金创药(中量)",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔法药(中量)",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "金创药(中量)",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔法药(中量)",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "金创药(中量)",
+      "chance": "1/3",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔法药(中量)",
+      "chance": "1/3",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "回城卷",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "回城卷",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "回城卷",
+      "chance": "1/3",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "回城卷",
+      "chance": "1/3",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "回城卷",
+      "chance": "1/3",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

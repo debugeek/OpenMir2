@@ -1,0 +1,20 @@
+{
+  "id": "T339",
+  "name": "地狱烈焰",
+  "width": 50,
+  "height": 50,
+  "spawn_x": 18,
+  "spawn_y": 26,
+  "blocked": [],
+  "connections": [],
+  "monster_spawns": [
+    {
+      "monster_id": "暗之骷髅精灵",
+      "x": 18,
+      "y": 26,
+      "range": 5,
+      "count": 1,
+      "respawn_seconds": 120
+    }
+  ]
+}

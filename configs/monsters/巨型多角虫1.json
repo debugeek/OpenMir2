@@ -1,0 +1,45 @@
+{
+  "id": "巨型多角虫1",
+  "name": "巨型多角虫",
+  "race": 81,
+  "race_img": 19,
+  "appr": 91,
+  "level": 27,
+  "undead": 0,
+  "cool_eye": 100,
+  "experience": 100,
+  "hp": 900,
+  "mp": 0,
+  "defense": 0,
+  "magic_defense": 100,
+  "min_attack": 0,
+  "max_attack": 80,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 17,
+  "hit": 20,
+  "walk_speed_ms": 600,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 1800,
+  "drops": [
+    {
+      "item_id": "神秘腰带",
+      "chance": "1/18",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "神秘戒指",
+      "chance": "1/18",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "神秘头盔",
+      "chance": "1/18",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

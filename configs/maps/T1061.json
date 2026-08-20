@@ -1,0 +1,129 @@
+{
+  "id": "T1061",
+  "name": "幻境迷宫",
+  "width": 50,
+  "height": 51,
+  "spawn_x": 19,
+  "spawn_y": 24,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "T2062",
+      "from_x": 7,
+      "from_y": 10,
+      "to_x": 25,
+      "to_y": 30
+    },
+    {
+      "to_map": "T2062",
+      "from_x": 8,
+      "from_y": 9,
+      "to_x": 25,
+      "to_y": 30
+    },
+    {
+      "to_map": "T2062",
+      "from_x": 8,
+      "from_y": 10,
+      "to_x": 25,
+      "to_y": 30
+    },
+    {
+      "to_map": "T2063",
+      "from_x": 12,
+      "from_y": 30,
+      "to_x": 26,
+      "to_y": 16
+    },
+    {
+      "to_map": "T2063",
+      "from_x": 12,
+      "from_y": 31,
+      "to_x": 26,
+      "to_y": 16
+    },
+    {
+      "to_map": "T2063",
+      "from_x": 13,
+      "from_y": 31,
+      "to_x": 26,
+      "to_y": 16
+    },
+    {
+      "to_map": "T2062",
+      "from_x": 25,
+      "from_y": 31,
+      "to_x": 8,
+      "to_y": 12
+    },
+    {
+      "to_map": "T3061",
+      "from_x": 26,
+      "from_y": 15,
+      "to_x": 13,
+      "to_y": 30
+    },
+    {
+      "to_map": "T2062",
+      "from_x": 26,
+      "from_y": 30,
+      "to_x": 8,
+      "to_y": 12
+    },
+    {
+      "to_map": "T3061",
+      "from_x": 27,
+      "from_y": 16,
+      "to_x": 13,
+      "to_y": 30
+    },
+    {
+      "to_map": "T2062",
+      "from_x": 27,
+      "from_y": 29,
+      "to_x": 8,
+      "to_y": 12
+    },
+    {
+      "to_map": "T3061",
+      "from_x": 28,
+      "from_y": 16,
+      "to_x": 13,
+      "to_y": 30
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "楔蛾1",
+      "x": 19,
+      "y": 24,
+      "range": 5,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "电僵王1",
+      "x": 19,
+      "y": 24,
+      "range": 5,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "角蝇1",
+      "x": 19,
+      "y": 24,
+      "range": 5,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "重装使者",
+      "x": 19,
+      "y": 24,
+      "range": 5,
+      "count": 1,
+      "respawn_seconds": 240
+    }
+  ]
+}

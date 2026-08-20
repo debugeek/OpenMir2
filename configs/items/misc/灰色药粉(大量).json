@@ -1,0 +1,26 @@
+{
+  "id": "灰色药粉(大量)",
+  "name": "灰色药粉(大量)",
+  "kind": "misc",
+  "weight": 1,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 0,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 25,
+  "shape": 1,
+  "looks": 251,
+  "dura_max": 15000,
+  "need_level": 1,
+  "price": 3000,
+  "stock": 50,
+  "color": 251
+}

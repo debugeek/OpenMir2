@@ -1,0 +1,45 @@
+{
+  "id": "鸡",
+  "name": "鸡",
+  "race": 51,
+  "race_img": 11,
+  "appr": 160,
+  "level": 5,
+  "undead": 0,
+  "cool_eye": 0,
+  "experience": 5,
+  "hp": 5,
+  "mp": 0,
+  "defense": 0,
+  "magic_defense": 0,
+  "min_attack": 1,
+  "max_attack": 1,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 10,
+  "hit": 3,
+  "walk_speed_ms": 500,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 3000,
+  "drops": [
+    {
+      "item_id": "鸡肉",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "鸡肉",
+      "chance": "1/4",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "鸡肉",
+      "chance": "1/16",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

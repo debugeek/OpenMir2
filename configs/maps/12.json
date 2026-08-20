@@ -1,0 +1,252 @@
+{
+  "id": "12",
+  "name": "丛林迷宫",
+  "width": 348,
+  "height": 496,
+  "spawn_x": 200,
+  "spawn_y": 200,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D10012",
+      "from_x": 15,
+      "from_y": 294,
+      "to_x": 52,
+      "to_y": 286
+    },
+    {
+      "to_map": "D10011",
+      "from_x": 89,
+      "from_y": 13,
+      "to_x": 269,
+      "to_y": 384
+    },
+    {
+      "to_map": "D10013",
+      "from_x": 320,
+      "from_y": 119,
+      "to_x": 288,
+      "to_y": 287
+    },
+    {
+      "to_map": "11",
+      "from_x": 323,
+      "from_y": 476,
+      "to_x": 348,
+      "to_y": 242
+    },
+    {
+      "to_map": "11",
+      "from_x": 324,
+      "from_y": 475,
+      "to_x": 349,
+      "to_y": 241
+    },
+    {
+      "to_map": "11",
+      "from_x": 325,
+      "from_y": 474,
+      "to_x": 350,
+      "to_y": 240
+    },
+    {
+      "to_map": "11",
+      "from_x": 326,
+      "from_y": 473,
+      "to_x": 351,
+      "to_y": 239
+    },
+    {
+      "to_map": "11",
+      "from_x": 327,
+      "from_y": 472,
+      "to_x": 352,
+      "to_y": 238
+    },
+    {
+      "to_map": "11",
+      "from_x": 328,
+      "from_y": 471,
+      "to_x": 353,
+      "to_y": 237
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "天狼蜘蛛",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 5,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "花吻蜘蛛",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 5,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "钢牙蜘蛛",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 5,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "钢牙蜘蛛1",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 2,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "钢牙蜘蛛2",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 1,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "天狼蜘蛛",
+      "x": 100,
+      "y": 300,
+      "range": 100,
+      "count": 15,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "花吻蜘蛛",
+      "x": 100,
+      "y": 300,
+      "range": 100,
+      "count": 15,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "钢牙蜘蛛",
+      "x": 100,
+      "y": 300,
+      "range": 100,
+      "count": 15,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "天狼蜘蛛",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 45,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "天狼蜘蛛1",
+      "x": 200,
+      "y": 200,
+      "range": 100,
+      "count": 2,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "花吻蜘蛛",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 45,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "钢牙蜘蛛",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 45,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "钢牙蜘蛛2",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 9,
+      "respawn_seconds": 40
+    },
+    {
+      "monster_id": "天狼蜘蛛",
+      "x": 300,
+      "y": 100,
+      "range": 100,
+      "count": 5,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "花吻蜘蛛",
+      "x": 300,
+      "y": 100,
+      "range": 100,
+      "count": 15,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "花吻蜘蛛1",
+      "x": 300,
+      "y": 100,
+      "range": 100,
+      "count": 2,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "钢牙蜘蛛",
+      "x": 300,
+      "y": 100,
+      "range": 100,
+      "count": 5,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "钢牙蜘蛛2",
+      "x": 300,
+      "y": 100,
+      "range": 100,
+      "count": 5,
+      "respawn_seconds": 40
+    },
+    {
+      "monster_id": "天狼蜘蛛",
+      "x": 300,
+      "y": 300,
+      "range": 100,
+      "count": 15,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "幻影蜘蛛",
+      "x": 300,
+      "y": 300,
+      "range": 200,
+      "count": 10,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "花吻蜘蛛",
+      "x": 300,
+      "y": 300,
+      "range": 100,
+      "count": 15,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "钢牙蜘蛛",
+      "x": 300,
+      "y": 300,
+      "range": 100,
+      "count": 15,
+      "respawn_seconds": 5
+    }
+  ]
+}

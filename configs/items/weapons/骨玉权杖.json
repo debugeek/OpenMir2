@@ -1,0 +1,26 @@
+{
+  "id": "骨玉权杖",
+  "name": "骨玉权杖",
+  "kind": "weapon",
+  "weight": 20,
+  "stats": {
+    "min_attack": 6,
+    "max_attack": 12,
+    "defense": 0,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 2,
+    "magic_attack_max": 6,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 6,
+  "shape": 28,
+  "looks": 59,
+  "dura_max": 18000,
+  "need_level": 35,
+  "price": 50000,
+  "stock": 5,
+  "color": 251
+}

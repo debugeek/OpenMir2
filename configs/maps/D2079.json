@@ -1,0 +1,123 @@
+{
+  "id": "D2079",
+  "name": "牛魔寺庙大厅",
+  "width": 70,
+  "height": 70,
+  "spawn_x": 50,
+  "spawn_y": 50,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D2078",
+      "from_x": 12,
+      "from_y": 12,
+      "to_x": 254,
+      "to_y": 255
+    },
+    {
+      "to_map": "D2078",
+      "from_x": 12,
+      "from_y": 13,
+      "to_x": 255,
+      "to_y": 254
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "暗之牛魔王",
+      "x": 50,
+      "y": 50,
+      "range": 1,
+      "count": 1,
+      "respawn_seconds": 720
+    },
+    {
+      "monster_id": "牛魔侍卫",
+      "x": 50,
+      "y": 50,
+      "range": 70,
+      "count": 30,
+      "respawn_seconds": 8
+    },
+    {
+      "monster_id": "牛魔侍卫1",
+      "x": 50,
+      "y": 50,
+      "range": 70,
+      "count": 8,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "牛魔将军",
+      "x": 50,
+      "y": 50,
+      "range": 70,
+      "count": 25,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "牛魔将军",
+      "x": 50,
+      "y": 50,
+      "range": 70,
+      "count": 18,
+      "respawn_seconds": 8
+    },
+    {
+      "monster_id": "牛魔将军1",
+      "x": 50,
+      "y": 50,
+      "range": 70,
+      "count": 8,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "牛魔法师",
+      "x": 50,
+      "y": 50,
+      "range": 70,
+      "count": 30,
+      "respawn_seconds": 8
+    },
+    {
+      "monster_id": "牛魔法师1",
+      "x": 50,
+      "y": 50,
+      "range": 70,
+      "count": 8,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "牛魔王",
+      "x": 50,
+      "y": 50,
+      "range": 1,
+      "count": 1,
+      "respawn_seconds": 180
+    },
+    {
+      "monster_id": "牛魔祭司",
+      "x": 50,
+      "y": 50,
+      "range": 70,
+      "count": 25,
+      "respawn_seconds": 15
+    },
+    {
+      "monster_id": "牛魔祭司",
+      "x": 50,
+      "y": 50,
+      "range": 70,
+      "count": 18,
+      "respawn_seconds": 11
+    },
+    {
+      "monster_id": "牛魔祭司1",
+      "x": 50,
+      "y": 50,
+      "range": 70,
+      "count": 8,
+      "respawn_seconds": 60
+    }
+  ]
+}

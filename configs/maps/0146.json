@@ -1,0 +1,26 @@
+{
+  "id": "0146",
+  "name": "二楼",
+  "width": 50,
+  "height": 50,
+  "spawn_x": 0,
+  "spawn_y": 0,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "0145",
+      "from_x": 6,
+      "from_y": 8,
+      "to_x": 8,
+      "to_y": 3
+    },
+    {
+      "to_map": "0145",
+      "from_x": 7,
+      "from_y": 8,
+      "to_x": 9,
+      "to_y": 4
+    }
+  ],
+  "monster_spawns": []
+}

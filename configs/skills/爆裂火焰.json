@@ -1,0 +1,11 @@
+{
+  "id": "爆裂火焰",
+  "name": "爆裂火焰",
+  "job": 1,
+  "power": 8,
+  "max_power": 11,
+  "spell": 15,
+  "delay": 60,
+  "need_level_1": 22,
+  "train_level_1": 100
+}

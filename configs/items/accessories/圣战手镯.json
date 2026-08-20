@@ -1,0 +1,26 @@
+{
+  "id": "圣战手镯",
+  "name": "圣战手镯",
+  "kind": "misc",
+  "weight": 2,
+  "stats": {
+    "min_attack": 2,
+    "max_attack": 3,
+    "defense": 0,
+    "defense_max": 1,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 26,
+  "looks": 196,
+  "dura_max": 7000,
+  "need": 1,
+  "need_level": 40,
+  "price": 20000,
+  "stock": 5,
+  "color": 251
+}

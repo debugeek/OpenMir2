@@ -1,0 +1,129 @@
+{
+  "id": "D022",
+  "name": "沃玛寺庙一层",
+  "width": 359,
+  "height": 376,
+  "spawn_x": 250,
+  "spawn_y": 250,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D023",
+      "from_x": 251,
+      "from_y": 206,
+      "to_x": 199,
+      "to_y": 194
+    },
+    {
+      "to_map": "D023",
+      "from_x": 251,
+      "from_y": 207,
+      "to_x": 198,
+      "to_y": 195
+    },
+    {
+      "to_map": "D021",
+      "from_x": 338,
+      "from_y": 354,
+      "to_x": 25,
+      "to_y": 25
+    },
+    {
+      "to_map": "D021",
+      "from_x": 338,
+      "from_y": 355,
+      "to_x": 25,
+      "to_y": 26
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "沃玛卫士",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 2,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "山洞蝙蝠1",
+      "x": 250,
+      "y": 250,
+      "range": 250,
+      "count": 2,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "沃玛勇士",
+      "x": 250,
+      "y": 250,
+      "range": 250,
+      "count": 39,
+      "respawn_seconds": 9
+    },
+    {
+      "monster_id": "沃玛勇士1",
+      "x": 250,
+      "y": 250,
+      "range": 250,
+      "count": 2,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "沃玛战士",
+      "x": 250,
+      "y": 250,
+      "range": 250,
+      "count": 44,
+      "respawn_seconds": 9
+    },
+    {
+      "monster_id": "沃玛战士1",
+      "x": 250,
+      "y": 250,
+      "range": 250,
+      "count": 2,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "沃玛战将",
+      "x": 250,
+      "y": 250,
+      "range": 250,
+      "count": 39,
+      "respawn_seconds": 9
+    },
+    {
+      "monster_id": "沃玛战将1",
+      "x": 250,
+      "y": 250,
+      "range": 250,
+      "count": 2,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "火焰沃玛",
+      "x": 250,
+      "y": 250,
+      "range": 250,
+      "count": 26,
+      "respawn_seconds": 9
+    },
+    {
+      "monster_id": "火焰沃玛1",
+      "x": 250,
+      "y": 250,
+      "range": 250,
+      "count": 2,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "粪虫",
+      "x": 250,
+      "y": 250,
+      "range": 250,
+      "count": 32,
+      "respawn_seconds": 9
+    }
+  ]
+}

@@ -1,0 +1,165 @@
+{
+  "id": "骷髅精灵1",
+  "name": "骷髅精灵",
+  "race": 89,
+  "race_img": 14,
+  "appr": 150,
+  "level": 50,
+  "undead": 1,
+  "cool_eye": 1,
+  "experience": 100,
+  "hp": 800,
+  "mp": 0,
+  "defense": 0,
+  "magic_defense": 100,
+  "min_attack": 0,
+  "max_attack": 60,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 17,
+  "hit": 20,
+  "walk_speed_ms": 600,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 2000,
+  "drops": [
+    {
+      "item_id": "神秘腰带",
+      "chance": "1/49",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "神秘头盔",
+      "chance": "1/49",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "神秘戒指",
+      "chance": "1/49",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "放大镜",
+      "chance": "1/94",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "竹笛",
+      "chance": "1/45",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "道士头盔",
+      "chance": "1/145",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "凝霜",
+      "chance": "1/45",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "珊瑚戒指",
+      "chance": "1/194",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "降妖除魔戒指",
+      "chance": "1/145",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "死神手套",
+      "chance": "1/194",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "修罗",
+      "chance": "1/94",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "骷髅头盔",
+      "chance": "1/194",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "重盔甲(男)",
+      "chance": "1/149",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "重盔甲(女)",
+      "chance": "1/149",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "灵魂战衣(女)",
+      "chance": "1/149",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "灵魂战衣(男)",
+      "chance": "1/149",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔法长袍(男)",
+      "chance": "1/149",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔法长袍(女)",
+      "chance": "1/149",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "金戒指",
+      "chance": "1/49",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "蓝翡翠项链",
+      "chance": "1/49",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "金手镯",
+      "chance": "1/49",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "道德戒指",
+      "chance": "1/49",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魅力戒指",
+      "chance": "1/49",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "id": "D716",
+  "name": "石墓六层",
+  "width": 57,
+  "height": 50,
+  "spawn_x": 25,
+  "spawn_y": 25,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D717",
+      "from_x": 25,
+      "from_y": 26,
+      "to_x": 26,
+      "to_y": 74
+    },
+    {
+      "to_map": "D71650",
+      "from_x": 37,
+      "from_y": 16,
+      "to_x": 13,
+      "to_y": 37
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "楔蛾",
+      "x": 25,
+      "y": 25,
+      "range": 25,
+      "count": 9,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "红野猪",
+      "x": 25,
+      "y": 25,
+      "range": 25,
+      "count": 9,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "蝎蛇",
+      "x": 25,
+      "y": 25,
+      "range": 25,
+      "count": 9,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "角蝇",
+      "x": 25,
+      "y": 25,
+      "range": 25,
+      "count": 9,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "黑色恶蛆",
+      "x": 25,
+      "y": 25,
+      "range": 25,
+      "count": 9,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "黑野猪",
+      "x": 25,
+      "y": 25,
+      "range": 25,
+      "count": 9,
+      "respawn_seconds": 10
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "地狱火",
+  "name": "地狱火",
+  "kind": "book",
+  "weight": 1,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 0,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 4,
+  "shape": 1,
+  "dura_max": 16,
+  "price": 1000,
+  "stock": 5,
+  "color": 251
+}

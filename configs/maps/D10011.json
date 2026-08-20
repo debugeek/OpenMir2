@@ -1,0 +1,67 @@
+{
+  "id": "D10011",
+  "name": "赤月峡谷北入口",
+  "width": 290,
+  "height": 405,
+  "spawn_x": 200,
+  "spawn_y": 200,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D1002",
+      "from_x": 123,
+      "from_y": 24,
+      "to_x": 62,
+      "to_y": 288
+    },
+    {
+      "to_map": "12",
+      "from_x": 270,
+      "from_y": 385,
+      "to_x": 90,
+      "to_y": 14
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "天狼蜘蛛",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 15,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "天狼蜘蛛1",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 5,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "月魔蜘蛛",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 15,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "钢牙蜘蛛",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 12,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "钢牙蜘蛛1",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 5,
+      "respawn_seconds": 60
+    }
+  ]
+}

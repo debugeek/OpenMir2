@@ -1,0 +1,44 @@
+{
+  "id": "D515",
+  "name": "祖玛教主之家",
+  "width": 93,
+  "height": 52,
+  "spawn_x": 22,
+  "spawn_y": 20,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D5074",
+      "from_x": 13,
+      "from_y": 32,
+      "to_x": 76,
+      "to_y": 16
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "祖玛教主",
+      "x": 19,
+      "y": 24,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 180
+    },
+    {
+      "monster_id": "角蝇",
+      "x": 22,
+      "y": 20,
+      "range": 20,
+      "count": 9,
+      "respawn_seconds": 16
+    },
+    {
+      "monster_id": "楔蛾",
+      "x": 73,
+      "y": 22,
+      "range": 9,
+      "count": 12,
+      "respawn_seconds": 11
+    }
+  ]
+}

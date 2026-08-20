@@ -1,0 +1,135 @@
+{
+  "id": "祖玛雕像",
+  "name": "祖玛雕像",
+  "race": 101,
+  "race_img": 47,
+  "appr": 61,
+  "level": 42,
+  "undead": 1,
+  "cool_eye": 1,
+  "experience": 450,
+  "hp": 495,
+  "mp": 0,
+  "defense": 12,
+  "magic_defense": 12,
+  "min_attack": 20,
+  "max_attack": 32,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 17,
+  "hit": 13,
+  "walk_speed_ms": 900,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 2000,
+  "drops": [
+    {
+      "item_id": "金币",
+      "chance": "1/915",
+      "min_count": 2500,
+      "max_count": 2500
+    },
+    {
+      "item_id": "金创药(中量)",
+      "chance": "1/16",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔法药(中量)",
+      "chance": "1/18",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效金创药",
+      "chance": "1/14",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效魔法药",
+      "chance": "1/12",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "太阳水",
+      "chance": "1/19",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "放大镜",
+      "chance": "1/20",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "竹笛",
+      "chance": "1/38",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "道士头盔",
+      "chance": "1/23",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "凝霜",
+      "chance": "1/33",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "修罗",
+      "chance": "1/23",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "重盔甲(男)",
+      "chance": "1/52",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔法长袍(男)",
+      "chance": "1/84",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔法长袍(女)",
+      "chance": "1/90",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魅力戒指",
+      "chance": "1/52",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "道士手镯",
+      "chance": "1/78",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "黑檀手镯",
+      "chance": "1/78",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "坚固手套",
+      "chance": "1/78",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

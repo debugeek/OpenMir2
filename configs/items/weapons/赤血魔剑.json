@@ -1,0 +1,26 @@
+{
+  "id": "赤血魔剑",
+  "name": "赤血魔剑",
+  "kind": "weapon",
+  "weight": 22,
+  "stats": {
+    "min_attack": 15,
+    "max_attack": 10,
+    "defense": 0,
+    "defense_max": 1,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 4,
+    "magic_attack_max": 3,
+    "tao_attack": 4,
+    "tao_attack_max": 2
+  },
+  "std_mode": 5,
+  "shape": 30,
+  "looks": 66,
+  "dura_max": 22000,
+  "need_level": 35,
+  "price": 100000,
+  "stock": 5,
+  "color": 251
+}

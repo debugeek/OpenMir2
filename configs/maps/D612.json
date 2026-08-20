@@ -1,0 +1,272 @@
+{
+  "id": "D612",
+  "name": "黑暗地带",
+  "width": 304,
+  "height": 253,
+  "spawn_x": 70,
+  "spawn_y": 76,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D614",
+      "from_x": 9,
+      "from_y": 182,
+      "to_x": 70,
+      "to_y": 66
+    },
+    {
+      "to_map": "D611",
+      "from_x": 11,
+      "from_y": 15,
+      "to_x": 58,
+      "to_y": 69
+    },
+    {
+      "to_map": "D609",
+      "from_x": 199,
+      "from_y": 51,
+      "to_x": 22,
+      "to_y": 14
+    },
+    {
+      "to_map": "D613",
+      "from_x": 202,
+      "from_y": 187,
+      "to_x": 9,
+      "to_y": 51
+    },
+    {
+      "to_map": "D616",
+      "from_x": 283,
+      "from_y": 232,
+      "to_x": 25,
+      "to_y": 17
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "钳虫",
+      "x": 19,
+      "y": 39,
+      "range": 70,
+      "count": 15,
+      "respawn_seconds": 8
+    },
+    {
+      "monster_id": "钳虫",
+      "x": 57,
+      "y": 166,
+      "range": 70,
+      "count": 15,
+      "respawn_seconds": 9
+    },
+    {
+      "monster_id": "巨型蠕虫",
+      "x": 70,
+      "y": 76,
+      "range": 70,
+      "count": 18,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "跳跳蜂",
+      "x": 70,
+      "y": 76,
+      "range": 70,
+      "count": 13,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "跳跳蜂",
+      "x": 70,
+      "y": 76,
+      "range": 70,
+      "count": 13,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "钳虫",
+      "x": 70,
+      "y": 76,
+      "range": 70,
+      "count": 15,
+      "respawn_seconds": 11
+    },
+    {
+      "monster_id": "黑色恶蛆",
+      "x": 70,
+      "y": 76,
+      "range": 70,
+      "count": 15,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "巨型蠕虫",
+      "x": 79,
+      "y": 220,
+      "range": 70,
+      "count": 15,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "跳跳蜂",
+      "x": 79,
+      "y": 220,
+      "range": 70,
+      "count": 13,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "钳虫",
+      "x": 79,
+      "y": 220,
+      "range": 70,
+      "count": 18,
+      "respawn_seconds": 11
+    },
+    {
+      "monster_id": "黑色恶蛆",
+      "x": 79,
+      "y": 220,
+      "range": 70,
+      "count": 15,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "钳虫",
+      "x": 97,
+      "y": 81,
+      "range": 70,
+      "count": 18,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "钳虫",
+      "x": 150,
+      "y": 134,
+      "range": 70,
+      "count": 15,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "蜈蚣",
+      "x": 150,
+      "y": 150,
+      "range": 100,
+      "count": 13,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "蜈蚣",
+      "x": 150,
+      "y": 150,
+      "range": 100,
+      "count": 18,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "邪恶钳虫",
+      "x": 150,
+      "y": 150,
+      "range": 150,
+      "count": 2,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "邪恶钳虫2",
+      "x": 150,
+      "y": 150,
+      "range": 150,
+      "count": 1,
+      "respawn_seconds": 360
+    },
+    {
+      "monster_id": "钳虫",
+      "x": 150,
+      "y": 150,
+      "range": 100,
+      "count": 13,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "钳虫",
+      "x": 150,
+      "y": 150,
+      "range": 100,
+      "count": 18,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "钳虫",
+      "x": 178,
+      "y": 127,
+      "range": 70,
+      "count": 15,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "巨型蠕虫",
+      "x": 200,
+      "y": 213,
+      "range": 70,
+      "count": 18,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "跳跳蜂",
+      "x": 200,
+      "y": 213,
+      "range": 70,
+      "count": 13,
+      "respawn_seconds": 9
+    },
+    {
+      "monster_id": "钳虫",
+      "x": 200,
+      "y": 213,
+      "range": 70,
+      "count": 15,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "黑色恶蛆",
+      "x": 200,
+      "y": 213,
+      "range": 70,
+      "count": 15,
+      "respawn_seconds": 8
+    },
+    {
+      "monster_id": "巨型蠕虫",
+      "x": 210,
+      "y": 72,
+      "range": 70,
+      "count": 15,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "跳跳蜂",
+      "x": 210,
+      "y": 72,
+      "range": 70,
+      "count": 13,
+      "respawn_seconds": 9
+    },
+    {
+      "monster_id": "钳虫",
+      "x": 210,
+      "y": 72,
+      "range": 70,
+      "count": 15,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "黑色恶蛆",
+      "x": 210,
+      "y": 72,
+      "range": 70,
+      "count": 15,
+      "respawn_seconds": 8
+    }
+  ]
+}

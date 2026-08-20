@@ -1,0 +1,129 @@
+{
+  "id": "恶灵尸王",
+  "name": "恶灵尸王",
+  "race": 81,
+  "race_img": 64,
+  "appr": 191,
+  "level": 35,
+  "undead": 1,
+  "cool_eye": 0,
+  "experience": 420,
+  "hp": 500,
+  "mp": 0,
+  "defense": 3,
+  "magic_defense": 5,
+  "min_attack": 20,
+  "max_attack": 38,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 25,
+  "hit": 18,
+  "walk_speed_ms": 700,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 2000,
+  "drops": [
+    {
+      "item_id": "金币",
+      "chance": "1/9",
+      "min_count": 3000,
+      "max_count": 3000
+    },
+    {
+      "item_id": "金创药(中量)",
+      "chance": "1/3",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔法药(中量)",
+      "chance": "1/3",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "太阳水",
+      "chance": "1/3",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "降魔",
+      "chance": "1/77",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "偃月",
+      "chance": "1/77",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "骷髅头盔",
+      "chance": "1/77",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "道士头盔",
+      "chance": "1/77",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "死神手套",
+      "chance": "1/77",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "降妖除魔戒指",
+      "chance": "1/77",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "珊瑚戒指",
+      "chance": "1/77",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "疾光电影",
+      "chance": "1/198",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "心灵启示",
+      "chance": "1/171",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "神圣战甲术",
+      "chance": "1/198",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "刺杀剑术",
+      "chance": "1/198",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "雷电术",
+      "chance": "1/186",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "地狱火",
+      "chance": "1/186",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

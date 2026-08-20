@@ -1,0 +1,107 @@
+{
+  "id": "E605",
+  "name": "连接通道",
+  "width": 70,
+  "height": 88,
+  "spawn_x": 11,
+  "spawn_y": 62,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "E604",
+      "from_x": 13,
+      "from_y": 10,
+      "to_x": 11,
+      "to_y": 10
+    },
+    {
+      "to_map": "D601",
+      "from_x": 13,
+      "from_y": 63,
+      "to_x": 10,
+      "to_y": 198
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "弓箭护卫",
+      "x": 11,
+      "y": 62,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "弓箭护卫",
+      "x": 15,
+      "y": 68,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "蜈蚣",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 2,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "蜈蚣1",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "跳跳蜂",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 2,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "跳跳蜂1",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "钳虫",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 2,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "钳虫1",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "黑色恶蛆",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 2,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "黑色恶蛆1",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 1,
+      "respawn_seconds": 120
+    }
+  ]
+}

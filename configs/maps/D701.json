@@ -1,0 +1,56 @@
+{
+  "id": "D701",
+  "name": "秘密通道",
+  "width": 193,
+  "height": 156,
+  "spawn_x": 100,
+  "spawn_y": 100,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "3",
+      "from_x": 27,
+      "from_y": 23,
+      "to_x": 563,
+      "to_y": 286
+    },
+    {
+      "to_map": "3",
+      "from_x": 31,
+      "from_y": 128,
+      "to_x": 577,
+      "to_y": 295
+    },
+    {
+      "to_map": "3",
+      "from_x": 171,
+      "from_y": 132,
+      "to_x": 660,
+      "to_y": 276
+    },
+    {
+      "to_map": "3",
+      "from_x": 171,
+      "from_y": 133,
+      "to_x": 660,
+      "to_y": 276
+    },
+    {
+      "to_map": "E701",
+      "from_x": 172,
+      "from_y": 79,
+      "to_x": 12,
+      "to_y": 18
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "僵尸4",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 40,
+      "respawn_seconds": 8
+    }
+  ]
+}

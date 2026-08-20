@@ -1,0 +1,20 @@
+{
+  "id": "T118",
+  "name": "困惑殿堂",
+  "width": 50,
+  "height": 50,
+  "spawn_x": 13,
+  "spawn_y": 16,
+  "blocked": [],
+  "connections": [],
+  "monster_spawns": [
+    {
+      "monster_id": "暗之双头血魔",
+      "x": 13,
+      "y": 16,
+      "range": 2,
+      "count": 1,
+      "respawn_seconds": 120
+    }
+  ]
+}

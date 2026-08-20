@@ -1,0 +1,19 @@
+{
+  "id": "DM002",
+  "name": "国王陵墓",
+  "width": 50,
+  "height": 50,
+  "spawn_x": 0,
+  "spawn_y": 0,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D002",
+      "from_x": 7,
+      "from_y": 28,
+      "to_x": 225,
+      "to_y": 176
+    }
+  ],
+  "monster_spawns": []
+}

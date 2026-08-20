@@ -1,0 +1,11 @@
+{
+  "id": "困魔咒",
+  "name": "困魔咒",
+  "job": 2,
+  "power": 0,
+  "max_power": 0,
+  "spell": 10,
+  "delay": 50,
+  "need_level_1": 28,
+  "train_level_1": 100
+}

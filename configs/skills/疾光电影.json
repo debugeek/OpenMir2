@@ -1,0 +1,11 @@
+{
+  "id": "疾光电影",
+  "name": "疾光电影",
+  "job": 1,
+  "power": 22,
+  "max_power": 38,
+  "spell": 30,
+  "delay": 100,
+  "need_level_1": 26,
+  "train_level_1": 100
+}

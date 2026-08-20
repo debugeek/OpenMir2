@@ -1,0 +1,25 @@
+{
+  "id": "阎罗手套",
+  "name": "阎罗手套",
+  "kind": "misc",
+  "weight": 10,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 0,
+    "defense_max": 4,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 26,
+  "looks": 187,
+  "dura_max": 8000,
+  "need_level": 30,
+  "price": 10000,
+  "stock": 5,
+  "color": 251
+}

@@ -1,0 +1,25 @@
+{
+  "id": "珍珠戒指",
+  "name": "珍珠戒指",
+  "kind": "misc",
+  "weight": 1,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 0,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 2
+  },
+  "std_mode": 22,
+  "looks": 161,
+  "dura_max": 5000,
+  "need_level": 20,
+  "price": 2000,
+  "stock": 5,
+  "color": 251
+}

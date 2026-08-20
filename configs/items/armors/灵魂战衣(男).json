@@ -1,0 +1,26 @@
+{
+  "id": "灵魂战衣(男)",
+  "name": "灵魂战衣(男)",
+  "kind": "armor",
+  "weight": 15,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 3,
+    "defense_max": 6,
+    "magic_defense": 3,
+    "magic_defense_max": 3,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 2
+  },
+  "std_mode": 10,
+  "shape": 5,
+  "looks": 64,
+  "dura_max": 20000,
+  "need_level": 22,
+  "price": 10000,
+  "stock": 20,
+  "color": 251
+}

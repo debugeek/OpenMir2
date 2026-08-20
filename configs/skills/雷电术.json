@@ -1,0 +1,11 @@
+{
+  "id": "雷电术",
+  "name": "雷电术",
+  "job": 1,
+  "power": 20,
+  "max_power": 35,
+  "spell": 12,
+  "delay": 100,
+  "need_level_1": 17,
+  "train_level_1": 100
+}

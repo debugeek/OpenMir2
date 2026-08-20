@@ -1,0 +1,11 @@
+{
+  "id": "群体治疗术",
+  "name": "群体治疗术",
+  "job": 2,
+  "power": 10,
+  "max_power": 10,
+  "spell": 12,
+  "delay": 40,
+  "need_level_1": 33,
+  "train_level_1": 100
+}

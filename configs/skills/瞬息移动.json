@@ -1,0 +1,11 @@
+{
+  "id": "瞬息移动",
+  "name": "瞬息移动",
+  "job": 1,
+  "power": 0,
+  "max_power": 0,
+  "spell": 10,
+  "delay": 50,
+  "need_level_1": 19,
+  "train_level_1": 100
+}

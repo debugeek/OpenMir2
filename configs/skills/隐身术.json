@@ -1,0 +1,11 @@
+{
+  "id": "隐身术",
+  "name": "隐身术",
+  "job": 2,
+  "power": 0,
+  "max_power": 0,
+  "spell": 5,
+  "delay": 50,
+  "need_level_1": 20,
+  "train_level_1": 100
+}

@@ -1,0 +1,25 @@
+{
+  "id": "凤凰明珠",
+  "name": "凤凰明珠",
+  "kind": "misc",
+  "weight": 1,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 0,
+    "defense_max": 1,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 1,
+    "tao_attack_max": 2
+  },
+  "std_mode": 20,
+  "looks": 243,
+  "dura_max": 7000,
+  "need_level": 17,
+  "price": 2000,
+  "stock": 5,
+  "color": 251
+}

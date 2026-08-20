@@ -1,0 +1,26 @@
+{
+  "id": "凌风",
+  "name": "凌风",
+  "kind": "weapon",
+  "weight": 20,
+  "stats": {
+    "min_attack": 6,
+    "max_attack": 12,
+    "defense": 0,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 5,
+  "shape": 5,
+  "looks": 34,
+  "dura_max": 18000,
+  "need_level": 19,
+  "price": 5000,
+  "stock": 50,
+  "color": 251
+}

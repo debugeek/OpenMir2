@@ -1,0 +1,35 @@
+{
+  "id": "0111",
+  "name": "研究院",
+  "width": 50,
+  "height": 50,
+  "spawn_x": 8,
+  "spawn_y": 12,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "0",
+      "from_x": 11,
+      "from_y": 16,
+      "to_x": 401,
+      "to_y": 226
+    },
+    {
+      "to_map": "0",
+      "from_x": 12,
+      "from_y": 15,
+      "to_x": 400,
+      "to_y": 226
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "练功师",
+      "x": 8,
+      "y": 12,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 100
+    }
+  ]
+}

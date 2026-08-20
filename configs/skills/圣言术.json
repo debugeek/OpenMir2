@@ -1,0 +1,11 @@
+{
+  "id": "圣言术",
+  "name": "圣言术",
+  "job": 1,
+  "power": 0,
+  "max_power": 0,
+  "spell": 50,
+  "delay": 120,
+  "need_level_1": 32,
+  "train_level_1": 100
+}

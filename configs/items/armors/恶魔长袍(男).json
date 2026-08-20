@@ -1,0 +1,27 @@
+{
+  "id": "恶魔长袍(男)",
+  "name": "恶魔长袍(男)",
+  "kind": "armor",
+  "weight": 19,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 4,
+    "defense_max": 7,
+    "magic_defense": 3,
+    "magic_defense_max": 4,
+    "magic_attack": 1,
+    "magic_attack_max": 4,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 10,
+  "shape": 4,
+  "looks": 63,
+  "dura_max": 28000,
+  "need": 2,
+  "need_level": 28,
+  "price": 22000,
+  "stock": 5,
+  "color": 251
+}

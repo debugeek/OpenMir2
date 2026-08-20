@@ -1,0 +1,105 @@
+{
+  "id": "骷髅锤兵",
+  "name": "骷髅锤兵",
+  "race": 81,
+  "race_img": 66,
+  "appr": 192,
+  "level": 35,
+  "undead": 1,
+  "cool_eye": 0,
+  "experience": 450,
+  "hp": 500,
+  "mp": 0,
+  "defense": 3,
+  "magic_defense": 5,
+  "min_attack": 20,
+  "max_attack": 42,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 25,
+  "hit": 18,
+  "walk_speed_ms": 700,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 2000,
+  "drops": [
+    {
+      "item_id": "金币",
+      "chance": "1/41",
+      "min_count": 2500,
+      "max_count": 2500
+    },
+    {
+      "item_id": "金创药(中量)",
+      "chance": "1/9",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔法药(中量)",
+      "chance": "1/9",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "太阳水",
+      "chance": "1/8",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "坚固手套",
+      "chance": "1/51",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔力手镯",
+      "chance": "1/51",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "道士手镯",
+      "chance": "1/51",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "竹笛",
+      "chance": "1/51",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "凤凰明珠",
+      "chance": "1/52",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "黑色水晶戒指",
+      "chance": "1/52",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "白金项链",
+      "chance": "1/52",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "骷髅头盔",
+      "chance": "1/49",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "珊瑚戒指",
+      "chance": "1/129",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "八荒",
+  "name": "八荒",
+  "kind": "weapon",
+  "weight": 25,
+  "stats": {
+    "min_attack": 4,
+    "max_attack": 12,
+    "defense": 0,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 5,
+  "shape": 15,
+  "looks": 44,
+  "dura_max": 18000,
+  "need_level": 15,
+  "price": 5000,
+  "stock": 50,
+  "color": 251
+}

@@ -1,0 +1,26 @@
+{
+  "id": "偃月",
+  "name": "偃月",
+  "kind": "weapon",
+  "weight": 13,
+  "stats": {
+    "min_attack": 4,
+    "max_attack": 10,
+    "defense": 0,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 1,
+    "magic_attack_max": 3,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 6,
+  "shape": 18,
+  "looks": 49,
+  "dura_max": 12000,
+  "need_level": 20,
+  "price": 10000,
+  "stock": 5,
+  "color": 251
+}

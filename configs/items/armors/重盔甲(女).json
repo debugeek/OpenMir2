@@ -1,0 +1,26 @@
+{
+  "id": "重盔甲(女)",
+  "name": "重盔甲(女)",
+  "kind": "armor",
+  "weight": 23,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 4,
+    "defense_max": 7,
+    "magic_defense": 2,
+    "magic_defense_max": 3,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 11,
+  "shape": 3,
+  "looks": 82,
+  "dura_max": 25000,
+  "need_level": 22,
+  "price": 12000,
+  "stock": 20,
+  "color": 251
+}

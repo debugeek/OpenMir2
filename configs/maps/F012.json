@@ -1,0 +1,11 @@
+{
+  "id": "F012",
+  "name": "神秘战场",
+  "width": 50,
+  "height": 50,
+  "spawn_x": 0,
+  "spawn_y": 0,
+  "blocked": [],
+  "connections": [],
+  "monster_spawns": []
+}

@@ -1,0 +1,115 @@
+{
+  "id": "D2008",
+  "name": "霸者大厅",
+  "width": 104,
+  "height": 104,
+  "spawn_x": 41,
+  "spawn_y": 74,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D2009",
+      "from_x": 26,
+      "from_y": 23,
+      "to_x": 84,
+      "to_y": 86
+    },
+    {
+      "to_map": "D2007",
+      "from_x": 84,
+      "from_y": 84,
+      "to_x": 20,
+      "to_y": 86
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "大老鼠",
+      "x": 41,
+      "y": 74,
+      "range": 100,
+      "count": 10,
+      "respawn_seconds": 11
+    },
+    {
+      "monster_id": "楔蛾",
+      "x": 41,
+      "y": 74,
+      "range": 100,
+      "count": 35,
+      "respawn_seconds": 12
+    },
+    {
+      "monster_id": "白野猪",
+      "x": 41,
+      "y": 74,
+      "range": 100,
+      "count": 10,
+      "respawn_seconds": 18
+    },
+    {
+      "monster_id": "白野猪1",
+      "x": 41,
+      "y": 74,
+      "range": 100,
+      "count": 1,
+      "respawn_seconds": 35
+    },
+    {
+      "monster_id": "红野猪",
+      "x": 41,
+      "y": 74,
+      "range": 100,
+      "count": 25,
+      "respawn_seconds": 13
+    },
+    {
+      "monster_id": "红野猪2",
+      "x": 41,
+      "y": 74,
+      "range": 100,
+      "count": 10,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "蝎蛇",
+      "x": 41,
+      "y": 74,
+      "range": 100,
+      "count": 10,
+      "respawn_seconds": 17
+    },
+    {
+      "monster_id": "角蝇",
+      "x": 41,
+      "y": 74,
+      "range": 100,
+      "count": 9,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "黑色恶蛆",
+      "x": 41,
+      "y": 74,
+      "range": 100,
+      "count": 40,
+      "respawn_seconds": 18
+    },
+    {
+      "monster_id": "黑野猪",
+      "x": 41,
+      "y": 74,
+      "range": 100,
+      "count": 25,
+      "respawn_seconds": 14
+    },
+    {
+      "monster_id": "黑野猪2",
+      "x": 41,
+      "y": 74,
+      "range": 100,
+      "count": 10,
+      "respawn_seconds": 16
+    }
+  ]
+}

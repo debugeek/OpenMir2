@@ -1,0 +1,11 @@
+{
+  "id": "冰咆哮",
+  "name": "冰咆哮",
+  "job": 1,
+  "power": 15,
+  "max_power": 19,
+  "spell": 12,
+  "delay": 60,
+  "need_level_1": 35,
+  "train_level_1": 100
+}

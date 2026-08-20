@@ -1,0 +1,25 @@
+{
+  "id": "铁手镯",
+  "name": "铁手镯",
+  "kind": "misc",
+  "weight": 1,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 0,
+    "defense_max": 1,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 24,
+  "looks": 180,
+  "dura_max": 4000,
+  "need_level": 3,
+  "price": 800,
+  "stock": 50,
+  "color": 251
+}

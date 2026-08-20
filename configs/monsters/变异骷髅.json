@@ -1,0 +1,60 @@
+{
+  "id": "变异骷髅",
+  "name": "变异骷髅",
+  "race": 87,
+  "race_img": 19,
+  "appr": 37,
+  "level": 99,
+  "undead": 1,
+  "cool_eye": 10,
+  "first_reveal_pending": true,
+  "fixed_hide_mode": true,
+  "hidden": true,
+  "experience": 250,
+  "hp": 500,
+  "mp": 0,
+  "defense": 3,
+  "magic_defense": 3,
+  "min_attack": 12,
+  "max_attack": 18,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 15,
+  "hit": 15,
+  "walk_speed_ms": 800,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 1500,
+  "drops": [
+    {
+      "item_id": "金币",
+      "chance": "1/8",
+      "min_count": 3200,
+      "max_count": 3200
+    },
+    {
+      "item_id": "魔法药(中量)",
+      "chance": "1/4",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "金创药(中量)",
+      "chance": "1/4",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效太阳水",
+      "chance": "1/4",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "罗刹",
+      "chance": "1/999",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

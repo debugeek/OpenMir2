@@ -1,0 +1,165 @@
+{
+  "id": "重装使者",
+  "name": "重装使者",
+  "race": 92,
+  "race_img": 21,
+  "appr": 34,
+  "level": 50,
+  "undead": 0,
+  "cool_eye": 100,
+  "experience": 5000,
+  "hp": 5000,
+  "mp": 0,
+  "defense": 35,
+  "magic_defense": 25,
+  "min_attack": 65,
+  "max_attack": 75,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 20,
+  "hit": 15,
+  "walk_speed_ms": 400,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 1500,
+  "drops": [
+    {
+      "item_id": "金币",
+      "chance": "1/2",
+      "min_count": 5000,
+      "max_count": 5000
+    },
+    {
+      "item_id": "强效金创药",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效金创药",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效金创药",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效金创药",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效金创药",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效魔法药",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效魔法药",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效魔法药",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效魔法药",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效太阳水",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效太阳水",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效太阳水",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效太阳水",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效太阳水",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "回城卷",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "回城卷",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "天魔神甲",
+      "chance": "1/20",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "圣战宝甲",
+      "chance": "1/20",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "天尊道袍",
+      "chance": "1/20",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "天师长袍",
+      "chance": "1/20",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "法神披风",
+      "chance": "1/20",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "霓裳羽衣",
+      "chance": "1/20",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

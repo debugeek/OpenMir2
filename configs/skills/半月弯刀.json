@@ -1,0 +1,11 @@
+{
+  "id": "半月弯刀",
+  "name": "半月弯刀",
+  "job": 0,
+  "power": 0,
+  "max_power": 0,
+  "spell": 0,
+  "delay": 0,
+  "need_level_1": 28,
+  "train_level_1": 100
+}

@@ -1,0 +1,40 @@
+{
+  "id": "0105",
+  "name": "首饰店",
+  "width": 50,
+  "height": 50,
+  "spawn_x": 0,
+  "spawn_y": 0,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "0",
+      "from_x": 9,
+      "from_y": 24,
+      "to_x": 296,
+      "to_y": 285
+    },
+    {
+      "to_map": "0",
+      "from_x": 9,
+      "from_y": 25,
+      "to_x": 295,
+      "to_y": 286
+    },
+    {
+      "to_map": "0",
+      "from_x": 21,
+      "from_y": 12,
+      "to_x": 306,
+      "to_y": 276
+    },
+    {
+      "to_map": "0",
+      "from_x": 21,
+      "from_y": 13,
+      "to_x": 306,
+      "to_y": 277
+    }
+  ],
+  "monster_spawns": []
+}

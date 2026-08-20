@@ -1,0 +1,22 @@
+{
+  "server_name": "OpenMir2 Local",
+  "storage_path": "var/openmir2-state.json",
+  "listeners": [
+    {
+      "name": "login",
+      "addr": "0.0.0.0:7000"
+    },
+    {
+      "name": "select",
+      "addr": "0.0.0.0:7100"
+    },
+    {
+      "name": "game",
+      "addr": "0.0.0.0:7200"
+    },
+    {
+      "name": "diagnostics",
+      "addr": "127.0.0.1:7900"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "id": "强效金创药",
+  "name": "强效金创药",
+  "kind": "consumable",
+  "weight": 3,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 90,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "looks": 28,
+  "price": 550,
+  "stock": 5,
+  "color": 251
+}

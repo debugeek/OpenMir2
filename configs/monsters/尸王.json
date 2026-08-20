@@ -1,0 +1,141 @@
+{
+  "id": "尸王",
+  "name": "尸王",
+  "race": 81,
+  "race_img": 19,
+  "appr": 152,
+  "level": 45,
+  "undead": 1,
+  "cool_eye": 1,
+  "experience": 800,
+  "hp": 500,
+  "mp": 0,
+  "defense": 3,
+  "magic_defense": 3,
+  "min_attack": 18,
+  "max_attack": 36,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 15,
+  "hit": 15,
+  "walk_speed_ms": 1500,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 2800,
+  "drops": [
+    {
+      "item_id": "金币",
+      "chance": "1/4",
+      "min_count": 2000,
+      "max_count": 2000
+    },
+    {
+      "item_id": "强效金创药",
+      "chance": "1/4",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效金创药",
+      "chance": "1/4",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效魔法药",
+      "chance": "1/4",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效魔法药",
+      "chance": "1/4",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "刺杀剑术",
+      "chance": "1/10",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "半月弯刀",
+      "chance": "1/300",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "野蛮冲撞",
+      "chance": "1/280",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "火墙",
+      "chance": "1/40",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "疾光电影",
+      "chance": "1/100",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "地狱雷光",
+      "chance": "1/200",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "圣言术",
+      "chance": "1/250",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔法盾",
+      "chance": "1/300",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "神圣战甲术",
+      "chance": "1/50",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "集体隐身术",
+      "chance": "1/30",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "幽灵盾",
+      "chance": "1/40",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "困魔咒",
+      "chance": "1/30",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "心灵启示",
+      "chance": "1/30",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "群体治疗术",
+      "chance": "1/180",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "id": "施毒术",
+  "name": "施毒术",
+  "job": 2,
+  "power": 0,
+  "max_power": 0,
+  "spell": 4,
+  "delay": 40,
+  "need_level_1": 14,
+  "train_level_1": 100
+}

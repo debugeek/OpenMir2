@@ -1,0 +1,130 @@
+{
+  "id": "D003",
+  "name": "兽人古墓三层",
+  "width": 311,
+  "height": 314,
+  "spawn_x": 200,
+  "spawn_y": 200,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "E001",
+      "from_x": 78,
+      "from_y": 229,
+      "to_x": 9,
+      "to_y": 14
+    },
+    {
+      "to_map": "D002",
+      "from_x": 106,
+      "from_y": 82,
+      "to_x": 117,
+      "to_y": 96
+    },
+    {
+      "to_map": "E401",
+      "from_x": 290,
+      "from_y": 293,
+      "to_x": 14,
+      "to_y": 10
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "山洞蝙蝠",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 30,
+      "respawn_seconds": 8
+    },
+    {
+      "monster_id": "山洞蝙蝠1",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 3,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "掷斧骷髅",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 30,
+      "respawn_seconds": 8
+    },
+    {
+      "monster_id": "掷斧骷髅1",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 3,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "洞蛆",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 30,
+      "respawn_seconds": 8
+    },
+    {
+      "monster_id": "骷髅",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 40,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "骷髅1",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 3,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "骷髅战士",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 80,
+      "respawn_seconds": 6
+    },
+    {
+      "monster_id": "骷髅战士1",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 3,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "骷髅战将",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 50,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "骷髅战将1",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 3,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "骷髅精灵",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 3,
+      "respawn_seconds": 120
+    }
+  ]
+}

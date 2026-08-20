@@ -1,0 +1,76 @@
+{
+  "id": "D10062",
+  "name": "赤月魔穴",
+  "width": 50,
+  "height": 50,
+  "spawn_x": 30,
+  "spawn_y": 30,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D10052",
+      "from_x": 11,
+      "from_y": 25,
+      "to_x": 139,
+      "to_y": 24
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "血巨人",
+      "x": 17,
+      "y": 21,
+      "range": 21,
+      "count": 5,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "赤月恶魔",
+      "x": 23,
+      "y": 18,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 360
+    },
+    {
+      "monster_id": "月魔蜘蛛",
+      "x": 30,
+      "y": 30,
+      "range": 75,
+      "count": 5,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "血僵尸",
+      "x": 30,
+      "y": 30,
+      "range": 75,
+      "count": 5,
+      "respawn_seconds": 45
+    },
+    {
+      "monster_id": "血巨人",
+      "x": 30,
+      "y": 30,
+      "range": 75,
+      "count": 5,
+      "respawn_seconds": 9
+    },
+    {
+      "monster_id": "黑锷蜘蛛",
+      "x": 30,
+      "y": 30,
+      "range": 75,
+      "count": 5,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "黑锷蜘蛛2",
+      "x": 30,
+      "y": 30,
+      "range": 75,
+      "count": 5,
+      "respawn_seconds": 8
+    }
+  ]
+}

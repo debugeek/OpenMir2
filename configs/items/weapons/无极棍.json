@@ -1,0 +1,27 @@
+{
+  "id": "无极棍",
+  "name": "无极棍",
+  "kind": "weapon",
+  "weight": 15,
+  "stats": {
+    "min_attack": 8,
+    "max_attack": 16,
+    "defense": 0,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 3,
+    "tao_attack_max": 5
+  },
+  "std_mode": 5,
+  "shape": 21,
+  "looks": 52,
+  "dura_max": 25000,
+  "need": 3,
+  "need_level": 25,
+  "price": 30000,
+  "stock": 5,
+  "color": 251
+}

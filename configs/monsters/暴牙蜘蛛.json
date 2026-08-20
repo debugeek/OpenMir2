@@ -1,0 +1,123 @@
+{
+  "id": "暴牙蜘蛛",
+  "name": "暴牙蜘蛛",
+  "race": 93,
+  "race_img": 22,
+  "appr": 114,
+  "level": 50,
+  "undead": 0,
+  "cool_eye": 0,
+  "experience": 450,
+  "hp": 500,
+  "mp": 0,
+  "defense": 5,
+  "magic_defense": 5,
+  "min_attack": 15,
+  "max_attack": 20,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 15,
+  "hit": 17,
+  "walk_speed_ms": 700,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 1600,
+  "drops": [
+    {
+      "item_id": "金币",
+      "chance": "1/3",
+      "min_count": 1450,
+      "max_count": 1450
+    },
+    {
+      "item_id": "强效金创药",
+      "chance": "1/3",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效魔法药",
+      "chance": "1/3",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "太阳水",
+      "chance": "1/6",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "太阳水",
+      "chance": "1/6",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "死神手套",
+      "chance": "1/28",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "骷髅头盔",
+      "chance": "1/38",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "道德戒指",
+      "chance": "1/35",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魅力戒指",
+      "chance": "1/35",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "骷髅戒指",
+      "chance": "1/35",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "坚固手套",
+      "chance": "1/21",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔力手镯",
+      "chance": "1/21",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "重盔甲(男)",
+      "chance": "1/35",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔法长袍(女)",
+      "chance": "1/35",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "破魂",
+      "chance": "1/117",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "凝霜",
+      "chance": "1/118",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

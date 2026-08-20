@@ -1,0 +1,25 @@
+{
+  "id": "牛角戒指",
+  "name": "牛角戒指",
+  "kind": "misc",
+  "weight": 1,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 1,
+    "defense": 0,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 1,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 22,
+  "looks": 140,
+  "dura_max": 6000,
+  "need_level": 9,
+  "price": 1000,
+  "stock": 50,
+  "color": 251
+}

@@ -1,0 +1,155 @@
+{
+  "id": "E702",
+  "name": "香石墓穴",
+  "width": 85,
+  "height": 114,
+  "spawn_x": 50,
+  "spawn_y": 50,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "E701",
+      "from_x": 60,
+      "from_y": 68,
+      "to_x": 88,
+      "to_y": 83
+    },
+    {
+      "to_map": "E703",
+      "from_x": 64,
+      "from_y": 94,
+      "to_x": 48,
+      "to_y": 46
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "僵尸",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 35,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "僵尸1",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 35,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "僵尸2",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 35,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "僵尸3",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 35,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "僵尸4",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 35,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "僵尸5",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "僵尸8",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "僵尸9",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "楔蛾",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 15,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "红野猪",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 15,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "蝎蛇",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 10,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "蝎蛇1",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "角蝇",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 8,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "黑色恶蛆",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 15,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "黑野猪",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 15,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "黑野猪1",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 1,
+      "respawn_seconds": 120
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "B123",
+  "name": "圣域",
+  "width": 50,
+  "height": 50,
+  "spawn_x": 11,
+  "spawn_y": 14,
+  "blocked": [],
+  "connections": [],
+  "monster_spawns": [
+    {
+      "monster_id": "圣域魔魂",
+      "x": 11,
+      "y": 14,
+      "range": 10,
+      "count": 1,
+      "respawn_seconds": 6
+    }
+  ]
+}

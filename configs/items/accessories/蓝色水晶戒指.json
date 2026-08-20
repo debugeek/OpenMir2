@@ -1,0 +1,25 @@
+{
+  "id": "蓝色水晶戒指",
+  "name": "蓝色水晶戒指",
+  "kind": "misc",
+  "weight": 1,
+  "stats": {
+    "min_attack": 1,
+    "max_attack": 0,
+    "defense": 0,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 2,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 22,
+  "looks": 142,
+  "dura_max": 5000,
+  "need_level": 16,
+  "price": 1500,
+  "stock": 50,
+  "color": 251
+}

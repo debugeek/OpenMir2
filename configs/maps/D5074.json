@@ -1,0 +1,163 @@
+{
+  "id": "D5074",
+  "name": "祖玛神殿七层",
+  "width": 97,
+  "height": 111,
+  "spawn_x": 50,
+  "spawn_y": 50,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D5073",
+      "from_x": 48,
+      "from_y": 91,
+      "to_x": 59,
+      "to_y": 10
+    },
+    {
+      "to_map": "D515",
+      "from_x": 77,
+      "from_y": 15,
+      "to_x": 14,
+      "to_y": 31
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "大老鼠",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 55,
+      "respawn_seconds": 8
+    },
+    {
+      "monster_id": "祖玛卫士",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 45,
+      "respawn_seconds": 8
+    },
+    {
+      "monster_id": "祖玛卫士1",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 5,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "祖玛卫士3",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 2,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "祖玛卫士5",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 1,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "祖玛弓箭手",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 55,
+      "respawn_seconds": 8
+    },
+    {
+      "monster_id": "祖玛弓箭手1",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 5,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "祖玛弓箭手2",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 2,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "祖玛雕像",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 45,
+      "respawn_seconds": 8
+    },
+    {
+      "monster_id": "祖玛雕像1",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 5,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "祖玛雕像2",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 2,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "角蝇",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 9,
+      "respawn_seconds": 8
+    },
+    {
+      "monster_id": "楔蛾",
+      "x": 73,
+      "y": 22,
+      "range": 7,
+      "count": 9,
+      "respawn_seconds": 11
+    },
+    {
+      "monster_id": "祖玛卫士",
+      "x": 73,
+      "y": 22,
+      "range": 7,
+      "count": 6,
+      "respawn_seconds": 11
+    },
+    {
+      "monster_id": "祖玛弓箭手",
+      "x": 73,
+      "y": 22,
+      "range": 7,
+      "count": 65,
+      "respawn_seconds": 11
+    },
+    {
+      "monster_id": "祖玛雕像",
+      "x": 73,
+      "y": 22,
+      "range": 7,
+      "count": 6,
+      "respawn_seconds": 11
+    },
+    {
+      "monster_id": "角蝇",
+      "x": 73,
+      "y": 22,
+      "range": 7,
+      "count": 3,
+      "respawn_seconds": 11
+    }
+  ]
+}

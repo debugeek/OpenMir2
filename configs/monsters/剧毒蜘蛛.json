@@ -1,0 +1,105 @@
+{
+  "id": "剧毒蜘蛛",
+  "name": "剧毒蜘蛛",
+  "race": 82,
+  "race_img": 19,
+  "appr": 163,
+  "level": 50,
+  "undead": 0,
+  "cool_eye": 1,
+  "experience": 1000,
+  "hp": 1200,
+  "mp": 0,
+  "defense": 10,
+  "magic_defense": 15,
+  "min_attack": 22,
+  "max_attack": 35,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 15,
+  "hit": 8,
+  "walk_speed_ms": 900,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 1500,
+  "drops": [
+    {
+      "item_id": "毒蜘蛛牙齿",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "毒蜘蛛牙齿",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "疗伤药",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "疗伤药",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "疗伤药",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "疗伤药",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "疗伤药",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "疗伤药",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "疗伤药",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "疗伤药",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "疗伤药",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "疗伤药",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "疗伤药",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

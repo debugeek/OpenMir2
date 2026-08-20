@@ -1,0 +1,26 @@
+{
+  "id": "D610",
+  "name": "阴森石屋",
+  "width": 50,
+  "height": 50,
+  "spawn_x": 0,
+  "spawn_y": 0,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D603",
+      "from_x": 30,
+      "from_y": 15,
+      "to_x": 81,
+      "to_y": 82
+    },
+    {
+      "to_map": "D601",
+      "from_x": 30,
+      "from_y": 30,
+      "to_x": 150,
+      "to_y": 56
+    }
+  ],
+  "monster_spawns": []
+}

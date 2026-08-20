@@ -1,0 +1,129 @@
+{
+  "id": "D2006",
+  "name": "烈焰殿",
+  "width": 94,
+  "height": 103,
+  "spawn_x": 31,
+  "spawn_y": 38,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D2007",
+      "from_x": 15,
+      "from_y": 21,
+      "to_x": 182,
+      "to_y": 178
+    },
+    {
+      "to_map": "D2005",
+      "from_x": 72,
+      "from_y": 83,
+      "to_x": 17,
+      "to_y": 22
+    },
+    {
+      "to_map": "D2005",
+      "from_x": 73,
+      "from_y": 82,
+      "to_x": 18,
+      "to_y": 21
+    },
+    {
+      "to_map": "D2005",
+      "from_x": 74,
+      "from_y": 81,
+      "to_x": 19,
+      "to_y": 20
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "楔蛾",
+      "x": 31,
+      "y": 38,
+      "range": 100,
+      "count": 40,
+      "respawn_seconds": 12
+    },
+    {
+      "monster_id": "白野猪",
+      "x": 31,
+      "y": 38,
+      "range": 100,
+      "count": 5,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "白野猪",
+      "x": 31,
+      "y": 38,
+      "range": 40,
+      "count": 5,
+      "respawn_seconds": 35
+    },
+    {
+      "monster_id": "白野猪1",
+      "x": 31,
+      "y": 38,
+      "range": 40,
+      "count": 1,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "红野猪",
+      "x": 31,
+      "y": 38,
+      "range": 100,
+      "count": 40,
+      "respawn_seconds": 15
+    },
+    {
+      "monster_id": "红野猪2",
+      "x": 31,
+      "y": 38,
+      "range": 100,
+      "count": 10,
+      "respawn_seconds": 16
+    },
+    {
+      "monster_id": "虹魔猪卫",
+      "x": 31,
+      "y": 38,
+      "range": 40,
+      "count": 1,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "角蝇",
+      "x": 31,
+      "y": 38,
+      "range": 100,
+      "count": 9,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "黑色恶蛆",
+      "x": 31,
+      "y": 38,
+      "range": 100,
+      "count": 40,
+      "respawn_seconds": 18
+    },
+    {
+      "monster_id": "黑野猪",
+      "x": 31,
+      "y": 38,
+      "range": 100,
+      "count": 40,
+      "respawn_seconds": 13
+    },
+    {
+      "monster_id": "黑野猪2",
+      "x": 31,
+      "y": 38,
+      "range": 100,
+      "count": 10,
+      "respawn_seconds": 19
+    }
+  ]
+}

@@ -1,0 +1,169 @@
+{
+  "id": "D2064",
+  "name": "骨魔洞四层",
+  "width": 180,
+  "height": 204,
+  "spawn_x": 105,
+  "spawn_y": 95,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D2067",
+      "from_x": 9,
+      "from_y": 183,
+      "to_x": 154,
+      "to_y": 163
+    },
+    {
+      "to_map": "D2067",
+      "from_x": 10,
+      "from_y": 184,
+      "to_x": 155,
+      "to_y": 164
+    },
+    {
+      "to_map": "D2063",
+      "from_x": 12,
+      "from_y": 30,
+      "to_x": 49,
+      "to_y": 85
+    },
+    {
+      "to_map": "D2063",
+      "from_x": 13,
+      "from_y": 29,
+      "to_x": 49,
+      "to_y": 85
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "宝箱",
+      "x": 105,
+      "y": 95,
+      "range": 150,
+      "count": 6,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "宝箱",
+      "x": 105,
+      "y": 95,
+      "range": 150,
+      "count": 6,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "骷髅刀斧手",
+      "x": 105,
+      "y": 95,
+      "range": 150,
+      "count": 40,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "骷髅刀斧手1",
+      "x": 105,
+      "y": 95,
+      "range": 150,
+      "count": 4,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "骷髅弓箭手1",
+      "x": 105,
+      "y": 95,
+      "range": 150,
+      "count": 8,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "骷髅锤兵",
+      "x": 105,
+      "y": 95,
+      "range": 150,
+      "count": 80,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "骷髅锤兵1",
+      "x": 105,
+      "y": 95,
+      "range": 150,
+      "count": 4,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "骷髅长枪兵",
+      "x": 105,
+      "y": 95,
+      "range": 150,
+      "count": 70,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "骷髅长枪兵1",
+      "x": 105,
+      "y": 95,
+      "range": 150,
+      "count": 4,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "骷髅刀斧手1",
+      "x": 160,
+      "y": 100,
+      "range": 150,
+      "count": 8,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "骷髅弓箭手",
+      "x": 160,
+      "y": 100,
+      "range": 150,
+      "count": 70,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "骷髅弓箭手1",
+      "x": 160,
+      "y": 100,
+      "range": 150,
+      "count": 8,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "骷髅锤兵",
+      "x": 160,
+      "y": 100,
+      "range": 150,
+      "count": 80,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "骷髅锤兵1",
+      "x": 160,
+      "y": 100,
+      "range": 150,
+      "count": 8,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "骷髅长枪兵",
+      "x": 160,
+      "y": 100,
+      "range": 150,
+      "count": 50,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "骷髅长枪兵1",
+      "x": 160,
+      "y": 100,
+      "range": 150,
+      "count": 8,
+      "respawn_seconds": 60
+    }
+  ]
+}

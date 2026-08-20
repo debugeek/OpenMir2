@@ -1,0 +1,23 @@
+{
+  "id": "强效太阳水",
+  "name": "强效太阳水",
+  "kind": "consumable",
+  "weight": 2,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 50,
+    "defense_max": 0,
+    "magic_defense": 80,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "shape": 1,
+  "looks": 312,
+  "price": 2000,
+  "stock": 5,
+  "color": 251
+}

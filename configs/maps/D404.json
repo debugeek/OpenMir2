@@ -1,0 +1,98 @@
+{
+  "id": "D404",
+  "name": "矿区B二层",
+  "width": 172,
+  "height": 172,
+  "spawn_x": 100,
+  "spawn_y": 100,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D416",
+      "from_x": 9,
+      "from_y": 152,
+      "to_x": 89,
+      "to_y": 17
+    },
+    {
+      "to_map": "D412",
+      "from_x": 129,
+      "from_y": 42,
+      "to_x": 52,
+      "to_y": 53
+    },
+    {
+      "to_map": "E404",
+      "from_x": 152,
+      "from_y": 19,
+      "to_x": 68,
+      "to_y": 55
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "僵尸",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 50,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "僵尸2",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 60,
+      "respawn_seconds": 8
+    },
+    {
+      "monster_id": "僵尸3",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 70,
+      "respawn_seconds": 9
+    },
+    {
+      "monster_id": "僵尸5",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 3,
+      "respawn_seconds": 100
+    },
+    {
+      "monster_id": "僵尸7",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 3,
+      "respawn_seconds": 100
+    },
+    {
+      "monster_id": "僵尸8",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 3,
+      "respawn_seconds": 100
+    },
+    {
+      "monster_id": "尸王",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 1,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "尸王3",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 3,
+      "respawn_seconds": 120
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "id": "精神力战法",
+  "name": "精神力战法",
+  "job": 2,
+  "power": 0,
+  "max_power": 0,
+  "spell": 0,
+  "delay": 0,
+  "need_level_1": 9,
+  "train_level_1": 100
+}

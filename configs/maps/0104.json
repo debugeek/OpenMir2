@@ -1,0 +1,19 @@
+{
+  "id": "0104",
+  "name": "书店",
+  "width": 50,
+  "height": 50,
+  "spawn_x": 0,
+  "spawn_y": 0,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "0",
+      "from_x": 4,
+      "from_y": 11,
+      "to_x": 323,
+      "to_y": 248
+    }
+  ],
+  "monster_spawns": []
+}

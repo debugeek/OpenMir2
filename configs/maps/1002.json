@@ -1,0 +1,28 @@
+{
+  "id": "1002",
+  "name": "虎卫堂",
+  "width": 50,
+  "height": 50,
+  "spawn_x": 12,
+  "spawn_y": 12,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "11",
+      "from_x": 9,
+      "from_y": 18,
+      "to_x": 227,
+      "to_y": 269
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "虎卫",
+      "x": 12,
+      "y": 12,
+      "range": 5,
+      "count": 1,
+      "respawn_seconds": 120
+    }
+  ]
+}

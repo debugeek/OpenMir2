@@ -1,0 +1,161 @@
+{
+  "id": "E603",
+  "name": "连接通道",
+  "width": 130,
+  "height": 204,
+  "spawn_x": 100,
+  "spawn_y": 100,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "E604",
+      "from_x": 10,
+      "from_y": 69,
+      "to_x": 91,
+      "to_y": 45
+    },
+    {
+      "to_map": "E602",
+      "from_x": 26,
+      "from_y": 26,
+      "to_x": 11,
+      "to_y": 10
+    },
+    {
+      "to_map": "E603",
+      "from_x": 107,
+      "from_y": 184,
+      "to_x": 110,
+      "to_y": 182
+    },
+    {
+      "to_map": "E603",
+      "from_x": 110,
+      "from_y": 182,
+      "to_x": 107,
+      "to_y": 184
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "僵尸",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 40,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "僵尸1",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 30,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "僵尸2",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 30,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "僵尸3",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 30,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "僵尸4",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 30,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "僵尸5",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "僵尸6",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "蜈蚣",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 30,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "蜈蚣1",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "跳跳蜂",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 40,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "跳跳蜂1",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "钳虫",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 40,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "钳虫1",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "黑色恶蛆",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 40,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "黑色恶蛆1",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 1,
+      "respawn_seconds": 120
+    }
+  ]
+}

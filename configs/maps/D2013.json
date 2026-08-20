@@ -1,0 +1,147 @@
+{
+  "id": "D2013",
+  "name": "封魔殿",
+  "width": 102,
+  "height": 104,
+  "spawn_x": 55,
+  "spawn_y": 55,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D2012",
+      "from_x": 81,
+      "from_y": 84,
+      "to_x": 18,
+      "to_y": 21
+    },
+    {
+      "to_map": "D2012",
+      "from_x": 82,
+      "from_y": 83,
+      "to_x": 19,
+      "to_y": 20
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "楔蛾",
+      "x": 43,
+      "y": 44,
+      "range": 100,
+      "count": 50,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "祖玛卫士",
+      "x": 43,
+      "y": 44,
+      "range": 100,
+      "count": 30,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "祖玛卫士3",
+      "x": 43,
+      "y": 44,
+      "range": 100,
+      "count": 3,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "祖玛卫士5",
+      "x": 43,
+      "y": 44,
+      "range": 100,
+      "count": 2,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "祖玛弓箭手",
+      "x": 43,
+      "y": 44,
+      "range": 100,
+      "count": 30,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "祖玛弓箭手1",
+      "x": 43,
+      "y": 44,
+      "range": 100,
+      "count": 4,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "祖玛弓箭手2",
+      "x": 43,
+      "y": 44,
+      "range": 100,
+      "count": 3,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "祖玛雕像",
+      "x": 43,
+      "y": 44,
+      "range": 100,
+      "count": 40,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "祖玛雕像1",
+      "x": 43,
+      "y": 44,
+      "range": 100,
+      "count": 5,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "祖玛雕像2",
+      "x": 43,
+      "y": 44,
+      "range": 100,
+      "count": 3,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "虹魔猪卫",
+      "x": 43,
+      "y": 44,
+      "range": 100,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "虹魔猪卫1",
+      "x": 43,
+      "y": 44,
+      "range": 100,
+      "count": 1,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "角蝇",
+      "x": 43,
+      "y": 44,
+      "range": 100,
+      "count": 40,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "黑色恶蛆",
+      "x": 43,
+      "y": 44,
+      "range": 100,
+      "count": 50,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "虹魔教主",
+      "x": 55,
+      "y": 55,
+      "range": 50,
+      "count": 1,
+      "respawn_seconds": 180
+    }
+  ]
+}

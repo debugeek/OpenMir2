@@ -1,0 +1,26 @@
+{
+  "id": "逍遥扇",
+  "name": "逍遥扇",
+  "kind": "weapon",
+  "weight": 45,
+  "stats": {
+    "min_attack": 5,
+    "max_attack": 13,
+    "defense": 1,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 4,
+    "tao_attack_max": 10
+  },
+  "std_mode": 5,
+  "shape": 33,
+  "looks": 71,
+  "dura_max": 30000,
+  "need_level": 35,
+  "price": 85000,
+  "stock": 5,
+  "color": 251
+}

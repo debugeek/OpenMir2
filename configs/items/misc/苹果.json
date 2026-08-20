@@ -1,0 +1,24 @@
+{
+  "id": "苹果",
+  "name": "苹果",
+  "kind": "consumable",
+  "weight": 3,
+  "stats": {
+    "min_attack": 10,
+    "max_attack": 0,
+    "defense": 200,
+    "defense_max": 2,
+    "magic_defense": 200,
+    "magic_defense_max": 240,
+    "magic_attack": 10,
+    "magic_attack_max": 0,
+    "tao_attack": 10,
+    "tao_attack_max": 0
+  },
+  "std_mode": 3,
+  "shape": 12,
+  "looks": 426,
+  "price": 500,
+  "stock": 5,
+  "color": 251
+}

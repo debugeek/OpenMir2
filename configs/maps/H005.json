@@ -1,0 +1,176 @@
+{
+  "id": "H005",
+  "name": "幻境五层",
+  "width": 220,
+  "height": 300,
+  "spawn_x": 100,
+  "spawn_y": 125,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "H003",
+      "from_x": 11,
+      "from_y": 155,
+      "to_x": 16,
+      "to_y": 19
+    },
+    {
+      "to_map": "H003",
+      "from_x": 12,
+      "from_y": 154,
+      "to_x": 16,
+      "to_y": 19
+    },
+    {
+      "to_map": "H006",
+      "from_x": 36,
+      "from_y": 225,
+      "to_x": 26,
+      "to_y": 74
+    },
+    {
+      "to_map": "H004",
+      "from_x": 192,
+      "from_y": 279,
+      "to_x": 192,
+      "to_y": 123
+    },
+    {
+      "to_map": "H004",
+      "from_x": 193,
+      "from_y": 280,
+      "to_x": 192,
+      "to_y": 123
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "骷髅刀斧手2",
+      "x": 100,
+      "y": 125,
+      "range": 100,
+      "count": 20,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "骷髅刀斧手2",
+      "x": 100,
+      "y": 125,
+      "range": 100,
+      "count": 20,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "骷髅锤兵2",
+      "x": 100,
+      "y": 125,
+      "range": 100,
+      "count": 20,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "骷髅锤兵2",
+      "x": 100,
+      "y": 125,
+      "range": 100,
+      "count": 20,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "骷髅长枪兵2",
+      "x": 100,
+      "y": 125,
+      "range": 100,
+      "count": 20,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "骷髅长枪兵2",
+      "x": 100,
+      "y": 125,
+      "range": 100,
+      "count": 20,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "骷髅刀斧手2",
+      "x": 100,
+      "y": 145,
+      "range": 100,
+      "count": 20,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "骷髅刀斧手2",
+      "x": 100,
+      "y": 145,
+      "range": 100,
+      "count": 20,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "骷髅长枪兵2",
+      "x": 100,
+      "y": 145,
+      "range": 100,
+      "count": 20,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "骷髅刀斧手2",
+      "x": 145,
+      "y": 80,
+      "range": 100,
+      "count": 20,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "骷髅弓箭手2",
+      "x": 145,
+      "y": 80,
+      "range": 100,
+      "count": 20,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "黄泉教主1",
+      "x": 150,
+      "y": 150,
+      "range": 100,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "骷髅刀斧手2",
+      "x": 200,
+      "y": 190,
+      "range": 100,
+      "count": 20,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "骷髅弓箭手2",
+      "x": 200,
+      "y": 190,
+      "range": 100,
+      "count": 20,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "骷髅锤兵2",
+      "x": 200,
+      "y": 190,
+      "range": 100,
+      "count": 20,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "骷髅长枪兵2",
+      "x": 200,
+      "y": 190,
+      "range": 100,
+      "count": 20,
+      "respawn_seconds": 20
+    }
+  ]
+}

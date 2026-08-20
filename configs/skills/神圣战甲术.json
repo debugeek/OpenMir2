@@ -1,0 +1,11 @@
+{
+  "id": "神圣战甲术",
+  "name": "神圣战甲术",
+  "job": 2,
+  "power": 0,
+  "max_power": 0,
+  "spell": 15,
+  "delay": 40,
+  "need_level_1": 25,
+  "train_level_1": 100
+}

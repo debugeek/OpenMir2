@@ -1,0 +1,11 @@
+{
+  "id": "F008",
+  "name": "行会战争地图",
+  "width": 50,
+  "height": 50,
+  "spawn_x": 0,
+  "spawn_y": 0,
+  "blocked": [],
+  "connections": [],
+  "monster_spawns": []
+}

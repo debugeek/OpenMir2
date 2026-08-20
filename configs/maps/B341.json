@@ -1,0 +1,49 @@
+{
+  "id": "B341",
+  "name": "封魔堡",
+  "width": 50,
+  "height": 51,
+  "spawn_x": 18,
+  "spawn_y": 19,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "4",
+      "from_x": 11,
+      "from_y": 29,
+      "to_x": 212,
+      "to_y": 193
+    },
+    {
+      "to_map": "M100",
+      "from_x": 11,
+      "from_y": 29,
+      "to_x": 287,
+      "to_y": 282
+    },
+    {
+      "to_map": "4",
+      "from_x": 25,
+      "from_y": 31,
+      "to_x": 218,
+      "to_y": 197
+    },
+    {
+      "to_map": "4",
+      "from_x": 26,
+      "from_y": 30,
+      "to_x": 219,
+      "to_y": 196
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "沃玛卫士",
+      "x": 18,
+      "y": 19,
+      "range": 20,
+      "count": 2,
+      "respawn_seconds": 60
+    }
+  ]
+}

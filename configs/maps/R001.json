@@ -1,0 +1,44 @@
+{
+  "id": "R001",
+  "name": "桃源之门",
+  "width": 134,
+  "height": 142,
+  "spawn_x": 114,
+  "spawn_y": 122,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "T118",
+      "from_x": 55,
+      "from_y": 94,
+      "to_x": 14,
+      "to_y": 15
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "变异骷髅",
+      "x": 93,
+      "y": 104,
+      "range": 150,
+      "count": 9,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "神兽",
+      "x": 93,
+      "y": 104,
+      "range": 150,
+      "count": 9,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "蜜蜂",
+      "x": 114,
+      "y": 122,
+      "range": 50,
+      "count": 20,
+      "respawn_seconds": 20
+    }
+  ]
+}

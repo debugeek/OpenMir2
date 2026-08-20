@@ -1,0 +1,43 @@
+{
+  "id": "D413",
+  "name": "矿区A一层",
+  "width": 106,
+  "height": 70,
+  "spawn_x": 50,
+  "spawn_y": 50,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D401",
+      "from_x": 10,
+      "from_y": 7,
+      "to_x": 179,
+      "to_y": 108
+    },
+    {
+      "to_map": "D402",
+      "from_x": 86,
+      "from_y": 9,
+      "to_x": 9,
+      "to_y": 146
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "僵尸2",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 60,
+      "respawn_seconds": 8
+    },
+    {
+      "monster_id": "僵尸7",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 2,
+      "respawn_seconds": 60
+    }
+  ]
+}

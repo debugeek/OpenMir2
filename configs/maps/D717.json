@@ -1,0 +1,99 @@
+{
+  "id": "D717",
+  "name": "石墓七层",
+  "width": 120,
+  "height": 120,
+  "spawn_x": 100,
+  "spawn_y": 100,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D716",
+      "from_x": 25,
+      "from_y": 75,
+      "to_x": 24,
+      "to_y": 27
+    },
+    {
+      "to_map": "R001",
+      "from_x": 83,
+      "from_y": 25,
+      "to_x": 100,
+      "to_y": 99
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "石墓尸王",
+      "x": 83,
+      "y": 25,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "楔蛾",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 20,
+      "respawn_seconds": 12
+    },
+    {
+      "monster_id": "白野猪",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 10,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "白野猪1",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 2,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "红野猪",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 40,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "角蝇",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 30,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "邪恶毒蛇",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 1,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "黑色恶蛆",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 20,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "黑野猪",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 40,
+      "respawn_seconds": 20
+    }
+  ]
+}

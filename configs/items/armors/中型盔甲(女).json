@@ -1,0 +1,26 @@
+{
+  "id": "中型盔甲(女)",
+  "name": "中型盔甲(女)",
+  "kind": "armor",
+  "weight": 18,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 3,
+    "defense_max": 5,
+    "magic_defense": 1,
+    "magic_defense_max": 2,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 11,
+  "shape": 2,
+  "looks": 81,
+  "dura_max": 12000,
+  "need_level": 16,
+  "price": 6000,
+  "stock": 100,
+  "color": 251
+}

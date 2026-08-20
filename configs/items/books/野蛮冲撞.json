@@ -1,0 +1,23 @@
+{
+  "id": "野蛮冲撞",
+  "name": "野蛮冲撞",
+  "kind": "book",
+  "weight": 1,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 0,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 4,
+  "dura_max": 30,
+  "price": 8000,
+  "stock": 5,
+  "color": 251
+}

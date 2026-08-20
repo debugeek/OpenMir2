@@ -1,0 +1,26 @@
+{
+  "id": "屠龙",
+  "name": "屠龙",
+  "kind": "weapon",
+  "weight": 99,
+  "stats": {
+    "min_attack": 5,
+    "max_attack": 35,
+    "defense": 0,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 5,
+  "shape": 26,
+  "looks": 57,
+  "dura_max": 33000,
+  "need_level": 34,
+  "price": 60000,
+  "stock": 5,
+  "color": 251
+}

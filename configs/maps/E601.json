@@ -1,0 +1,123 @@
+{
+  "id": "E601",
+  "name": "连接通道",
+  "width": 159,
+  "height": 95,
+  "spawn_x": 139,
+  "spawn_y": 13,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "E602",
+      "from_x": 13,
+      "from_y": 50,
+      "to_x": 73,
+      "to_y": 66
+    },
+    {
+      "to_map": "D422",
+      "from_x": 134,
+      "from_y": 20,
+      "to_x": 328,
+      "to_y": 378
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "僵尸",
+      "x": 75,
+      "y": 75,
+      "range": 75,
+      "count": 50,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "僵尸1",
+      "x": 75,
+      "y": 75,
+      "range": 75,
+      "count": 40,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "僵尸2",
+      "x": 75,
+      "y": 75,
+      "range": 75,
+      "count": 40,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "僵尸3",
+      "x": 75,
+      "y": 75,
+      "range": 75,
+      "count": 40,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "僵尸4",
+      "x": 75,
+      "y": 75,
+      "range": 75,
+      "count": 40,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "僵尸5",
+      "x": 75,
+      "y": 75,
+      "range": 75,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "僵尸6",
+      "x": 75,
+      "y": 75,
+      "range": 75,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "僵尸6",
+      "x": 75,
+      "y": 75,
+      "range": 75,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "僵尸7",
+      "x": 75,
+      "y": 75,
+      "range": 75,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "僵尸9",
+      "x": 75,
+      "y": 75,
+      "range": 75,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "弓箭护卫",
+      "x": 138,
+      "y": 12,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "弓箭护卫",
+      "x": 139,
+      "y": 13,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    }
+  ]
+}

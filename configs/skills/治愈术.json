@@ -1,0 +1,11 @@
+{
+  "id": "治愈术",
+  "name": "治愈术",
+  "job": 2,
+  "power": 14,
+  "max_power": 20,
+  "spell": 7,
+  "delay": 60,
+  "need_level_1": 7,
+  "train_level_1": 100
+}

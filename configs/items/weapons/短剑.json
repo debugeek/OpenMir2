@@ -1,0 +1,26 @@
+{
+  "id": "短剑",
+  "name": "短剑",
+  "kind": "weapon",
+  "weight": 9,
+  "stats": {
+    "min_attack": 3,
+    "max_attack": 11,
+    "defense": 0,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 5,
+  "shape": 4,
+  "looks": 33,
+  "dura_max": 8000,
+  "need_level": 10,
+  "price": 1000,
+  "stock": 100,
+  "color": 251
+}

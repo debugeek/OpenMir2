@@ -1,0 +1,26 @@
+{
+  "id": "鹤嘴锄",
+  "name": "鹤嘴锄",
+  "kind": "weapon",
+  "weight": 10,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 8,
+    "defense": 0,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 6,
+  "shape": 19,
+  "looks": 50,
+  "dura_max": 10000,
+  "need_level": 11,
+  "price": 700,
+  "stock": 5,
+  "color": 251
+}

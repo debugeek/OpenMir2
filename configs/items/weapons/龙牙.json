@@ -1,0 +1,27 @@
+{
+  "id": "龙牙",
+  "name": "龙牙",
+  "kind": "weapon",
+  "weight": 25,
+  "stats": {
+    "min_attack": 10,
+    "max_attack": 18,
+    "defense": 0,
+    "defense_max": 5,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 3,
+    "magic_attack_max": 6,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 5,
+  "shape": 31,
+  "looks": 69,
+  "dura_max": 28000,
+  "need": 2,
+  "need_level": 28,
+  "price": 85000,
+  "stock": 5,
+  "color": 251
+}

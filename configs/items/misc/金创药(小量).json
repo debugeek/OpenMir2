@@ -1,0 +1,22 @@
+{
+  "id": "金创药(小量)",
+  "name": "金创药(小量)",
+  "kind": "consumable",
+  "weight": 1,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 20,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "looks": 398,
+  "price": 80,
+  "stock": 200,
+  "color": 251
+}

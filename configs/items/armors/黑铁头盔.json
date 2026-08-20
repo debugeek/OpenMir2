@@ -1,0 +1,26 @@
+{
+  "id": "黑铁头盔",
+  "name": "黑铁头盔",
+  "kind": "misc",
+  "weight": 20,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 4,
+    "defense_max": 5,
+    "magic_defense": 2,
+    "magic_defense_max": 3,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 15,
+  "looks": 344,
+  "dura_max": 10000,
+  "need": 1,
+  "need_level": 46,
+  "price": 40000,
+  "stock": 5,
+  "color": 251
+}

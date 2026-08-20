@@ -1,0 +1,107 @@
+{
+  "id": "M100",
+  "name": "同心小径",
+  "width": 308,
+  "height": 304,
+  "spawn_x": 30,
+  "spawn_y": 40,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "M101",
+      "from_x": 29,
+      "from_y": 81,
+      "to_x": 12,
+      "to_y": 42
+    },
+    {
+      "to_map": "B341",
+      "from_x": 288,
+      "from_y": 284,
+      "to_x": 11,
+      "to_y": 29
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "白野猪",
+      "x": 30,
+      "y": 40,
+      "range": 500,
+      "count": 10,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "白野猪1",
+      "x": 30,
+      "y": 40,
+      "range": 500,
+      "count": 2,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "红野猪",
+      "x": 30,
+      "y": 40,
+      "range": 500,
+      "count": 40,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "红野猪1",
+      "x": 30,
+      "y": 40,
+      "range": 500,
+      "count": 10,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "虹魔猪卫",
+      "x": 30,
+      "y": 40,
+      "range": 500,
+      "count": 1,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "虹魔猪卫1",
+      "x": 30,
+      "y": 40,
+      "range": 500,
+      "count": 1,
+      "respawn_seconds": 40
+    },
+    {
+      "monster_id": "蝎蛇",
+      "x": 30,
+      "y": 40,
+      "range": 500,
+      "count": 15,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "黑野猪",
+      "x": 30,
+      "y": 40,
+      "range": 500,
+      "count": 40,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "黑野猪1",
+      "x": 30,
+      "y": 40,
+      "range": 500,
+      "count": 10,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "黑色恶蛆",
+      "x": 131,
+      "y": 154,
+      "range": 150,
+      "count": 30,
+      "respawn_seconds": 8
+    }
+  ]
+}

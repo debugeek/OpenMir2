@@ -1,0 +1,26 @@
+{
+  "id": "降魔",
+  "name": "降魔",
+  "kind": "weapon",
+  "weight": 20,
+  "stats": {
+    "min_attack": 6,
+    "max_attack": 11,
+    "defense": 0,
+    "defense_max": 1,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 1,
+    "tao_attack_max": 2
+  },
+  "std_mode": 5,
+  "shape": 14,
+  "looks": 47,
+  "dura_max": 17000,
+  "need_level": 20,
+  "price": 10000,
+  "stock": 5,
+  "color": 251
+}

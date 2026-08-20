@@ -1,0 +1,19 @@
+{
+  "id": "D71652",
+  "name": "首饰修理间",
+  "width": 50,
+  "height": 50,
+  "spawn_x": 0,
+  "spawn_y": 0,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D71602",
+      "from_x": 17,
+      "from_y": 12,
+      "to_x": 36,
+      "to_y": 34
+    }
+  ],
+  "monster_spawns": []
+}

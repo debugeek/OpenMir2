@@ -1,0 +1,11 @@
+{
+  "id": "野蛮冲撞",
+  "name": "野蛮冲撞",
+  "job": 0,
+  "power": 0,
+  "max_power": 0,
+  "spell": 15,
+  "delay": 0,
+  "need_level_1": 30,
+  "train_level_1": 100
+}

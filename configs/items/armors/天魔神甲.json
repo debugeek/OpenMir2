@@ -1,0 +1,26 @@
+{
+  "id": "天魔神甲",
+  "name": "天魔神甲",
+  "kind": "armor",
+  "weight": 62,
+  "stats": {
+    "min_attack": 1,
+    "max_attack": 2,
+    "defense": 5,
+    "defense_max": 12,
+    "magic_defense": 4,
+    "magic_defense_max": 7,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 10,
+  "shape": 6,
+  "looks": 85,
+  "dura_max": 35000,
+  "need_level": 40,
+  "price": 35000,
+  "stock": 5,
+  "color": 251
+}

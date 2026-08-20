@@ -1,0 +1,160 @@
+{
+  "id": "H008",
+  "name": "幻境八层",
+  "width": 103,
+  "height": 105,
+  "spawn_x": 26,
+  "spawn_y": 58,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "H009",
+      "from_x": 21,
+      "from_y": 25,
+      "to_x": 289,
+      "to_y": 150
+    },
+    {
+      "to_map": "T3063",
+      "from_x": 80,
+      "from_y": 85,
+      "to_x": 13,
+      "to_y": 30
+    },
+    {
+      "to_map": "T3063",
+      "from_x": 81,
+      "from_y": 84,
+      "to_x": 13,
+      "to_y": 30
+    },
+    {
+      "to_map": "T3063",
+      "from_x": 82,
+      "from_y": 83,
+      "to_x": 13,
+      "to_y": 30
+    },
+    {
+      "to_map": "T3063",
+      "from_x": 83,
+      "from_y": 82,
+      "to_x": 13,
+      "to_y": 30
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "祖玛卫士4",
+      "x": 20,
+      "y": 45,
+      "range": 10,
+      "count": 5,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "虹魔教主1",
+      "x": 25,
+      "y": 29,
+      "range": 10,
+      "count": 1,
+      "respawn_seconds": 360
+    },
+    {
+      "monster_id": "祖玛雕像3",
+      "x": 26,
+      "y": 58,
+      "range": 10,
+      "count": 8,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "祖玛卫士4",
+      "x": 40,
+      "y": 25,
+      "range": 10,
+      "count": 5,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "楔蛾1",
+      "x": 40,
+      "y": 45,
+      "range": 60,
+      "count": 20,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "祖玛卫士4",
+      "x": 40,
+      "y": 45,
+      "range": 20,
+      "count": 10,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "祖玛弓箭手3",
+      "x": 40,
+      "y": 45,
+      "range": 50,
+      "count": 20,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "虹魔猪卫2",
+      "x": 40,
+      "y": 45,
+      "range": 30,
+      "count": 2,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "虹魔猪卫2",
+      "x": 40,
+      "y": 45,
+      "range": 30,
+      "count": 1,
+      "respawn_seconds": 15
+    },
+    {
+      "monster_id": "虹魔蝎卫2",
+      "x": 40,
+      "y": 45,
+      "range": 30,
+      "count": 1,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "虹魔蝎卫2",
+      "x": 40,
+      "y": 45,
+      "range": 30,
+      "count": 2,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "祖玛雕像3",
+      "x": 40,
+      "y": 65,
+      "range": 10,
+      "count": 8,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "祖玛雕像3",
+      "x": 61,
+      "y": 26,
+      "range": 10,
+      "count": 8,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "祖玛雕像3",
+      "x": 65,
+      "y": 35,
+      "range": 10,
+      "count": 5,
+      "respawn_seconds": 10
+    }
+  ]
+}

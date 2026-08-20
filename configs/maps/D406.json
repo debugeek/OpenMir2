@@ -1,0 +1,103 @@
+{
+  "id": "D406",
+  "name": "废矿区南部",
+  "width": 206,
+  "height": 153,
+  "spawn_x": 100,
+  "spawn_y": 100,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D411",
+      "from_x": 23,
+      "from_y": 15,
+      "to_x": 94,
+      "to_y": 48
+    },
+    {
+      "to_map": "Q004",
+      "from_x": 60,
+      "from_y": 132,
+      "to_x": 14,
+      "to_y": 14
+    },
+    {
+      "to_map": "Q004",
+      "from_x": 60,
+      "from_y": 133,
+      "to_x": 14,
+      "to_y": 14
+    },
+    {
+      "to_map": "Q004",
+      "from_x": 61,
+      "from_y": 132,
+      "to_x": 14,
+      "to_y": 14
+    },
+    {
+      "to_map": "Q004",
+      "from_x": 61,
+      "from_y": 133,
+      "to_x": 14,
+      "to_y": 14
+    },
+    {
+      "to_map": "D415",
+      "from_x": 186,
+      "from_y": 119,
+      "to_x": 9,
+      "to_y": 85
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "僵尸",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 60,
+      "respawn_seconds": 8
+    },
+    {
+      "monster_id": "僵尸1",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 80,
+      "respawn_seconds": 8
+    },
+    {
+      "monster_id": "僵尸3",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 55,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "僵尸4",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 75,
+      "respawn_seconds": 9
+    },
+    {
+      "monster_id": "尸王",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 3,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "尸王3",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 1,
+      "respawn_seconds": 120
+    }
+  ]
+}

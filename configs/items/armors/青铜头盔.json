@@ -1,0 +1,25 @@
+{
+  "id": "青铜头盔",
+  "name": "青铜头盔",
+  "kind": "misc",
+  "weight": 4,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 0,
+    "defense_max": 1,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 15,
+  "looks": 100,
+  "dura_max": 8000,
+  "need_level": 10,
+  "price": 1000,
+  "stock": 50,
+  "color": 251
+}

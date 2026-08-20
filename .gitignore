@@ -1,0 +1,19 @@
+# Build outputs.
+bin/
+dist/
+var/
+openmir2-server
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Local environment.
+.env
+.env.*
+!.env.example
+
+# Editor and OS files.
+.DS_Store
+.idea/
+.vscode/

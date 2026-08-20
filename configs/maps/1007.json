@@ -1,0 +1,19 @@
+{
+  "id": "1007",
+  "name": "杂货店",
+  "width": 50,
+  "height": 50,
+  "spawn_x": 0,
+  "spawn_y": 0,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "11",
+      "from_x": 5,
+      "from_y": 18,
+      "to_x": 175,
+      "to_y": 363
+    }
+  ],
+  "monster_spawns": []
+}

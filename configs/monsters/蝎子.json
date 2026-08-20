@@ -1,0 +1,39 @@
+{
+  "id": "蝎子",
+  "name": "蝎子",
+  "race": 84,
+  "race_img": 32,
+  "appr": 83,
+  "level": 18,
+  "undead": 0,
+  "cool_eye": 0,
+  "experience": 45,
+  "hp": 45,
+  "mp": 0,
+  "defense": 2,
+  "magic_defense": 0,
+  "min_attack": 7,
+  "max_attack": 16,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 15,
+  "hit": 9,
+  "walk_speed_ms": 1200,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 2500,
+  "drops": [
+    {
+      "item_id": "蝎子尾巴",
+      "chance": "1/3",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "蝎子尾巴",
+      "chance": "1/5",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

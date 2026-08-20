@@ -1,0 +1,26 @@
+{
+  "id": "银蛇",
+  "name": "银蛇",
+  "kind": "weapon",
+  "weight": 26,
+  "stats": {
+    "min_attack": 7,
+    "max_attack": 14,
+    "defense": 0,
+    "defense_max": 1,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 1,
+    "tao_attack_max": 3
+  },
+  "std_mode": 5,
+  "shape": 9,
+  "looks": 38,
+  "dura_max": 24000,
+  "need_level": 26,
+  "price": 15000,
+  "stock": 50,
+  "color": 251
+}

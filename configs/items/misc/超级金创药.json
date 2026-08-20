@@ -1,0 +1,24 @@
+{
+  "id": "超级金创药",
+  "name": "超级金创药",
+  "kind": "misc",
+  "weight": 20,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 0,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 31,
+  "shape": 100,
+  "looks": 313,
+  "price": 3400,
+  "stock": 5,
+  "color": 251
+}

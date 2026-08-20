@@ -1,0 +1,25 @@
+{
+  "id": "黄色水晶项链",
+  "name": "黄色水晶项链",
+  "kind": "misc",
+  "weight": 1,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 0,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 1,
+    "tao_attack_max": 0
+  },
+  "std_mode": 20,
+  "looks": 221,
+  "dura_max": 8000,
+  "need_level": 13,
+  "price": 1200,
+  "stock": 50,
+  "color": 251
+}

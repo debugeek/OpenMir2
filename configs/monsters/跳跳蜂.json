@@ -1,0 +1,123 @@
+{
+  "id": "跳跳蜂",
+  "name": "跳跳蜂",
+  "race": 81,
+  "race_img": 19,
+  "appr": 81,
+  "level": 26,
+  "undead": 1,
+  "cool_eye": 0,
+  "experience": 210,
+  "hp": 210,
+  "mp": 0,
+  "defense": 3,
+  "magic_defense": 3,
+  "min_attack": 12,
+  "max_attack": 18,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 15,
+  "hit": 12,
+  "walk_speed_ms": 1500,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 2000,
+  "drops": [
+    {
+      "item_id": "金币",
+      "chance": "1/16",
+      "min_count": 1200,
+      "max_count": 1200
+    },
+    {
+      "item_id": "魔法药(中量)",
+      "chance": "1/9",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "金创药(中量)",
+      "chance": "1/9",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "太阳水",
+      "chance": "1/8",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "太阳水",
+      "chance": "1/8",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "道士手镯",
+      "chance": "1/69",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "黑檀手镯",
+      "chance": "1/69",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔力手镯",
+      "chance": "1/69",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "蛇眼戒指",
+      "chance": "1/69",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "骷髅头盔",
+      "chance": "1/73",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "道士头盔",
+      "chance": "1/73",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "生铁戒指",
+      "chance": "1/56",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "黄色水晶项链",
+      "chance": "1/77",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "黑檀项链",
+      "chance": "1/75",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "重盔甲(女)",
+      "chance": "1/67",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "灵魂战衣(男)",
+      "chance": "1/67",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

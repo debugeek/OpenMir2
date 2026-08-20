@@ -1,0 +1,186 @@
+{
+  "id": "H010",
+  "name": "屠龙殿",
+  "width": 391,
+  "height": 397,
+  "spawn_x": 205,
+  "spawn_y": 210,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "H009",
+      "from_x": 155,
+      "from_y": 156,
+      "to_x": 151,
+      "to_y": 105
+    },
+    {
+      "to_map": "B201",
+      "from_x": 371,
+      "from_y": 376,
+      "to_x": 7,
+      "to_y": 9
+    },
+    {
+      "to_map": "B201",
+      "from_x": 371,
+      "from_y": 377,
+      "to_x": 8,
+      "to_y": 8
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "宝箱1",
+      "x": 205,
+      "y": 210,
+      "range": 200,
+      "count": 2,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "暗之牛魔王1",
+      "x": 205,
+      "y": 210,
+      "range": 200,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "暗之触龙神",
+      "x": 205,
+      "y": 210,
+      "range": 200,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "牛魔侍卫2",
+      "x": 205,
+      "y": 210,
+      "range": 200,
+      "count": 40,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "牛魔侍卫2",
+      "x": 205,
+      "y": 210,
+      "range": 200,
+      "count": 40,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "牛魔侍卫2",
+      "x": 205,
+      "y": 210,
+      "range": 200,
+      "count": 40,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "牛魔将军2",
+      "x": 205,
+      "y": 210,
+      "range": 200,
+      "count": 4,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "牛魔将军2",
+      "x": 205,
+      "y": 210,
+      "range": 200,
+      "count": 4,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "牛魔将军2",
+      "x": 205,
+      "y": 210,
+      "range": 200,
+      "count": 40,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "牛魔将军2",
+      "x": 205,
+      "y": 210,
+      "range": 200,
+      "count": 40,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "牛魔法师2",
+      "x": 205,
+      "y": 210,
+      "range": 200,
+      "count": 40,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "牛魔法师2",
+      "x": 205,
+      "y": 210,
+      "range": 200,
+      "count": 40,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "牛魔法师2",
+      "x": 205,
+      "y": 210,
+      "range": 200,
+      "count": 40,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "牛魔法师2",
+      "x": 205,
+      "y": 210,
+      "range": 200,
+      "count": 40,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "牛魔王1",
+      "x": 205,
+      "y": 210,
+      "range": 200,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "牛魔祭司2",
+      "x": 205,
+      "y": 210,
+      "range": 200,
+      "count": 2,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "牛魔祭司2",
+      "x": 205,
+      "y": 210,
+      "range": 200,
+      "count": 2,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "牛魔祭司2",
+      "x": 205,
+      "y": 210,
+      "range": 200,
+      "count": 6,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "牛魔祭司2",
+      "x": 205,
+      "y": 210,
+      "range": 200,
+      "count": 10,
+      "respawn_seconds": 10
+    }
+  ]
+}

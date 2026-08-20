@@ -1,0 +1,19 @@
+{
+  "id": "D512",
+  "name": "祖玛寺庙",
+  "width": 50,
+  "height": 50,
+  "spawn_x": 0,
+  "spawn_y": 0,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D501",
+      "from_x": 19,
+      "from_y": 11,
+      "to_x": 325,
+      "to_y": 96
+    }
+  ],
+  "monster_spawns": []
+}

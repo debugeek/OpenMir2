@@ -1,0 +1,26 @@
+{
+  "id": "D414",
+  "name": "矿区C一层",
+  "width": 91,
+  "height": 99,
+  "spawn_x": 0,
+  "spawn_y": 0,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D402",
+      "from_x": 14,
+      "from_y": 79,
+      "to_x": 194,
+      "to_y": 82
+    },
+    {
+      "to_map": "D403",
+      "from_x": 71,
+      "from_y": 19,
+      "to_x": 11,
+      "to_y": 105
+    }
+  ],
+  "monster_spawns": []
+}

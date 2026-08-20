@@ -1,0 +1,26 @@
+{
+  "id": "匕首",
+  "name": "匕首",
+  "kind": "weapon",
+  "weight": 5,
+  "stats": {
+    "min_attack": 4,
+    "max_attack": 5,
+    "defense": 0,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 5,
+  "shape": 6,
+  "looks": 35,
+  "dura_max": 10000,
+  "need_level": 1,
+  "price": 500,
+  "stock": 100,
+  "color": 251
+}

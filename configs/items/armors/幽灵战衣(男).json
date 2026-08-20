@@ -1,0 +1,27 @@
+{
+  "id": "幽灵战衣(男)",
+  "name": "幽灵战衣(男)",
+  "kind": "armor",
+  "weight": 26,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 4,
+    "defense_max": 7,
+    "magic_defense": 3,
+    "magic_defense_max": 3,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 1,
+    "tao_attack_max": 4
+  },
+  "std_mode": 10,
+  "shape": 5,
+  "looks": 64,
+  "dura_max": 28000,
+  "need": 3,
+  "need_level": 27,
+  "price": 22000,
+  "stock": 5,
+  "color": 251
+}

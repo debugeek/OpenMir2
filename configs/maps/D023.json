@@ -1,0 +1,162 @@
+{
+  "id": "D023",
+  "name": "沃玛寺庙二层",
+  "width": 220,
+  "height": 386,
+  "spawn_x": 200,
+  "spawn_y": 200,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D024",
+      "from_x": 52,
+      "from_y": 366,
+      "to_x": 16,
+      "to_y": 19
+    },
+    {
+      "to_map": "D022",
+      "from_x": 198,
+      "from_y": 193,
+      "to_x": 250,
+      "to_y": 205
+    },
+    {
+      "to_map": "D022",
+      "from_x": 198,
+      "from_y": 194,
+      "to_x": 250,
+      "to_y": 206
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "山洞蝙蝠",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 5,
+      "respawn_seconds": 9
+    },
+    {
+      "monster_id": "山洞蝙蝠",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 10,
+      "respawn_seconds": 12
+    },
+    {
+      "monster_id": "山洞蝙蝠",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 5,
+      "respawn_seconds": 12
+    },
+    {
+      "monster_id": "山洞蝙蝠1",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 2,
+      "respawn_seconds": 21
+    },
+    {
+      "monster_id": "暗黑战士",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 40,
+      "respawn_seconds": 9
+    },
+    {
+      "monster_id": "暗黑战士1",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 2,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "沃玛勇士",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 50,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "沃玛勇士1",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 2,
+      "respawn_seconds": 22
+    },
+    {
+      "monster_id": "沃玛卫士",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 2,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "沃玛战士",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 30,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "沃玛战士1",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 2,
+      "respawn_seconds": 22
+    },
+    {
+      "monster_id": "沃玛战将",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 50,
+      "respawn_seconds": 9
+    },
+    {
+      "monster_id": "沃玛战将1",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 2,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "火焰沃玛",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 40,
+      "respawn_seconds": 9
+    },
+    {
+      "monster_id": "火焰沃玛1",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 2,
+      "respawn_seconds": 21
+    },
+    {
+      "monster_id": "粪虫",
+      "x": 200,
+      "y": 200,
+      "range": 200,
+      "count": 20,
+      "respawn_seconds": 12
+    }
+  ]
+}

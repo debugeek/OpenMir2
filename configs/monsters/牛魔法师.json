@@ -1,0 +1,153 @@
+{
+  "id": "牛魔法师",
+  "name": "牛魔法师",
+  "race": 81,
+  "race_img": 70,
+  "appr": 205,
+  "level": 45,
+  "undead": 1,
+  "cool_eye": 10,
+  "experience": 420,
+  "hp": 360,
+  "mp": 0,
+  "defense": 9,
+  "magic_defense": 12,
+  "min_attack": 20,
+  "max_attack": 75,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 25,
+  "hit": 18,
+  "walk_speed_ms": 700,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 2000,
+  "drops": [
+    {
+      "item_id": "金币",
+      "chance": "1/23",
+      "min_count": 1200,
+      "max_count": 1200
+    },
+    {
+      "item_id": "强效金创药",
+      "chance": "1/14",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效魔法药",
+      "chance": "1/14",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效金创药",
+      "chance": "1/9",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效魔法药",
+      "chance": "1/9",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "太阳水",
+      "chance": "1/8",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "坚固手套",
+      "chance": "1/43",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔力手镯",
+      "chance": "1/43",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "道士手镯",
+      "chance": "1/43",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "黑檀手镯",
+      "chance": "1/43",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "珍珠戒指",
+      "chance": "1/35",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "斩马刀",
+      "chance": "1/43",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "降魔",
+      "chance": "1/43",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "降妖除魔戒指",
+      "chance": "1/65",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "珊瑚戒指",
+      "chance": "1/65",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "战神盔甲(男)",
+      "chance": "1/332",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "战神盔甲(女)",
+      "chance": "1/332",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "幽灵战衣(女)",
+      "chance": "1/332",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "幽灵战衣(男)",
+      "chance": "1/332",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "恶魔长袍(男)",
+      "chance": "1/332",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "恶魔长袍(女)",
+      "chance": "1/332",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

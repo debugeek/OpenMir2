@@ -1,0 +1,11 @@
+{
+  "id": "火墙",
+  "name": "火墙",
+  "job": 1,
+  "power": 10,
+  "max_power": 22,
+  "spell": 20,
+  "delay": 120,
+  "need_level_1": 24,
+  "train_level_1": 100
+}

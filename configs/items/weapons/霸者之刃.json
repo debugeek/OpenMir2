@@ -1,0 +1,26 @@
+{
+  "id": "霸者之刃",
+  "name": "霸者之刃",
+  "kind": "weapon",
+  "weight": 35,
+  "stats": {
+    "min_attack": 6,
+    "max_attack": 32,
+    "defense": 0,
+    "defense_max": 2,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 2,
+    "magic_attack_max": 7,
+    "tao_attack": 3,
+    "tao_attack_max": 8
+  },
+  "std_mode": 5,
+  "shape": 29,
+  "looks": 65,
+  "dura_max": 20000,
+  "need_level": 46,
+  "price": 230000,
+  "stock": 5,
+  "color": 251
+}

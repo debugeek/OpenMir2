@@ -1,0 +1,476 @@
+{
+  "id": "B102",
+  "name": "圣域之门",
+  "width": 50,
+  "height": 50,
+  "spawn_x": 11,
+  "spawn_y": 14,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "B105",
+      "from_x": 4,
+      "from_y": 11,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B123",
+      "from_x": 5,
+      "from_y": 10,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B106",
+      "from_x": 5,
+      "from_y": 11,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B122",
+      "from_x": 5,
+      "from_y": 12,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B136",
+      "from_x": 6,
+      "from_y": 9,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B140",
+      "from_x": 6,
+      "from_y": 10,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B107",
+      "from_x": 6,
+      "from_y": 11,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B125",
+      "from_x": 6,
+      "from_y": 12,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B123",
+      "from_x": 6,
+      "from_y": 13,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B121",
+      "from_x": 7,
+      "from_y": 8,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B133",
+      "from_x": 7,
+      "from_y": 9,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B138",
+      "from_x": 7,
+      "from_y": 10,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B112",
+      "from_x": 7,
+      "from_y": 11,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B103",
+      "from_x": 7,
+      "from_y": 12,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B135",
+      "from_x": 7,
+      "from_y": 13,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B137",
+      "from_x": 7,
+      "from_y": 14,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B109",
+      "from_x": 8,
+      "from_y": 7,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B122",
+      "from_x": 8,
+      "from_y": 8,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B125",
+      "from_x": 8,
+      "from_y": 9,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B135",
+      "from_x": 8,
+      "from_y": 10,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B139",
+      "from_x": 8,
+      "from_y": 11,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B124",
+      "from_x": 8,
+      "from_y": 12,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B116",
+      "from_x": 8,
+      "from_y": 13,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B125",
+      "from_x": 8,
+      "from_y": 14,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B133",
+      "from_x": 8,
+      "from_y": 15,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B110",
+      "from_x": 9,
+      "from_y": 7,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B116",
+      "from_x": 9,
+      "from_y": 8,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B123",
+      "from_x": 9,
+      "from_y": 9,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B127",
+      "from_x": 9,
+      "from_y": 10,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B134",
+      "from_x": 9,
+      "from_y": 11,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B137",
+      "from_x": 9,
+      "from_y": 12,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B136",
+      "from_x": 9,
+      "from_y": 13,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B129",
+      "from_x": 9,
+      "from_y": 14,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B132",
+      "from_x": 9,
+      "from_y": 15,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B126",
+      "from_x": 9,
+      "from_y": 16,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B140",
+      "from_x": 10,
+      "from_y": 6,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B112",
+      "from_x": 10,
+      "from_y": 8,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B113",
+      "from_x": 10,
+      "from_y": 9,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B124",
+      "from_x": 10,
+      "from_y": 10,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B126",
+      "from_x": 10,
+      "from_y": 11,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B130",
+      "from_x": 10,
+      "from_y": 12,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B140",
+      "from_x": 10,
+      "from_y": 13,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B131",
+      "from_x": 10,
+      "from_y": 14,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B105",
+      "from_x": 10,
+      "from_y": 15,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B113",
+      "from_x": 10,
+      "from_y": 16,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B104",
+      "from_x": 11,
+      "from_y": 7,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B111",
+      "from_x": 11,
+      "from_y": 9,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B114",
+      "from_x": 11,
+      "from_y": 10,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B119",
+      "from_x": 11,
+      "from_y": 11,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B128",
+      "from_x": 11,
+      "from_y": 12,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B131",
+      "from_x": 11,
+      "from_y": 13,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B107",
+      "from_x": 11,
+      "from_y": 14,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B103",
+      "from_x": 11,
+      "from_y": 15,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B105",
+      "from_x": 12,
+      "from_y": 8,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B107",
+      "from_x": 12,
+      "from_y": 10,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B115",
+      "from_x": 12,
+      "from_y": 11,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B120",
+      "from_x": 12,
+      "from_y": 12,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B129",
+      "from_x": 12,
+      "from_y": 13,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B132",
+      "from_x": 12,
+      "from_y": 14,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B103",
+      "from_x": 13,
+      "from_y": 9,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B118",
+      "from_x": 13,
+      "from_y": 12,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B117",
+      "from_x": 13,
+      "from_y": 13,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B106",
+      "from_x": 14,
+      "from_y": 10,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B108",
+      "from_x": 14,
+      "from_y": 12,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "B105",
+      "from_x": 15,
+      "from_y": 11,
+      "to_x": 9,
+      "to_y": 9
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "圣域教主",
+      "x": 11,
+      "y": 14,
+      "range": 10,
+      "count": 1,
+      "respawn_seconds": 6
+    }
+  ]
+}

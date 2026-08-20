@@ -1,0 +1,115 @@
+{
+  "id": "H007",
+  "name": "幻境七层",
+  "width": 181,
+  "height": 192,
+  "spawn_x": 100,
+  "spawn_y": 100,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "H006",
+      "from_x": 95,
+      "from_y": 102,
+      "to_x": 26,
+      "to_y": 74
+    },
+    {
+      "to_map": "T2061",
+      "from_x": 123,
+      "from_y": 10,
+      "to_x": 8,
+      "to_y": 12
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "楔蛾1",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 40,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "祖玛卫士4",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 40,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "祖玛卫士4",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 15,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "祖玛卫士4",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 2,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "祖玛弓箭手3",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 40,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "祖玛弓箭手3",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 15,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "祖玛弓箭手3",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 15,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "祖玛弓箭手3",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 15,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "祖玛雕像3",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 40,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "祖玛雕像3",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 15,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "祖玛雕像3",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 15,
+      "respawn_seconds": 10
+    }
+  ]
+}

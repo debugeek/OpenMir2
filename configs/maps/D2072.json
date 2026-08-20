@@ -1,0 +1,169 @@
+{
+  "id": "D2072",
+  "name": "牛魔寺庙二层",
+  "width": 256,
+  "height": 261,
+  "spawn_x": 135,
+  "spawn_y": 145,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D2071",
+      "from_x": 151,
+      "from_y": 121,
+      "to_x": 112,
+      "to_y": 114
+    },
+    {
+      "to_map": "D2071",
+      "from_x": 152,
+      "from_y": 120,
+      "to_x": 112,
+      "to_y": 114
+    },
+    {
+      "to_map": "D2073",
+      "from_x": 236,
+      "from_y": 240,
+      "to_x": 156,
+      "to_y": 156
+    },
+    {
+      "to_map": "D2073",
+      "from_x": 236,
+      "from_y": 241,
+      "to_x": 155,
+      "to_y": 157
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "宝箱",
+      "x": 135,
+      "y": 145,
+      "range": 150,
+      "count": 2,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "宝箱",
+      "x": 135,
+      "y": 145,
+      "range": 150,
+      "count": 2,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "牛头魔",
+      "x": 135,
+      "y": 145,
+      "range": 150,
+      "count": 90,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "牛头魔",
+      "x": 135,
+      "y": 145,
+      "range": 150,
+      "count": 70,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "牛头魔1",
+      "x": 135,
+      "y": 145,
+      "range": 150,
+      "count": 2,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "牛头魔1",
+      "x": 135,
+      "y": 145,
+      "range": 150,
+      "count": 4,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "牛魔侍卫",
+      "x": 135,
+      "y": 145,
+      "range": 150,
+      "count": 40,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "牛魔侍卫",
+      "x": 135,
+      "y": 145,
+      "range": 150,
+      "count": 50,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "牛魔侍卫1",
+      "x": 135,
+      "y": 145,
+      "range": 150,
+      "count": 2,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "牛魔侍卫1",
+      "x": 135,
+      "y": 145,
+      "range": 180,
+      "count": 1,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "牛魔战士",
+      "x": 135,
+      "y": 145,
+      "range": 150,
+      "count": 60,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "牛魔战士1",
+      "x": 135,
+      "y": 145,
+      "range": 150,
+      "count": 2,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "牛魔战士1",
+      "x": 135,
+      "y": 145,
+      "range": 180,
+      "count": 1,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "牛魔斗士",
+      "x": 135,
+      "y": 145,
+      "range": 150,
+      "count": 60,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "牛魔斗士1",
+      "x": 135,
+      "y": 145,
+      "range": 150,
+      "count": 2,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "牛魔斗士1",
+      "x": 135,
+      "y": 145,
+      "range": 180,
+      "count": 1,
+      "respawn_seconds": 60
+    }
+  ]
+}

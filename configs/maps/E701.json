@@ -1,0 +1,91 @@
+{
+  "id": "E701",
+  "name": "香石墓穴",
+  "width": 109,
+  "height": 104,
+  "spawn_x": 50,
+  "spawn_y": 50,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D701",
+      "from_x": 12,
+      "from_y": 17,
+      "to_x": 173,
+      "to_y": 78
+    },
+    {
+      "to_map": "E702",
+      "from_x": 89,
+      "from_y": 84,
+      "to_x": 59,
+      "to_y": 69
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "僵尸",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 32,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "僵尸1",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 32,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "僵尸2",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 32,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "僵尸3",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 32,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "僵尸4",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 32,
+      "respawn_seconds": 23
+    },
+    {
+      "monster_id": "僵尸5",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 9,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "僵尸7",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 9,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "僵尸9",
+      "x": 50,
+      "y": 50,
+      "range": 50,
+      "count": 9,
+      "respawn_seconds": 120
+    }
+  ]
+}

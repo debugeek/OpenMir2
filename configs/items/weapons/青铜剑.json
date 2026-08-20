@@ -1,0 +1,26 @@
+{
+  "id": "青铜剑",
+  "name": "青铜剑",
+  "kind": "weapon",
+  "weight": 9,
+  "stats": {
+    "min_attack": 3,
+    "max_attack": 7,
+    "defense": 0,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 5,
+  "shape": 2,
+  "looks": 31,
+  "dura_max": 6000,
+  "need_level": 5,
+  "price": 900,
+  "stock": 100,
+  "color": 251
+}

@@ -1,0 +1,348 @@
+{
+  "id": "D5065",
+  "name": "祖玛阁",
+  "width": 112,
+  "height": 98,
+  "spawn_x": 0,
+  "spawn_y": 0,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D5067",
+      "from_x": 7,
+      "from_y": 10,
+      "to_x": 89,
+      "to_y": 75
+    },
+    {
+      "to_map": "D5069",
+      "from_x": 7,
+      "from_y": 17,
+      "to_x": 90,
+      "to_y": 12
+    },
+    {
+      "to_map": "D5067",
+      "from_x": 7,
+      "from_y": 38,
+      "to_x": 65,
+      "to_y": 75
+    },
+    {
+      "to_map": "D5069",
+      "from_x": 7,
+      "from_y": 45,
+      "to_x": 65,
+      "to_y": 39
+    },
+    {
+      "to_map": "D5067",
+      "from_x": 8,
+      "from_y": 71,
+      "to_x": 39,
+      "to_y": 75
+    },
+    {
+      "to_map": "D5069",
+      "from_x": 8,
+      "from_y": 78,
+      "to_x": 39,
+      "to_y": 71
+    },
+    {
+      "to_map": "D5065",
+      "from_x": 14,
+      "from_y": 10,
+      "to_x": 34,
+      "to_y": 16
+    },
+    {
+      "to_map": "D5067",
+      "from_x": 14,
+      "from_y": 16,
+      "to_x": 34,
+      "to_y": 39
+    },
+    {
+      "to_map": "D5065",
+      "from_x": 14,
+      "from_y": 38,
+      "to_x": 8,
+      "to_y": 44
+    },
+    {
+      "to_map": "D5067",
+      "from_x": 14,
+      "from_y": 44,
+      "to_x": 9,
+      "to_y": 72
+    },
+    {
+      "to_map": "D5065",
+      "from_x": 15,
+      "from_y": 71,
+      "to_x": 84,
+      "to_y": 76
+    },
+    {
+      "to_map": "D5067",
+      "from_x": 15,
+      "from_y": 77,
+      "to_x": 85,
+      "to_y": 12
+    },
+    {
+      "to_map": "D5065",
+      "from_x": 33,
+      "from_y": 10,
+      "to_x": 65,
+      "to_y": 15
+    },
+    {
+      "to_map": "D5067",
+      "from_x": 33,
+      "from_y": 17,
+      "to_x": 65,
+      "to_y": 11
+    },
+    {
+      "to_map": "D5065",
+      "from_x": 33,
+      "from_y": 38,
+      "to_x": 39,
+      "to_y": 15
+    },
+    {
+      "to_map": "D5067",
+      "from_x": 33,
+      "from_y": 45,
+      "to_x": 39,
+      "to_y": 39
+    },
+    {
+      "to_map": "D5065",
+      "from_x": 33,
+      "from_y": 70,
+      "to_x": 13,
+      "to_y": 15
+    },
+    {
+      "to_map": "D5067",
+      "from_x": 33,
+      "from_y": 77,
+      "to_x": 14,
+      "to_y": 72
+    },
+    {
+      "to_map": "D5063",
+      "from_x": 40,
+      "from_y": 10,
+      "to_x": 8,
+      "to_y": 16
+    },
+    {
+      "to_map": "D5065",
+      "from_x": 40,
+      "from_y": 16,
+      "to_x": 8,
+      "to_y": 39
+    },
+    {
+      "to_map": "D5063",
+      "from_x": 40,
+      "from_y": 38,
+      "to_x": 86,
+      "to_y": 44
+    },
+    {
+      "to_map": "D5065",
+      "from_x": 40,
+      "from_y": 44,
+      "to_x": 84,
+      "to_y": 71
+    },
+    {
+      "to_map": "D5063",
+      "from_x": 40,
+      "from_y": 70,
+      "to_x": 60,
+      "to_y": 76
+    },
+    {
+      "to_map": "D5065",
+      "from_x": 40,
+      "from_y": 76,
+      "to_x": 60,
+      "to_y": 11
+    },
+    {
+      "to_map": "D5063",
+      "from_x": 59,
+      "from_y": 10,
+      "to_x": 39,
+      "to_y": 43
+    },
+    {
+      "to_map": "D5065",
+      "from_x": 59,
+      "from_y": 17,
+      "to_x": 39,
+      "to_y": 11
+    },
+    {
+      "to_map": "D5063",
+      "from_x": 59,
+      "from_y": 38,
+      "to_x": 13,
+      "to_y": 43
+    },
+    {
+      "to_map": "D5065",
+      "from_x": 59,
+      "from_y": 45,
+      "to_x": 13,
+      "to_y": 39
+    },
+    {
+      "to_map": "D5063",
+      "from_x": 59,
+      "from_y": 70,
+      "to_x": 91,
+      "to_y": 43
+    },
+    {
+      "to_map": "D5065",
+      "from_x": 59,
+      "from_y": 77,
+      "to_x": 89,
+      "to_y": 71
+    },
+    {
+      "to_map": "D5061",
+      "from_x": 66,
+      "from_y": 10,
+      "to_x": 85,
+      "to_y": 17
+    },
+    {
+      "to_map": "D5063",
+      "from_x": 66,
+      "from_y": 16,
+      "to_x": 86,
+      "to_y": 39
+    },
+    {
+      "to_map": "D5061",
+      "from_x": 66,
+      "from_y": 38,
+      "to_x": 60,
+      "to_y": 44
+    },
+    {
+      "to_map": "D5063",
+      "from_x": 66,
+      "from_y": 44,
+      "to_x": 60,
+      "to_y": 71
+    },
+    {
+      "to_map": "D5061",
+      "from_x": 66,
+      "from_y": 70,
+      "to_x": 34,
+      "to_y": 76
+    },
+    {
+      "to_map": "D5063",
+      "from_x": 66,
+      "from_y": 76,
+      "to_x": 34,
+      "to_y": 11
+    },
+    {
+      "to_map": "D5061",
+      "from_x": 83,
+      "from_y": 70,
+      "to_x": 65,
+      "to_y": 75
+    },
+    {
+      "to_map": "D5063",
+      "from_x": 83,
+      "from_y": 77,
+      "to_x": 65,
+      "to_y": 71
+    },
+    {
+      "to_map": "D5061",
+      "from_x": 84,
+      "from_y": 11,
+      "to_x": 14,
+      "to_y": 76
+    },
+    {
+      "to_map": "D5063",
+      "from_x": 84,
+      "from_y": 18,
+      "to_x": 13,
+      "to_y": 11
+    },
+    {
+      "to_map": "D5061",
+      "from_x": 85,
+      "from_y": 38,
+      "to_x": 89,
+      "to_y": 75
+    },
+    {
+      "to_map": "D5063",
+      "from_x": 85,
+      "from_y": 45,
+      "to_x": 91,
+      "to_y": 39
+    },
+    {
+      "to_map": "D5068",
+      "from_x": 90,
+      "from_y": 70,
+      "to_x": 9,
+      "to_y": 77
+    },
+    {
+      "to_map": "D5061",
+      "from_x": 90,
+      "from_y": 76,
+      "to_x": 8,
+      "to_y": 11
+    },
+    {
+      "to_map": "D5068",
+      "from_x": 91,
+      "from_y": 11,
+      "to_x": 60,
+      "to_y": 16
+    },
+    {
+      "to_map": "D5061",
+      "from_x": 91,
+      "from_y": 17,
+      "to_x": 60,
+      "to_y": 39
+    },
+    {
+      "to_map": "D5068",
+      "from_x": 92,
+      "from_y": 38,
+      "to_x": 34,
+      "to_y": 44
+    },
+    {
+      "to_map": "D5061",
+      "from_x": 92,
+      "from_y": 44,
+      "to_x": 34,
+      "to_y": 71
+    }
+  ],
+  "monster_spawns": []
+}

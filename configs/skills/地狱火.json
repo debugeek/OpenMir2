@@ -1,0 +1,11 @@
+{
+  "id": "地狱火",
+  "name": "地狱火",
+  "job": 1,
+  "power": 14,
+  "max_power": 14,
+  "spell": 10,
+  "delay": 60,
+  "need_level_1": 16,
+  "train_level_1": 100
+}

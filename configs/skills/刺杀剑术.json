@@ -1,0 +1,11 @@
+{
+  "id": "刺杀剑术",
+  "name": "刺杀剑术",
+  "job": 0,
+  "power": 0,
+  "max_power": 0,
+  "spell": 0,
+  "delay": 0,
+  "need_level_1": 25,
+  "train_level_1": 100
+}

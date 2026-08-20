@@ -1,0 +1,11 @@
+{
+  "id": "抗拒火环",
+  "name": "抗拒火环",
+  "job": 1,
+  "power": 1,
+  "max_power": 1,
+  "spell": 8,
+  "delay": 30,
+  "need_level_1": 12,
+  "train_level_1": 100
+}

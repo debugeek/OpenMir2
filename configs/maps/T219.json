@@ -1,0 +1,20 @@
+{
+  "id": "T219",
+  "name": "深渊魔域",
+  "width": 101,
+  "height": 100,
+  "spawn_x": 50,
+  "spawn_y": 80,
+  "blocked": [],
+  "connections": [],
+  "monster_spawns": [
+    {
+      "monster_id": "暗之双头金刚",
+      "x": 50,
+      "y": 80,
+      "range": 5,
+      "count": 1,
+      "respawn_seconds": 120
+    }
+  ]
+}

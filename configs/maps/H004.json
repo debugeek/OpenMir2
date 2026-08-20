@@ -1,0 +1,255 @@
+{
+  "id": "H004",
+  "name": "幻境四层",
+  "width": 213,
+  "height": 188,
+  "spawn_x": 100,
+  "spawn_y": 100,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "H003",
+      "from_x": 9,
+      "from_y": 25,
+      "to_x": 87,
+      "to_y": 81
+    },
+    {
+      "to_map": "H005",
+      "from_x": 193,
+      "from_y": 124,
+      "to_x": 193,
+      "to_y": 279
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "巨型蠕虫2",
+      "x": 19,
+      "y": 39,
+      "range": 70,
+      "count": 15,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "跳跳蜂2",
+      "x": 19,
+      "y": 39,
+      "range": 70,
+      "count": 15,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "钳虫2",
+      "x": 19,
+      "y": 39,
+      "range": 70,
+      "count": 20,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "黑色恶蛆2",
+      "x": 19,
+      "y": 39,
+      "range": 70,
+      "count": 20,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "巨型蠕虫2",
+      "x": 57,
+      "y": 166,
+      "range": 70,
+      "count": 15,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "跳跳蜂2",
+      "x": 57,
+      "y": 166,
+      "range": 70,
+      "count": 15,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "钳虫2",
+      "x": 57,
+      "y": 166,
+      "range": 70,
+      "count": 20,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "黑色恶蛆2",
+      "x": 57,
+      "y": 166,
+      "range": 70,
+      "count": 20,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "变异史莱姆",
+      "x": 83,
+      "y": 168,
+      "range": 70,
+      "count": 1,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "触龙神1",
+      "x": 83,
+      "y": 168,
+      "range": 40,
+      "count": 1,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "巨型蠕虫2",
+      "x": 97,
+      "y": 81,
+      "range": 70,
+      "count": 15,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "跳跳蜂2",
+      "x": 97,
+      "y": 81,
+      "range": 70,
+      "count": 15,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "钳虫2",
+      "x": 97,
+      "y": 81,
+      "range": 70,
+      "count": 20,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "黑色恶蛆2",
+      "x": 97,
+      "y": 81,
+      "range": 70,
+      "count": 20,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "巨型蠕虫2",
+      "x": 100,
+      "y": 100,
+      "range": 50,
+      "count": 2,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "蜈蚣2",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 10,
+      "respawn_seconds": 10,
+      "mission_gen_rate": 50
+    },
+    {
+      "monster_id": "蜈蚣2",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 10,
+      "respawn_seconds": 10,
+      "mission_gen_rate": 50
+    },
+    {
+      "monster_id": "蜈蚣2",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 40,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "蜈蚣2",
+      "x": 100,
+      "y": 100,
+      "range": 50,
+      "count": 2,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "跳跳蜂2",
+      "x": 100,
+      "y": 100,
+      "range": 50,
+      "count": 2,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "邪恶钳虫3",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 2,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "钳虫2",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 10,
+      "respawn_seconds": 10,
+      "mission_gen_rate": 50
+    },
+    {
+      "monster_id": "钳虫2",
+      "x": 100,
+      "y": 100,
+      "range": 100,
+      "count": 10,
+      "respawn_seconds": 10,
+      "mission_gen_rate": 50
+    },
+    {
+      "monster_id": "钳虫2",
+      "x": 100,
+      "y": 100,
+      "range": 50,
+      "count": 2,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "巨型蠕虫2",
+      "x": 178,
+      "y": 127,
+      "range": 70,
+      "count": 15,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "跳跳蜂2",
+      "x": 178,
+      "y": 127,
+      "range": 70,
+      "count": 15,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "钳虫2",
+      "x": 178,
+      "y": 127,
+      "range": 70,
+      "count": 20,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "黑色恶蛆2",
+      "x": 178,
+      "y": 127,
+      "range": 70,
+      "count": 20,
+      "respawn_seconds": 7
+    }
+  ]
+}

@@ -1,0 +1,123 @@
+{
+  "id": "D2011",
+  "name": "魔魂殿",
+  "width": 106,
+  "height": 110,
+  "spawn_x": 32,
+  "spawn_y": 31,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D2012",
+      "from_x": 19,
+      "from_y": 20,
+      "to_x": 84,
+      "to_y": 85
+    },
+    {
+      "to_map": "D2008",
+      "from_x": 86,
+      "from_y": 90,
+      "to_x": 27,
+      "to_y": 24
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "楔蛾",
+      "x": 32,
+      "y": 31,
+      "range": 50,
+      "count": 20,
+      "respawn_seconds": 18
+    },
+    {
+      "monster_id": "白野猪",
+      "x": 32,
+      "y": 31,
+      "range": 50,
+      "count": 9,
+      "respawn_seconds": 25
+    },
+    {
+      "monster_id": "白野猪1",
+      "x": 32,
+      "y": 31,
+      "range": 50,
+      "count": 2,
+      "respawn_seconds": 90
+    },
+    {
+      "monster_id": "祖玛卫士",
+      "x": 32,
+      "y": 31,
+      "range": 50,
+      "count": 20,
+      "respawn_seconds": 13
+    },
+    {
+      "monster_id": "祖玛弓箭手",
+      "x": 32,
+      "y": 31,
+      "range": 50,
+      "count": 20,
+      "respawn_seconds": 12
+    },
+    {
+      "monster_id": "祖玛弓箭手2",
+      "x": 32,
+      "y": 31,
+      "range": 50,
+      "count": 3,
+      "respawn_seconds": 14
+    },
+    {
+      "monster_id": "祖玛雕像",
+      "x": 32,
+      "y": 31,
+      "range": 20,
+      "count": 20,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "红野猪2",
+      "x": 32,
+      "y": 31,
+      "range": 50,
+      "count": 10,
+      "respawn_seconds": 15
+    },
+    {
+      "monster_id": "虹魔蝎卫",
+      "x": 32,
+      "y": 31,
+      "range": 5,
+      "count": 1,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "虹魔蝎卫1",
+      "x": 32,
+      "y": 31,
+      "range": 5,
+      "count": 1,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "蝎蛇",
+      "x": 32,
+      "y": 31,
+      "range": 50,
+      "count": 20,
+      "respawn_seconds": 14
+    },
+    {
+      "monster_id": "黑野猪2",
+      "x": 32,
+      "y": 31,
+      "range": 50,
+      "count": 10,
+      "respawn_seconds": 17
+    }
+  ]
+}

@@ -1,0 +1,484 @@
+{
+  "id": "1",
+  "name": "沃玛森林",
+  "width": 588,
+  "height": 579,
+  "spawn_x": 51,
+  "spawn_y": 165,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "11",
+      "from_x": 43,
+      "from_y": 34,
+      "to_x": 46,
+      "to_y": 481
+    },
+    {
+      "to_map": "11",
+      "from_x": 44,
+      "from_y": 33,
+      "to_x": 47,
+      "to_y": 480
+    },
+    {
+      "to_map": "11",
+      "from_x": 45,
+      "from_y": 32,
+      "to_x": 48,
+      "to_y": 479
+    },
+    {
+      "to_map": "11",
+      "from_x": 46,
+      "from_y": 31,
+      "to_x": 49,
+      "to_y": 478
+    },
+    {
+      "to_map": "11",
+      "from_x": 47,
+      "from_y": 30,
+      "to_x": 50,
+      "to_y": 477
+    },
+    {
+      "to_map": "4",
+      "from_x": 69,
+      "from_y": 164,
+      "to_x": 445,
+      "to_y": 193
+    },
+    {
+      "to_map": "4",
+      "from_x": 70,
+      "from_y": 163,
+      "to_x": 446,
+      "to_y": 192
+    },
+    {
+      "to_map": "4",
+      "from_x": 71,
+      "from_y": 162,
+      "to_x": 447,
+      "to_y": 191
+    },
+    {
+      "to_map": "4",
+      "from_x": 72,
+      "from_y": 161,
+      "to_x": 448,
+      "to_y": 190
+    },
+    {
+      "to_map": "4",
+      "from_x": 73,
+      "from_y": 160,
+      "to_x": 449,
+      "to_y": 189
+    },
+    {
+      "to_map": "4",
+      "from_x": 74,
+      "from_y": 159,
+      "to_x": 450,
+      "to_y": 188
+    },
+    {
+      "to_map": "D021",
+      "from_x": 84,
+      "from_y": 277,
+      "to_x": 76,
+      "to_y": 74
+    },
+    {
+      "to_map": "D021",
+      "from_x": 84,
+      "from_y": 278,
+      "to_x": 76,
+      "to_y": 75
+    },
+    {
+      "to_map": "T219",
+      "from_x": 215,
+      "from_y": 312,
+      "to_x": 81,
+      "to_y": 14
+    },
+    {
+      "to_map": "T315",
+      "from_x": 320,
+      "from_y": 56,
+      "to_x": 49,
+      "to_y": 31
+    },
+    {
+      "to_map": "0",
+      "from_x": 558,
+      "from_y": 555,
+      "to_x": 319,
+      "to_y": 40
+    },
+    {
+      "to_map": "0",
+      "from_x": 558,
+      "from_y": 556,
+      "to_x": 319,
+      "to_y": 41
+    },
+    {
+      "to_map": "0",
+      "from_x": 559,
+      "from_y": 554,
+      "to_x": 320,
+      "to_y": 39
+    },
+    {
+      "to_map": "0",
+      "from_x": 559,
+      "from_y": 555,
+      "to_x": 320,
+      "to_y": 40
+    },
+    {
+      "to_map": "0",
+      "from_x": 559,
+      "from_y": 556,
+      "to_x": 320,
+      "to_y": 41
+    },
+    {
+      "to_map": "0",
+      "from_x": 559,
+      "from_y": 557,
+      "to_x": 320,
+      "to_y": 42
+    },
+    {
+      "to_map": "0",
+      "from_x": 560,
+      "from_y": 555,
+      "to_x": 321,
+      "to_y": 40
+    },
+    {
+      "to_map": "0",
+      "from_x": 560,
+      "from_y": 556,
+      "to_x": 321,
+      "to_y": 41
+    },
+    {
+      "to_map": "0",
+      "from_x": 560,
+      "from_y": 557,
+      "to_x": 321,
+      "to_y": 42
+    },
+    {
+      "to_map": "0",
+      "from_x": 560,
+      "from_y": 558,
+      "to_x": 321,
+      "to_y": 43
+    },
+    {
+      "to_map": "0",
+      "from_x": 561,
+      "from_y": 556,
+      "to_x": 322,
+      "to_y": 41
+    },
+    {
+      "to_map": "0",
+      "from_x": 561,
+      "from_y": 557,
+      "to_x": 322,
+      "to_y": 42
+    },
+    {
+      "to_map": "0",
+      "from_x": 561,
+      "from_y": 558,
+      "to_x": 322,
+      "to_y": 43
+    },
+    {
+      "to_map": "0",
+      "from_x": 561,
+      "from_y": 559,
+      "to_x": 322,
+      "to_y": 44
+    },
+    {
+      "to_map": "0",
+      "from_x": 562,
+      "from_y": 557,
+      "to_x": 323,
+      "to_y": 42
+    },
+    {
+      "to_map": "0",
+      "from_x": 562,
+      "from_y": 558,
+      "to_x": 323,
+      "to_y": 43
+    },
+    {
+      "to_map": "0",
+      "from_x": 562,
+      "from_y": 559,
+      "to_x": 323,
+      "to_y": 44
+    },
+    {
+      "to_map": "0",
+      "from_x": 563,
+      "from_y": 558,
+      "to_x": 324,
+      "to_y": 43
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "弓箭护卫",
+      "x": 43,
+      "y": 37,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "弓箭护卫",
+      "x": 49,
+      "y": 31,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "弓箭护卫",
+      "x": 51,
+      "y": 165,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "弓箭护卫",
+      "x": 52,
+      "y": 171,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "森林雪人",
+      "x": 145,
+      "y": 60,
+      "range": 80,
+      "count": 25,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "森林雪人",
+      "x": 145,
+      "y": 60,
+      "range": 80,
+      "count": 25,
+      "respawn_seconds": 7
+    },
+    {
+      "monster_id": "半兽人",
+      "x": 219,
+      "y": 381,
+      "range": 100,
+      "count": 40,
+      "respawn_seconds": 6
+    },
+    {
+      "monster_id": "半兽战士",
+      "x": 219,
+      "y": 381,
+      "range": 100,
+      "count": 15,
+      "respawn_seconds": 6
+    },
+    {
+      "monster_id": "森林雪人",
+      "x": 219,
+      "y": 381,
+      "range": 100,
+      "count": 20,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "毒蜘蛛",
+      "x": 238,
+      "y": 511,
+      "range": 80,
+      "count": 10,
+      "respawn_seconds": 6
+    },
+    {
+      "monster_id": "半兽人",
+      "x": 250,
+      "y": 230,
+      "range": 230,
+      "count": 40,
+      "respawn_seconds": 6
+    },
+    {
+      "monster_id": "半兽勇士",
+      "x": 250,
+      "y": 230,
+      "range": 230,
+      "count": 3,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "半兽战士",
+      "x": 250,
+      "y": 230,
+      "range": 230,
+      "count": 45,
+      "respawn_seconds": 6
+    },
+    {
+      "monster_id": "森林雪人",
+      "x": 250,
+      "y": 230,
+      "range": 230,
+      "count": 20,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "半兽人1",
+      "x": 250,
+      "y": 250,
+      "range": 250,
+      "count": 5,
+      "respawn_seconds": 40
+    },
+    {
+      "monster_id": "半兽战士1",
+      "x": 250,
+      "y": 250,
+      "range": 250,
+      "count": 5,
+      "respawn_seconds": 40
+    },
+    {
+      "monster_id": "多钩猫1",
+      "x": 250,
+      "y": 250,
+      "range": 250,
+      "count": 5,
+      "respawn_seconds": 40
+    },
+    {
+      "monster_id": "钉耙猫1",
+      "x": 250,
+      "y": 250,
+      "range": 250,
+      "count": 5,
+      "respawn_seconds": 40
+    },
+    {
+      "monster_id": "食人花",
+      "x": 250,
+      "y": 250,
+      "range": 250,
+      "count": 35,
+      "respawn_seconds": 9
+    },
+    {
+      "monster_id": "半兽人",
+      "x": 302,
+      "y": 164,
+      "range": 150,
+      "count": 45,
+      "respawn_seconds": 6
+    },
+    {
+      "monster_id": "半兽勇士",
+      "x": 302,
+      "y": 164,
+      "range": 150,
+      "count": 3,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "半兽战士",
+      "x": 302,
+      "y": 164,
+      "range": 150,
+      "count": 25,
+      "respawn_seconds": 6
+    },
+    {
+      "monster_id": "森林雪人",
+      "x": 302,
+      "y": 164,
+      "range": 150,
+      "count": 15,
+      "respawn_seconds": 6
+    },
+    {
+      "monster_id": "半兽人",
+      "x": 352,
+      "y": 382,
+      "range": 100,
+      "count": 45,
+      "respawn_seconds": 6
+    },
+    {
+      "monster_id": "半兽勇士",
+      "x": 352,
+      "y": 382,
+      "range": 100,
+      "count": 3,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "半兽战士",
+      "x": 352,
+      "y": 382,
+      "range": 100,
+      "count": 60,
+      "respawn_seconds": 6
+    },
+    {
+      "monster_id": "多钩猫",
+      "x": 497,
+      "y": 445,
+      "range": 50,
+      "count": 24,
+      "respawn_seconds": 9
+    },
+    {
+      "monster_id": "钉耙猫",
+      "x": 497,
+      "y": 465,
+      "range": 50,
+      "count": 24,
+      "respawn_seconds": 9
+    },
+    {
+      "monster_id": "弓箭护卫",
+      "x": 555,
+      "y": 544,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "弓箭护卫",
+      "x": 566,
+      "y": 544,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    }
+  ]
+}

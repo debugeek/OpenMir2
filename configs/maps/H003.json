@@ -1,0 +1,320 @@
+{
+  "id": "H003",
+  "name": "幻境三层",
+  "width": 107,
+  "height": 101,
+  "spawn_x": 40,
+  "spawn_y": 40,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "H002",
+      "from_x": 16,
+      "from_y": 18,
+      "to_x": 363,
+      "to_y": 230
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "沃玛勇士2",
+      "x": 20,
+      "y": 21,
+      "range": 7,
+      "count": 3,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "沃玛战士2",
+      "x": 20,
+      "y": 21,
+      "range": 7,
+      "count": 3,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "沃玛战将2",
+      "x": 20,
+      "y": 21,
+      "range": 7,
+      "count": 3,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "火焰沃玛2",
+      "x": 20,
+      "y": 21,
+      "range": 7,
+      "count": 3,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "沃玛勇士2",
+      "x": 40,
+      "y": 40,
+      "range": 20,
+      "count": 5,
+      "respawn_seconds": 5,
+      "mission_gen_rate": 50
+    },
+    {
+      "monster_id": "沃玛战士2",
+      "x": 40,
+      "y": 40,
+      "range": 20,
+      "count": 5,
+      "respawn_seconds": 5,
+      "mission_gen_rate": 50
+    },
+    {
+      "monster_id": "沃玛战将2",
+      "x": 40,
+      "y": 40,
+      "range": 20,
+      "count": 5,
+      "respawn_seconds": 5,
+      "mission_gen_rate": 50
+    },
+    {
+      "monster_id": "火焰沃玛2",
+      "x": 40,
+      "y": 40,
+      "range": 20,
+      "count": 5,
+      "respawn_seconds": 5,
+      "mission_gen_rate": 50
+    },
+    {
+      "monster_id": "沃玛勇士2",
+      "x": 40,
+      "y": 50,
+      "range": 20,
+      "count": 5,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "沃玛战士2",
+      "x": 40,
+      "y": 50,
+      "range": 20,
+      "count": 5,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "沃玛战将2",
+      "x": 40,
+      "y": 50,
+      "range": 20,
+      "count": 5,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "沃玛战将2",
+      "x": 40,
+      "y": 50,
+      "range": 20,
+      "count": 5,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "沃玛战将2",
+      "x": 40,
+      "y": 50,
+      "range": 20,
+      "count": 5,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "火焰沃玛2",
+      "x": 40,
+      "y": 50,
+      "range": 20,
+      "count": 5,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "火焰沃玛2",
+      "x": 40,
+      "y": 50,
+      "range": 20,
+      "count": 5,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "沃玛勇士2",
+      "x": 50,
+      "y": 40,
+      "range": 20,
+      "count": 5,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "沃玛战士2",
+      "x": 50,
+      "y": 40,
+      "range": 20,
+      "count": 5,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "沃玛战将2",
+      "x": 50,
+      "y": 40,
+      "range": 20,
+      "count": 5,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "火焰沃玛2",
+      "x": 50,
+      "y": 40,
+      "range": 20,
+      "count": 5,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "沃玛勇士2",
+      "x": 50,
+      "y": 50,
+      "range": 20,
+      "count": 5,
+      "respawn_seconds": 5,
+      "mission_gen_rate": 50
+    },
+    {
+      "monster_id": "沃玛卫士2",
+      "x": 50,
+      "y": 50,
+      "range": 30,
+      "count": 2,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "沃玛战士2",
+      "x": 50,
+      "y": 50,
+      "range": 20,
+      "count": 5,
+      "respawn_seconds": 5,
+      "mission_gen_rate": 50
+    },
+    {
+      "monster_id": "沃玛战将2",
+      "x": 50,
+      "y": 50,
+      "range": 20,
+      "count": 5,
+      "respawn_seconds": 5,
+      "mission_gen_rate": 50
+    },
+    {
+      "monster_id": "火焰沃玛2",
+      "x": 50,
+      "y": 50,
+      "range": 20,
+      "count": 5,
+      "respawn_seconds": 5,
+      "mission_gen_rate": 50
+    },
+    {
+      "monster_id": "沃玛勇士2",
+      "x": 50,
+      "y": 60,
+      "range": 20,
+      "count": 3,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "沃玛战士2",
+      "x": 50,
+      "y": 60,
+      "range": 20,
+      "count": 3,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "沃玛战将2",
+      "x": 50,
+      "y": 60,
+      "range": 20,
+      "count": 3,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "火焰沃玛2",
+      "x": 50,
+      "y": 60,
+      "range": 20,
+      "count": 3,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "沃玛勇士2",
+      "x": 60,
+      "y": 50,
+      "range": 20,
+      "count": 5,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "沃玛战士2",
+      "x": 60,
+      "y": 50,
+      "range": 20,
+      "count": 5,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "沃玛战将2",
+      "x": 60,
+      "y": 50,
+      "range": 20,
+      "count": 5,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "火焰沃玛2",
+      "x": 60,
+      "y": 50,
+      "range": 20,
+      "count": 5,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "沃玛勇士2",
+      "x": 60,
+      "y": 60,
+      "range": 20,
+      "count": 5,
+      "respawn_seconds": 5,
+      "mission_gen_rate": 50
+    },
+    {
+      "monster_id": "沃玛战士2",
+      "x": 60,
+      "y": 60,
+      "range": 20,
+      "count": 5,
+      "respawn_seconds": 5,
+      "mission_gen_rate": 50
+    },
+    {
+      "monster_id": "沃玛战将2",
+      "x": 60,
+      "y": 60,
+      "range": 20,
+      "count": 5,
+      "respawn_seconds": 5,
+      "mission_gen_rate": 50
+    },
+    {
+      "monster_id": "火焰沃玛2",
+      "x": 60,
+      "y": 60,
+      "range": 20,
+      "count": 5,
+      "respawn_seconds": 5,
+      "mission_gen_rate": 50
+    }
+  ]
+}

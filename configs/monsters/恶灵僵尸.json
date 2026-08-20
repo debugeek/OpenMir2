@@ -1,0 +1,189 @@
+{
+  "id": "恶灵僵尸",
+  "name": "恶灵僵尸",
+  "race": 81,
+  "race_img": 19,
+  "appr": 190,
+  "level": 35,
+  "undead": 1,
+  "cool_eye": 0,
+  "experience": 190,
+  "hp": 180,
+  "mp": 0,
+  "defense": 3,
+  "magic_defense": 3,
+  "min_attack": 15,
+  "max_attack": 25,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 25,
+  "hit": 18,
+  "walk_speed_ms": 700,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 2000,
+  "drops": [
+    {
+      "item_id": "金币",
+      "chance": "1/13",
+      "min_count": 2000,
+      "max_count": 2000
+    },
+    {
+      "item_id": "金创药(中量)",
+      "chance": "1/9",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔法药(中量)",
+      "chance": "1/9",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "金创药(中量)",
+      "chance": "1/16",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔法药(中量)",
+      "chance": "1/16",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "太阳水",
+      "chance": "1/9",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "太阳水",
+      "chance": "1/19",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "坚固手套",
+      "chance": "1/94",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔力手镯",
+      "chance": "1/94",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "道士手镯",
+      "chance": "1/94",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "黑檀手镯",
+      "chance": "1/94",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "蓝翡翠项链",
+      "chance": "1/94",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "凌风",
+      "chance": "1/94",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "斩马刀",
+      "chance": "1/94",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "爆裂火焰",
+      "chance": "1/80",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "集体隐身术",
+      "chance": "1/80",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "施毒术",
+      "chance": "1/76",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "攻杀剑术",
+      "chance": "1/82",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "隐身术",
+      "chance": "1/82",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "大火球",
+      "chance": "1/83",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "雷电术",
+      "chance": "1/86",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "地狱火",
+      "chance": "1/86",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "诱惑之光",
+      "chance": "1/82",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "抗拒火环",
+      "chance": "1/71",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "火球术",
+      "chance": "1/71",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "治愈术",
+      "chance": "1/71",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "基本剑术",
+      "chance": "1/71",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

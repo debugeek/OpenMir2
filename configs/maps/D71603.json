@@ -1,0 +1,121 @@
+{
+  "id": "D71603",
+  "name": "石墓阵",
+  "width": 57,
+  "height": 57,
+  "spawn_x": 25,
+  "spawn_y": 25,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D71613",
+      "from_x": 13,
+      "from_y": 37,
+      "to_x": 36,
+      "to_y": 17
+    },
+    {
+      "to_map": "D71615",
+      "from_x": 17,
+      "from_y": 12,
+      "to_x": 36,
+      "to_y": 34
+    },
+    {
+      "to_map": "D71611",
+      "from_x": 37,
+      "from_y": 16,
+      "to_x": 14,
+      "to_y": 36
+    },
+    {
+      "to_map": "D71611",
+      "from_x": 37,
+      "from_y": 35,
+      "to_x": 18,
+      "to_y": 13
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "楔蛾",
+      "x": 25,
+      "y": 25,
+      "range": 25,
+      "count": 10,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "红野猪",
+      "x": 25,
+      "y": 25,
+      "range": 25,
+      "count": 7,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "红野猪2",
+      "x": 25,
+      "y": 25,
+      "range": 25,
+      "count": 1,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "蝎蛇",
+      "x": 25,
+      "y": 25,
+      "range": 25,
+      "count": 7,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "蝎蛇2",
+      "x": 25,
+      "y": 25,
+      "range": 25,
+      "count": 1,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "角蝇",
+      "x": 25,
+      "y": 25,
+      "range": 25,
+      "count": 5,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "黑色恶蛆",
+      "x": 25,
+      "y": 25,
+      "range": 25,
+      "count": 10,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "黑色恶蛆1",
+      "x": 25,
+      "y": 25,
+      "range": 25,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "黑野猪",
+      "x": 25,
+      "y": 25,
+      "range": 25,
+      "count": 7,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "黑野猪2",
+      "x": 25,
+      "y": 25,
+      "range": 25,
+      "count": 1,
+      "respawn_seconds": 30
+    }
+  ]
+}

@@ -1,0 +1,156 @@
+{
+  "id": "H106",
+  "name": "王者禁地",
+  "width": 120,
+  "height": 134,
+  "spawn_x": 75,
+  "spawn_y": 114,
+  "blocked": [],
+  "connections": [],
+  "monster_spawns": [
+    {
+      "monster_id": "地狱犬",
+      "x": 75,
+      "y": 114,
+      "range": 150,
+      "count": 20,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "多钩猫王",
+      "x": 75,
+      "y": 114,
+      "range": 150,
+      "count": 20,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "暗之双头血魔",
+      "x": 75,
+      "y": 114,
+      "range": 150,
+      "count": 1,
+      "respawn_seconds": 180
+    },
+    {
+      "monster_id": "暗之双头金刚",
+      "x": 75,
+      "y": 114,
+      "range": 150,
+      "count": 1,
+      "respawn_seconds": 180
+    },
+    {
+      "monster_id": "暗之沃玛教主",
+      "x": 75,
+      "y": 114,
+      "range": 150,
+      "count": 1,
+      "respawn_seconds": 180
+    },
+    {
+      "monster_id": "暗之牛魔王",
+      "x": 75,
+      "y": 114,
+      "range": 150,
+      "count": 1,
+      "respawn_seconds": 240
+    },
+    {
+      "monster_id": "暗之虹魔教主",
+      "x": 75,
+      "y": 114,
+      "range": 150,
+      "count": 1,
+      "respawn_seconds": 180
+    },
+    {
+      "monster_id": "暗之骷髅精灵",
+      "x": 75,
+      "y": 114,
+      "range": 150,
+      "count": 1,
+      "respawn_seconds": 180
+    },
+    {
+      "monster_id": "暗之黄泉教主",
+      "x": 75,
+      "y": 114,
+      "range": 150,
+      "count": 1,
+      "respawn_seconds": 180
+    },
+    {
+      "monster_id": "楔蛾王",
+      "x": 75,
+      "y": 114,
+      "range": 150,
+      "count": 20,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "电僵王",
+      "x": 75,
+      "y": 114,
+      "range": 150,
+      "count": 20,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "神鹰",
+      "x": 75,
+      "y": 114,
+      "range": 150,
+      "count": 20,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "红蛇王",
+      "x": 75,
+      "y": 114,
+      "range": 150,
+      "count": 20,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "虎蛇王",
+      "x": 75,
+      "y": 114,
+      "range": 150,
+      "count": 20,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "蜈蚣王",
+      "x": 75,
+      "y": 114,
+      "range": 150,
+      "count": 20,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "蝎子王",
+      "x": 75,
+      "y": 114,
+      "range": 150,
+      "count": 20,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "钉耙猫王",
+      "x": 75,
+      "y": 114,
+      "range": 150,
+      "count": 20,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "雪人王",
+      "x": 75,
+      "y": 114,
+      "range": 150,
+      "count": 20,
+      "respawn_seconds": 20
+    }
+  ]
+}

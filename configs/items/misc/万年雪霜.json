@@ -1,0 +1,23 @@
+{
+  "id": "万年雪霜",
+  "name": "万年雪霜",
+  "kind": "consumable",
+  "weight": 2,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 100,
+    "defense_max": 0,
+    "magic_defense": 100,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "shape": 1,
+  "looks": 260,
+  "price": 4000,
+  "stock": 5,
+  "color": 251
+}

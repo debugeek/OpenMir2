@@ -1,0 +1,117 @@
+{
+  "id": "虎蛇",
+  "name": "虎蛇",
+  "race": 81,
+  "race_img": 19,
+  "appr": 38,
+  "level": 18,
+  "undead": 0,
+  "cool_eye": 0,
+  "experience": 50,
+  "hp": 50,
+  "mp": 0,
+  "defense": 0,
+  "magic_defense": 2,
+  "min_attack": 10,
+  "max_attack": 11,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 15,
+  "hit": 11,
+  "walk_speed_ms": 1200,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 2500,
+  "drops": [
+    {
+      "item_id": "金币",
+      "chance": "1/9",
+      "min_count": 600,
+      "max_count": 600
+    },
+    {
+      "item_id": "金创药(中量)",
+      "chance": "1/6",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔法药(中量)",
+      "chance": "1/6",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "太阳水",
+      "chance": "1/10",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "祝福油",
+      "chance": "1/537",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "战神油",
+      "chance": "1/237",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "黑色水晶项链",
+      "chance": "1/84",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔法头盔",
+      "chance": "1/84",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "青铜剑",
+      "chance": "1/24",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "小手镯",
+      "chance": "1/24",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "玻璃戒指",
+      "chance": "1/24",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "牛角戒指",
+      "chance": "1/24",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "大手镯",
+      "chance": "1/24",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "金项链",
+      "chance": "1/32",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "传统项链",
+      "chance": "1/32",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

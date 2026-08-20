@@ -1,0 +1,91 @@
+{
+  "id": "D10032",
+  "name": "右回廊",
+  "width": 221,
+  "height": 176,
+  "spawn_x": 150,
+  "spawn_y": 150,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D1002",
+      "from_x": 9,
+      "from_y": 156,
+      "to_x": 288,
+      "to_y": 139
+    },
+    {
+      "to_map": "D1004",
+      "from_x": 201,
+      "from_y": 148,
+      "to_x": 171,
+      "to_y": 88
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "幻影蜘蛛",
+      "x": 150,
+      "y": 150,
+      "range": 200,
+      "count": 10,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "月魔蜘蛛",
+      "x": 150,
+      "y": 150,
+      "range": 150,
+      "count": 15,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "花吻蜘蛛",
+      "x": 150,
+      "y": 150,
+      "range": 150,
+      "count": 15,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "花吻蜘蛛1",
+      "x": 150,
+      "y": 150,
+      "range": 150,
+      "count": 5,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "血巨人",
+      "x": 150,
+      "y": 150,
+      "range": 150,
+      "count": 5,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "血巨人",
+      "x": 150,
+      "y": 150,
+      "range": 150,
+      "count": 5,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "黑锷蜘蛛",
+      "x": 150,
+      "y": 150,
+      "range": 150,
+      "count": 15,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "黑锷蜘蛛1",
+      "x": 150,
+      "y": 150,
+      "range": 150,
+      "count": 5,
+      "respawn_seconds": 60
+    }
+  ]
+}

@@ -1,0 +1,81 @@
+{
+  "id": "钉耙猫",
+  "name": "钉耙猫",
+  "race": 81,
+  "race_img": 17,
+  "appr": 26,
+  "level": 13,
+  "undead": 0,
+  "cool_eye": 0,
+  "experience": 18,
+  "hp": 32,
+  "mp": 0,
+  "defense": 0,
+  "magic_defense": 0,
+  "min_attack": 2,
+  "max_attack": 4,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 7,
+  "hit": 5,
+  "walk_speed_ms": 1500,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 2500,
+  "drops": [
+    {
+      "item_id": "金币",
+      "chance": "1/8",
+      "min_count": 800,
+      "max_count": 800
+    },
+    {
+      "item_id": "金创药(小量)",
+      "chance": "1/3",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔法药(小量)",
+      "chance": "1/3",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "古铜戒指",
+      "chance": "1/50",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "六角戒指",
+      "chance": "1/50",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "玻璃戒指",
+      "chance": "1/50",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "钢手镯",
+      "chance": "1/50",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "金项链",
+      "chance": "1/50",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "乌木剑",
+      "chance": "1/100",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "太阳水",
+  "name": "太阳水",
+  "kind": "consumable",
+  "weight": 1,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 30,
+    "defense_max": 0,
+    "magic_defense": 40,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "shape": 1,
+  "looks": 16,
+  "need_level": 1,
+  "price": 1000,
+  "stock": 5,
+  "color": 251
+}

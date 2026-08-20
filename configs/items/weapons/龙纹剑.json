@@ -1,0 +1,26 @@
+{
+  "id": "龙纹剑",
+  "name": "龙纹剑",
+  "kind": "weapon",
+  "weight": 40,
+  "stats": {
+    "min_attack": 8,
+    "max_attack": 20,
+    "defense": 0,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 3,
+    "tao_attack_max": 6
+  },
+  "std_mode": 5,
+  "shape": 25,
+  "looks": 56,
+  "dura_max": 22000,
+  "need_level": 35,
+  "price": 50000,
+  "stock": 5,
+  "color": 251
+}

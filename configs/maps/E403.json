@@ -1,0 +1,26 @@
+{
+  "id": "E403",
+  "name": "连接通道",
+  "width": 110,
+  "height": 98,
+  "spawn_x": 0,
+  "spawn_y": 0,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "E402",
+      "from_x": 45,
+      "from_y": 77,
+      "to_x": 70,
+      "to_y": 15
+    },
+    {
+      "to_map": "E404",
+      "from_x": 90,
+      "from_y": 68,
+      "to_x": 46,
+      "to_y": 11
+    }
+  ],
+  "monster_spawns": []
+}

@@ -1,0 +1,26 @@
+{
+  "id": "半月",
+  "name": "半月",
+  "kind": "weapon",
+  "weight": 16,
+  "stats": {
+    "min_attack": 5,
+    "max_attack": 10,
+    "defense": 0,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 1,
+    "tao_attack": 1,
+    "tao_attack_max": 1
+  },
+  "std_mode": 5,
+  "shape": 16,
+  "looks": 46,
+  "dura_max": 14000,
+  "need_level": 15,
+  "price": 4000,
+  "stock": 50,
+  "color": 251
+}

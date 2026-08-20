@@ -1,0 +1,11 @@
+{
+  "id": "魔法盾",
+  "name": "魔法盾",
+  "job": 1,
+  "power": 0,
+  "max_power": 0,
+  "spell": 20,
+  "delay": 0,
+  "need_level_1": 31,
+  "train_level_1": 100
+}

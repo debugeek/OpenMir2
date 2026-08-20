@@ -1,0 +1,234 @@
+{
+  "id": "H009",
+  "name": "幻境九层",
+  "width": 310,
+  "height": 228,
+  "spawn_x": 128,
+  "spawn_y": 91,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "H010",
+      "from_x": 149,
+      "from_y": 103,
+      "to_x": 155,
+      "to_y": 157
+    },
+    {
+      "to_map": "H008",
+      "from_x": 290,
+      "from_y": 151,
+      "to_x": 21,
+      "to_y": 26
+    },
+    {
+      "to_map": "H008",
+      "from_x": 290,
+      "from_y": 151,
+      "to_x": 22,
+      "to_y": 25
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "天狼蜘蛛3",
+      "x": 66,
+      "y": 208,
+      "range": 150,
+      "count": 30,
+      "respawn_seconds": 8
+    },
+    {
+      "monster_id": "暴牙蜘蛛1",
+      "x": 66,
+      "y": 208,
+      "range": 150,
+      "count": 20,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "月魔蜘蛛1",
+      "x": 66,
+      "y": 208,
+      "range": 150,
+      "count": 30,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "花吻蜘蛛2",
+      "x": 66,
+      "y": 208,
+      "range": 150,
+      "count": 20,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "钢牙蜘蛛3",
+      "x": 66,
+      "y": 208,
+      "range": 150,
+      "count": 20,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "黑锷蜘蛛3",
+      "x": 66,
+      "y": 208,
+      "range": 150,
+      "count": 5,
+      "respawn_seconds": 12
+    },
+    {
+      "monster_id": "双头血魔1",
+      "x": 128,
+      "y": 91,
+      "range": 200,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "双头金刚1",
+      "x": 128,
+      "y": 91,
+      "range": 200,
+      "count": 1,
+      "respawn_seconds": 120
+    },
+    {
+      "monster_id": "天狼蜘蛛3",
+      "x": 128,
+      "y": 91,
+      "range": 200,
+      "count": 30,
+      "respawn_seconds": 8
+    },
+    {
+      "monster_id": "暴牙蜘蛛1",
+      "x": 128,
+      "y": 91,
+      "range": 200,
+      "count": 25,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "月魔蜘蛛1",
+      "x": 128,
+      "y": 91,
+      "range": 200,
+      "count": 30,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "花吻蜘蛛2",
+      "x": 128,
+      "y": 91,
+      "range": 200,
+      "count": 25,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "血僵尸2",
+      "x": 128,
+      "y": 91,
+      "range": 200,
+      "count": 5,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "血僵尸2",
+      "x": 128,
+      "y": 91,
+      "range": 200,
+      "count": 5,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "血巨人1",
+      "x": 128,
+      "y": 91,
+      "range": 200,
+      "count": 5,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "血巨人1",
+      "x": 128,
+      "y": 91,
+      "range": 200,
+      "count": 5,
+      "respawn_seconds": 20
+    },
+    {
+      "monster_id": "赤月恶魔1",
+      "x": 128,
+      "y": 91,
+      "range": 200,
+      "count": 1,
+      "respawn_seconds": 180
+    },
+    {
+      "monster_id": "钢牙蜘蛛3",
+      "x": 128,
+      "y": 91,
+      "range": 200,
+      "count": 30,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "黑锷蜘蛛3",
+      "x": 128,
+      "y": 91,
+      "range": 200,
+      "count": 5,
+      "respawn_seconds": 12
+    },
+    {
+      "monster_id": "天狼蜘蛛3",
+      "x": 242,
+      "y": 152,
+      "range": 150,
+      "count": 30,
+      "respawn_seconds": 8
+    },
+    {
+      "monster_id": "暴牙蜘蛛1",
+      "x": 242,
+      "y": 152,
+      "range": 150,
+      "count": 20,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "月魔蜘蛛1",
+      "x": 242,
+      "y": 152,
+      "range": 150,
+      "count": 30,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "花吻蜘蛛2",
+      "x": 242,
+      "y": 152,
+      "range": 150,
+      "count": 20,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "钢牙蜘蛛3",
+      "x": 242,
+      "y": 152,
+      "range": 150,
+      "count": 20,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "黑锷蜘蛛3",
+      "x": 242,
+      "y": 152,
+      "range": 150,
+      "count": 5,
+      "respawn_seconds": 12
+    }
+  ]
+}

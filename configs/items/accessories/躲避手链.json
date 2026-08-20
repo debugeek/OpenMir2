@@ -1,0 +1,26 @@
+{
+  "id": "躲避手链",
+  "name": "躲避手链",
+  "kind": "misc",
+  "weight": 1,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 0,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 3,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 20,
+  "looks": 238,
+  "dura_max": 8000,
+  "need": 3,
+  "need_level": 12,
+  "price": 25000,
+  "stock": 50,
+  "color": 251
+}

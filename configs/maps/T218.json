@@ -1,0 +1,20 @@
+{
+  "id": "T218",
+  "name": "死亡神殿",
+  "width": 50,
+  "height": 50,
+  "spawn_x": 14,
+  "spawn_y": 17,
+  "blocked": [],
+  "connections": [],
+  "monster_spawns": [
+    {
+      "monster_id": "暗之虹魔教主",
+      "x": 14,
+      "y": 17,
+      "range": 5,
+      "count": 1,
+      "respawn_seconds": 120
+    }
+  ]
+}

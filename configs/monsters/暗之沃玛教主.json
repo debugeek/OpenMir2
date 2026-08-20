@@ -1,0 +1,177 @@
+{
+  "id": "暗之沃玛教主",
+  "name": "暗之沃玛教主",
+  "race": 92,
+  "race_img": 21,
+  "appr": 34,
+  "level": 60,
+  "undead": 1,
+  "cool_eye": 1,
+  "experience": 4000,
+  "hp": 4000,
+  "mp": 0,
+  "defense": 20,
+  "magic_defense": 20,
+  "min_attack": 40,
+  "max_attack": 65,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 30,
+  "hit": 20,
+  "walk_speed_ms": 400,
+  "walk_step": 1,
+  "walk_wait": 0,
+  "attack_interval_ms": 1500,
+  "drops": [
+    {
+      "item_id": "金币",
+      "chance": "1/1",
+      "min_count": 8000,
+      "max_count": 8000
+    },
+    {
+      "item_id": "金币",
+      "chance": "1/2",
+      "min_count": 8000,
+      "max_count": 8000
+    },
+    {
+      "item_id": "强效太阳水",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效太阳水",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效太阳水",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效太阳水",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效太阳水",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效太阳水",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效太阳水",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效太阳水",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效太阳水",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效太阳水",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "重盔甲(男)",
+      "chance": "1/11",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "重盔甲(女)",
+      "chance": "1/11",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "灵魂战衣(女)",
+      "chance": "1/11",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "灵魂战衣(男)",
+      "chance": "1/11",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔法长袍(男)",
+      "chance": "1/11",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔法长袍(女)",
+      "chance": "1/11",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "幽灵战衣(男)",
+      "chance": "1/25",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "恶魔长袍(女)",
+      "chance": "1/25",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "幽灵战衣(女)",
+      "chance": "1/25",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "恶魔长袍(男)",
+      "chance": "1/25",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "战神盔甲(男)",
+      "chance": "1/25",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "战神盔甲(女)",
+      "chance": "1/25",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "天师长袍",
+      "chance": "1/37",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

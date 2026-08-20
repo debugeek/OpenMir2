@@ -1,0 +1,26 @@
+{
+  "id": "D5071",
+  "name": "祖玛神殿七层大厅",
+  "width": 59,
+  "height": 63,
+  "spawn_x": 0,
+  "spawn_y": 0,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D5069",
+      "from_x": 7,
+      "from_y": 9,
+      "to_x": 89,
+      "to_y": 75
+    },
+    {
+      "to_map": "D5072",
+      "from_x": 39,
+      "from_y": 43,
+      "to_x": 7,
+      "to_y": 51
+    }
+  ],
+  "monster_spawns": []
+}

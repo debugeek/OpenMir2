@@ -1,0 +1,544 @@
+{
+  "id": "2",
+  "name": "毒蛇山谷",
+  "width": 584,
+  "height": 589,
+  "spawn_x": 417,
+  "spawn_y": 558,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "3",
+      "from_x": 296,
+      "from_y": 58,
+      "to_x": 277,
+      "to_y": 746
+    },
+    {
+      "to_map": "3",
+      "from_x": 297,
+      "from_y": 57,
+      "to_x": 278,
+      "to_y": 745
+    },
+    {
+      "to_map": "3",
+      "from_x": 297,
+      "from_y": 58,
+      "to_x": 278,
+      "to_y": 746
+    },
+    {
+      "to_map": "3",
+      "from_x": 297,
+      "from_y": 59,
+      "to_x": 278,
+      "to_y": 747
+    },
+    {
+      "to_map": "3",
+      "from_x": 298,
+      "from_y": 50,
+      "to_x": 279,
+      "to_y": 748
+    },
+    {
+      "to_map": "3",
+      "from_x": 298,
+      "from_y": 57,
+      "to_x": 279,
+      "to_y": 745
+    },
+    {
+      "to_map": "3",
+      "from_x": 298,
+      "from_y": 58,
+      "to_x": 279,
+      "to_y": 746
+    },
+    {
+      "to_map": "3",
+      "from_x": 298,
+      "from_y": 59,
+      "to_x": 279,
+      "to_y": 747
+    },
+    {
+      "to_map": "3",
+      "from_x": 299,
+      "from_y": 50,
+      "to_x": 280,
+      "to_y": 748
+    },
+    {
+      "to_map": "3",
+      "from_x": 299,
+      "from_y": 58,
+      "to_x": 280,
+      "to_y": 746
+    },
+    {
+      "to_map": "3",
+      "from_x": 299,
+      "from_y": 59,
+      "to_x": 280,
+      "to_y": 747
+    },
+    {
+      "to_map": "3",
+      "from_x": 299,
+      "from_y": 61,
+      "to_x": 280,
+      "to_y": 749
+    },
+    {
+      "to_map": "3",
+      "from_x": 300,
+      "from_y": 59,
+      "to_x": 281,
+      "to_y": 747
+    },
+    {
+      "to_map": "3",
+      "from_x": 300,
+      "from_y": 60,
+      "to_x": 281,
+      "to_y": 748
+    },
+    {
+      "to_map": "0",
+      "from_x": 412,
+      "from_y": 565,
+      "to_x": 670,
+      "to_y": 91
+    },
+    {
+      "to_map": "0",
+      "from_x": 412,
+      "from_y": 566,
+      "to_x": 670,
+      "to_y": 92
+    },
+    {
+      "to_map": "0",
+      "from_x": 413,
+      "from_y": 564,
+      "to_x": 666,
+      "to_y": 87
+    },
+    {
+      "to_map": "0",
+      "from_x": 413,
+      "from_y": 565,
+      "to_x": 666,
+      "to_y": 88
+    },
+    {
+      "to_map": "0",
+      "from_x": 414,
+      "from_y": 546,
+      "to_x": 667,
+      "to_y": 88
+    },
+    {
+      "to_map": "0",
+      "from_x": 414,
+      "from_y": 567,
+      "to_x": 667,
+      "to_y": 90
+    },
+    {
+      "to_map": "0",
+      "from_x": 414,
+      "from_y": 568,
+      "to_x": 667,
+      "to_y": 91
+    },
+    {
+      "to_map": "0",
+      "from_x": 415,
+      "from_y": 566,
+      "to_x": 667,
+      "to_y": 89
+    },
+    {
+      "to_map": "0",
+      "from_x": 415,
+      "from_y": 567,
+      "to_x": 668,
+      "to_y": 89
+    },
+    {
+      "to_map": "0",
+      "from_x": 415,
+      "from_y": 568,
+      "to_x": 668,
+      "to_y": 91
+    },
+    {
+      "to_map": "0",
+      "from_x": 415,
+      "from_y": 569,
+      "to_x": 668,
+      "to_y": 92
+    },
+    {
+      "to_map": "0",
+      "from_x": 416,
+      "from_y": 567,
+      "to_x": 668,
+      "to_y": 90
+    },
+    {
+      "to_map": "0",
+      "from_x": 416,
+      "from_y": 568,
+      "to_x": 669,
+      "to_y": 90
+    },
+    {
+      "to_map": "0",
+      "from_x": 416,
+      "from_y": 569,
+      "to_x": 669,
+      "to_y": 92
+    },
+    {
+      "to_map": "0",
+      "from_x": 417,
+      "from_y": 568,
+      "to_x": 669,
+      "to_y": 91
+    },
+    {
+      "to_map": "0117",
+      "from_x": 504,
+      "from_y": 498,
+      "to_x": 10,
+      "to_y": 16
+    },
+    {
+      "to_map": "0142",
+      "from_x": 511,
+      "from_y": 462,
+      "to_x": 9,
+      "to_y": 9
+    },
+    {
+      "to_map": "0120",
+      "from_x": 516,
+      "from_y": 492,
+      "to_x": 14,
+      "to_y": 14
+    },
+    {
+      "to_map": "0116",
+      "from_x": 523,
+      "from_y": 473,
+      "to_x": 10,
+      "to_y": 23
+    },
+    {
+      "to_map": "0116",
+      "from_x": 523,
+      "from_y": 474,
+      "to_x": 11,
+      "to_y": 24
+    },
+    {
+      "to_map": "3",
+      "from_x": 550,
+      "from_y": 74,
+      "to_x": 519,
+      "to_y": 770
+    },
+    {
+      "to_map": "3",
+      "from_x": 550,
+      "from_y": 75,
+      "to_x": 519,
+      "to_y": 771
+    },
+    {
+      "to_map": "3",
+      "from_x": 557,
+      "from_y": 74,
+      "to_x": 516,
+      "to_y": 770
+    },
+    {
+      "to_map": "3",
+      "from_x": 558,
+      "from_y": 73,
+      "to_x": 517,
+      "to_y": 769
+    },
+    {
+      "to_map": "3",
+      "from_x": 558,
+      "from_y": 74,
+      "to_x": 517,
+      "to_y": 770
+    },
+    {
+      "to_map": "3",
+      "from_x": 558,
+      "from_y": 75,
+      "to_x": 517,
+      "to_y": 771
+    },
+    {
+      "to_map": "3",
+      "from_x": 559,
+      "from_y": 73,
+      "to_x": 518,
+      "to_y": 769
+    },
+    {
+      "to_map": "3",
+      "from_x": 559,
+      "from_y": 74,
+      "to_x": 518,
+      "to_y": 770
+    },
+    {
+      "to_map": "3",
+      "from_x": 559,
+      "from_y": 75,
+      "to_x": 518,
+      "to_y": 771
+    },
+    {
+      "to_map": "3",
+      "from_x": 559,
+      "from_y": 76,
+      "to_x": 518,
+      "to_y": 772
+    },
+    {
+      "to_map": "3",
+      "from_x": 560,
+      "from_y": 76,
+      "to_x": 519,
+      "to_y": 772
+    },
+    {
+      "to_map": "3",
+      "from_x": 560,
+      "from_y": 77,
+      "to_x": 519,
+      "to_y": 773
+    },
+    {
+      "to_map": "3",
+      "from_x": 561,
+      "from_y": 75,
+      "to_x": 520,
+      "to_y": 771
+    },
+    {
+      "to_map": "3",
+      "from_x": 561,
+      "from_y": 76,
+      "to_x": 520,
+      "to_y": 772
+    },
+    {
+      "to_map": "3",
+      "from_x": 561,
+      "from_y": 77,
+      "to_x": 520,
+      "to_y": 773
+    },
+    {
+      "to_map": "3",
+      "from_x": 561,
+      "from_y": 78,
+      "to_x": 521,
+      "to_y": 774
+    },
+    {
+      "to_map": "3",
+      "from_x": 562,
+      "from_y": 76,
+      "to_x": 521,
+      "to_y": 772
+    },
+    {
+      "to_map": "3",
+      "from_x": 562,
+      "from_y": 77,
+      "to_x": 521,
+      "to_y": 774
+    },
+    {
+      "to_map": "D421",
+      "from_x": 564,
+      "from_y": 169,
+      "to_x": 30,
+      "to_y": 374
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "弓箭护卫",
+      "x": 292,
+      "y": 60,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "弓箭护卫",
+      "x": 298,
+      "y": 65,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "半兽人",
+      "x": 300,
+      "y": 400,
+      "range": 200,
+      "count": 80,
+      "respawn_seconds": 35
+    },
+    {
+      "monster_id": "半兽人1",
+      "x": 300,
+      "y": 400,
+      "range": 200,
+      "count": 4,
+      "respawn_seconds": 40
+    },
+    {
+      "monster_id": "多钩猫",
+      "x": 300,
+      "y": 400,
+      "range": 200,
+      "count": 80,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "多钩猫1",
+      "x": 300,
+      "y": 400,
+      "range": 200,
+      "count": 4,
+      "respawn_seconds": 45
+    },
+    {
+      "monster_id": "红蛇",
+      "x": 300,
+      "y": 400,
+      "range": 200,
+      "count": 80,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "红蛇1",
+      "x": 300,
+      "y": 400,
+      "range": 200,
+      "count": 4,
+      "respawn_seconds": 40
+    },
+    {
+      "monster_id": "虎蛇",
+      "x": 300,
+      "y": 400,
+      "range": 200,
+      "count": 80,
+      "respawn_seconds": 30
+    },
+    {
+      "monster_id": "虎蛇1",
+      "x": 300,
+      "y": 400,
+      "range": 200,
+      "count": 4,
+      "respawn_seconds": 45
+    },
+    {
+      "monster_id": "钉耙猫",
+      "x": 300,
+      "y": 400,
+      "range": 200,
+      "count": 80,
+      "respawn_seconds": 35
+    },
+    {
+      "monster_id": "钉耙猫1",
+      "x": 300,
+      "y": 400,
+      "range": 200,
+      "count": 4,
+      "respawn_seconds": 40
+    },
+    {
+      "monster_id": "弓箭护卫",
+      "x": 416,
+      "y": 559,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "弓箭护卫",
+      "x": 417,
+      "y": 558,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "弓箭护卫",
+      "x": 423,
+      "y": 566,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "弓箭护卫",
+      "x": 424,
+      "y": 565,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "弓箭护卫",
+      "x": 508,
+      "y": 492,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "弓箭护卫",
+      "x": 510,
+      "y": 479,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "弓箭护卫",
+      "x": 552,
+      "y": 80,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    },
+    {
+      "monster_id": "弓箭护卫",
+      "x": 560,
+      "y": 88,
+      "range": 0,
+      "count": 1,
+      "respawn_seconds": 10
+    }
+  ]
+}

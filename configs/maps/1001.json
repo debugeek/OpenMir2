@@ -1,0 +1,19 @@
+{
+  "id": "1001",
+  "name": "武器店",
+  "width": 50,
+  "height": 50,
+  "spawn_x": 0,
+  "spawn_y": 0,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "11",
+      "from_x": 5,
+      "from_y": 18,
+      "to_x": 224,
+      "to_y": 301
+    }
+  ],
+  "monster_spawns": []
+}

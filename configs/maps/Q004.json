@@ -1,0 +1,36 @@
+{
+  "id": "Q004",
+  "name": "尸王殿",
+  "width": 50,
+  "height": 50,
+  "spawn_x": 15,
+  "spawn_y": 15,
+  "blocked": [],
+  "connections": [],
+  "monster_spawns": [
+    {
+      "monster_id": "尸王",
+      "x": 15,
+      "y": 15,
+      "range": 10,
+      "count": 20,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "尸王2",
+      "x": 15,
+      "y": 15,
+      "range": 10,
+      "count": 12,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "尸王3",
+      "x": 15,
+      "y": 15,
+      "range": 10,
+      "count": 6,
+      "respawn_seconds": 120
+    }
+  ]
+}

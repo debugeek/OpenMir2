@@ -1,0 +1,11 @@
+{
+  "id": "心灵启示",
+  "name": "心灵启示",
+  "job": 2,
+  "power": 0,
+  "max_power": 0,
+  "spell": 16,
+  "delay": 40,
+  "need_level_1": 26,
+  "train_level_1": 100
+}

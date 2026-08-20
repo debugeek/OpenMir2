@@ -1,0 +1,11 @@
+{
+  "id": "灵魂火符",
+  "name": "灵魂火符",
+  "job": 2,
+  "power": 20,
+  "max_power": 44,
+  "spell": 5,
+  "delay": 60,
+  "need_level_1": 18,
+  "train_level_1": 100
+}

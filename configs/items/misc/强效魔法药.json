@@ -1,0 +1,22 @@
+{
+  "id": "强效魔法药",
+  "name": "强效魔法药",
+  "kind": "consumable",
+  "weight": 3,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 0,
+    "defense_max": 0,
+    "magic_defense": 150,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "looks": 29,
+  "price": 550,
+  "stock": 5,
+  "color": 251
+}

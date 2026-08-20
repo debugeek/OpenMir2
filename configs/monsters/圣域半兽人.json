@@ -1,0 +1,249 @@
+{
+  "id": "圣域半兽人",
+  "name": "圣域半兽人",
+  "race": 83,
+  "race_img": 19,
+  "appr": 100,
+  "level": 45,
+  "undead": 1,
+  "cool_eye": 0,
+  "experience": 500,
+  "hp": 500,
+  "mp": 0,
+  "defense": 8,
+  "magic_defense": 12,
+  "min_attack": 9,
+  "max_attack": 23,
+  "magic_attack": 0,
+  "tao_attack": 0,
+  "speed": 15,
+  "hit": 6,
+  "walk_speed_ms": 800,
+  "walk_step": 1,
+  "walk_wait": 1200,
+  "attack_interval_ms": 2000,
+  "drops": [
+    {
+      "item_id": "银蛇",
+      "chance": "1/50",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔杖",
+      "chance": "1/50",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "炼狱",
+      "chance": "1/50",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "幽灵项链",
+      "chance": "1/30",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "生命项链",
+      "chance": "1/30",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "天珠项链",
+      "chance": "1/30",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "思贝儿手镯",
+      "chance": "1/30",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "心灵手镯",
+      "chance": "1/30",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "红宝石戒指",
+      "chance": "1/30",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "龙之戒指",
+      "chance": "1/30",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "铂金戒指",
+      "chance": "1/30",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "荣誉勋章11号",
+      "chance": "1/185",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "荣誉勋章12号",
+      "chance": "1/185",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "荣誉勋章13号",
+      "chance": "1/185",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "荣誉勋章14号",
+      "chance": "1/185",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "荣誉勋章15号",
+      "chance": "1/185",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "祝福油",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效魔法药",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效魔法药",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效魔法药",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效魔法药",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效金创药",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效金创药",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效金创药",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效太阳水",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效太阳水",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效太阳水",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "疗伤药",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "疗伤药",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "疗伤药",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "疗伤药",
+      "chance": "1/1",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔血戒指",
+      "chance": "1/117",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔血手镯",
+      "chance": "1/117",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "魔血项链",
+      "chance": "1/117",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "虹魔手镯",
+      "chance": "1/117",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "虹魔戒指",
+      "chance": "1/117",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "虹魔项链",
+      "chance": "1/117",
+      "min_count": 1,
+      "max_count": 1
+    }
+  ]
+}

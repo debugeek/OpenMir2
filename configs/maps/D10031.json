@@ -1,0 +1,67 @@
+{
+  "id": "D10031",
+  "name": "左回廊",
+  "width": 310,
+  "height": 171,
+  "spawn_x": 150,
+  "spawn_y": 150,
+  "blocked": [],
+  "connections": [
+    {
+      "to_map": "D1004",
+      "from_x": 149,
+      "from_y": 103,
+      "to_x": 120,
+      "to_y": 37
+    },
+    {
+      "to_map": "D1002",
+      "from_x": 290,
+      "from_y": 151,
+      "to_x": 14,
+      "to_y": 27
+    }
+  ],
+  "monster_spawns": [
+    {
+      "monster_id": "月魔蜘蛛",
+      "x": 150,
+      "y": 150,
+      "range": 150,
+      "count": 15,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "花吻蜘蛛",
+      "x": 150,
+      "y": 150,
+      "range": 150,
+      "count": 15,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "花吻蜘蛛1",
+      "x": 150,
+      "y": 150,
+      "range": 150,
+      "count": 5,
+      "respawn_seconds": 60
+    },
+    {
+      "monster_id": "黑锷蜘蛛",
+      "x": 150,
+      "y": 150,
+      "range": 150,
+      "count": 15,
+      "respawn_seconds": 5
+    },
+    {
+      "monster_id": "黑锷蜘蛛1",
+      "x": 150,
+      "y": 150,
+      "range": 150,
+      "count": 5,
+      "respawn_seconds": 60
+    }
+  ]
+}
