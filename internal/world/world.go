@@ -118,11 +118,25 @@ type GroundDrop struct {
 type ItemUseResult struct {
 	Character      storage.Character
 	Consumed       bool
+	Teleport       *TeleportEvent
 	AbilityChanged bool
+	HealthChanged  bool
 	AddedItems     []storage.UserItem
 	Experience     int
 	CurrentExp     int
 	LevelUp        bool
+}
+
+type EquipResult struct {
+	Character     storage.Character
+	SwappedOut    storage.UserItem
+	HasSwappedOut bool
+}
+
+type UnequipResult struct {
+	Character      storage.Character
+	RemovedItem    storage.UserItem
+	HasRemovedItem bool
 }
 
 type AttackResult struct {

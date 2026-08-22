@@ -72,6 +72,172 @@ type Client struct {
 	visibleDrops    map[string]world.GroundDrop
 }
 
+type teleportSyncAdapter struct {
+	s    *Server
+	conn net.Conn
+}
+
+func (a teleportSyncAdapter) UpdateClient(ch storage.Character) {
+	a.s.updateClient(a.conn, ch)
+}
+
+func (a teleportSyncAdapter) SendSpaceMoveState(ch storage.Character) {
+	a.s.sendSpaceMoveState(a.conn, ch)
+}
+
+func (a teleportSyncAdapter) BroadcastTeleportMove(from, to storage.Character) {
+	a.s.broadcastTeleportMove(a.conn, from, to)
+}
+
+type pickupSyncAdapter struct {
+	s    *Server
+	conn net.Conn
+}
+
+func (a pickupSyncAdapter) UpdateClient(ch storage.Character) {
+	a.s.updateClient(a.conn, ch)
+}
+
+func (a pickupSyncAdapter) BroadcastDropHide(ch storage.Character, dropID string) {
+	if clients := a.s.ClientsInMap(ch.MapID); len(clients) > 0 {
+		a.s.broadcastDropHide(clients, dropID)
+	}
+}
+
+func (a pickupSyncAdapter) SendGoldChanged(ch storage.Character, gold int) {
+	_ = ch
+	a.s.sendGoldChanged(a.conn, gold)
+}
+
+func (a pickupSyncAdapter) SendBagAddItem(ch storage.Character, item storage.UserItem) {
+	a.s.sendBagAddItem(a.conn, ch, item.ItemID, item.MakeIndex)
+}
+
+func (a pickupSyncAdapter) SendWeightChanged(ch storage.Character) {
+	a.s.sendWeightChanged(a.conn, a.s.world.AbilityStats(ch))
+}
+
+type itemUseSyncAdapter struct {
+	s    *Server
+	conn net.Conn
+}
+
+func (a itemUseSyncAdapter) UpdateClient(ch storage.Character) {
+	a.s.updateClient(a.conn, ch)
+}
+
+func (a itemUseSyncAdapter) BroadcastTeleportMove(from, to storage.Character) {
+	a.s.broadcastTeleportMove(a.conn, from, to)
+}
+
+func (a itemUseSyncAdapter) SendSpaceMoveState(ch storage.Character) {
+	a.s.sendSpaceMoveState(a.conn, ch)
+}
+
+func (a itemUseSyncAdapter) SendBagAddItem(ch storage.Character, item storage.UserItem) {
+	a.s.sendBagAddItem(a.conn, ch, item.ItemID, item.MakeIndex)
+}
+
+func (a itemUseSyncAdapter) SendAbilityOnly(ch storage.Character) {
+	a.s.sendAbilityOnly(a.conn, ch)
+}
+
+func (a itemUseSyncAdapter) SendWinExp(exp int, currentExp int) {
+	a.s.sendWinExp(a.conn, exp, currentExp)
+}
+
+func (a itemUseSyncAdapter) SendLevelUp(ch storage.Character) {
+	a.s.sendLevelUp(a.conn, ch)
+}
+
+func (a itemUseSyncAdapter) SendHealthSpellChanged(ch storage.Character) {
+	a.s.sendHealthSpellChanged(a.conn, world.CharacterActorID(ch), a.s.world.AbilityStats(ch))
+}
+
+func (a itemUseSyncAdapter) SendEquippedItems(ch storage.Character) {
+	a.s.sendEquippedItems(a.conn, ch)
+}
+
+func (a itemUseSyncAdapter) SendWeightChanged(ch storage.Character) {
+	a.s.sendWeightChanged(a.conn, a.s.world.AbilityStats(ch))
+}
+
+func (a itemUseSyncAdapter) SendAbilityRefresh(ch storage.Character, okIdent uint16) {
+	a.s.sendAbilityRefresh(a.conn, ch, okIdent)
+}
+
+func (a itemUseSyncAdapter) SendLocalHear(ch storage.Character, msg string) {
+	if clients := a.s.ClientsInMap(ch.MapID); len(clients) > 0 {
+		a.s.broadcastHear(clients, msg, 0x00, 0xFF)
+		return
+	}
+	a.s.sendHear(a.conn, msg, 0x00, 0xFF)
+}
+
+func (a itemUseSyncAdapter) SendGlobalHear(ch storage.Character, msg string) {
+	_ = ch
+	if clients := a.s.allClients(); len(clients) > 0 {
+		a.s.broadcastHear(clients, msg, 0x00, 0x97)
+		return
+	}
+	a.s.sendHear(a.conn, msg, 0x00, 0x97)
+}
+
+type attackSyncAdapter struct {
+	s    *Server
+	conn net.Conn
+}
+
+func (a attackSyncAdapter) UpdateClient(ch storage.Character) {
+	a.s.updateClient(a.conn, ch)
+}
+
+func (a attackSyncAdapter) SendActionOK() {
+	a.s.sendActionOK(a.conn)
+}
+
+func (a attackSyncAdapter) SendWinExp(exp int, currentExp int) {
+	a.s.sendWinExp(a.conn, exp, currentExp)
+}
+
+func (a attackSyncAdapter) SendLevelUp(ch storage.Character) {
+	a.s.sendLevelUp(a.conn, ch)
+}
+
+func (a attackSyncAdapter) SendHealthSpellChanged(ch storage.Character) {
+	a.s.sendHealthSpellChanged(a.conn, world.CharacterActorID(ch), a.s.world.AbilityStats(ch))
+}
+
+func (a attackSyncAdapter) BroadcastCharacterHit(ch storage.Character, attackIdent uint16) {
+	if clients := a.s.ClientsAroundExcept(ch.MapID, ch.X, ch.Y, playerViewRange, a.conn); len(clients) > 0 {
+		a.s.broadcastCharacterHit(clients, ch, attackIdent)
+	}
+}
+
+func (a attackSyncAdapter) BroadcastHitImpact(result world.AttackResult) {
+	if clients := a.s.ClientsAround(result.Character.MapID, result.MonsterX, result.MonsterY, playerViewRange); len(clients) > 0 {
+		a.s.broadcastHitImpact(clients, result)
+	}
+}
+
+type groupSyncAdapter struct {
+	s *Server
+}
+
+func (a groupSyncAdapter) UpdateClient(ch storage.Character) {
+	a.s.updateClientByCharacterID(ch)
+}
+
+func (a groupSyncAdapter) SendGroupCancel(ch storage.Character) {
+	if client, ok := a.s.ClientByCharacterID(ch.ID); ok {
+		client.writeCommand(a.s, mir176.Command{Ident: mir176.SMGroupCancel}, nil)
+	}
+}
+
+func (a groupSyncAdapter) SendGroupMembers(ownerID string) {
+	a.s.sendGroupMembers(ownerID)
+}
+
 func (s *Server) Run(ctx context.Context) error {
 	var wg sync.WaitGroup
 	errCh := make(chan error, len(s.listeners))
@@ -320,23 +486,9 @@ func (s *Server) handleHit(conn net.Conn, activeChar *storage.Character, cmd mir
 		return
 	}
 	*activeChar = result.Character
-	s.updateClient(conn, result.Character)
-	s.sendActionOK(conn)
-	if result.Experience > 0 {
-		s.sendWinExp(conn, result.Experience, result.CurrentExp)
-	}
-	if result.LevelUp {
-		s.sendLevelUp(conn, result.Character)
-		s.sendHealthSpellChanged(conn, world.CharacterActorID(result.Character), s.world.AbilityStats(result.Character))
-	}
-	if clients := s.ClientsAroundExcept(activeChar.MapID, activeChar.X, activeChar.Y, playerViewRange, conn); len(clients) > 0 {
-		s.broadcastCharacterHit(clients, *activeChar, cmd.Ident)
-	}
+	world.ApplyAttackSync(attackSyncAdapter{s: s, conn: conn}, result, cmd.Ident)
 	if result.MonsterID != "" {
 		s.log.Info("game hit connected", "monster", result.MonsterID, "damage", result.Damage, "dead", result.Dead)
-		if clients := s.ClientsAround(activeChar.MapID, result.MonsterX, result.MonsterY, playerViewRange); len(clients) > 0 {
-			s.broadcastHitImpact(clients, result)
-		}
 	}
 }
 
@@ -345,42 +497,22 @@ func (s *Server) handleSay(conn net.Conn, activeChar *storage.Character, text []
 	if line == "" {
 		return
 	}
-	if strings.HasPrefix(line, "@") {
-		s.handleUserCommand(conn, activeChar, line)
+	result, ok := s.world.HandleSay(*activeChar, line)
+	if !ok {
 		return
 	}
-	if strings.HasPrefix(line, "!") {
-		msg := "(!)" + activeChar.Name + ": " + strings.TrimPrefix(line, "!")
-		if clients := s.allClients(); len(clients) > 0 {
-			s.broadcastHear(clients, msg, 0x00, 0x97)
-		} else {
-			s.sendHear(conn, msg, 0x00, 0x97)
-		}
-		return
-	}
-	msg := activeChar.Name + ":" + line
-	if clients := s.ClientsInMap(activeChar.MapID); len(clients) > 0 {
-		s.broadcastHear(clients, msg, 0x00, 0xFF)
-	} else {
-		s.sendHear(conn, msg, 0x00, 0xFF)
-	}
+	world.ApplySaySync(itemUseSyncAdapter{s: s, conn: conn}, *activeChar, result)
 }
 
 func (s *Server) handleGroupMode(conn net.Conn, activeChar *storage.Character, cmd mir176.Command) {
-	updated, changed, err := s.world.SetGroupMode(*activeChar, cmd.Param != 0)
+	updated, result, err := s.world.SetGroupModeWithResult(*activeChar, cmd.Param != 0)
 	if err != nil {
 		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGroupModeChanged}, nil)
 		return
 	}
 	*activeChar = updated
-	for _, ch := range changed {
-		s.updateClientByCharacterID(ch)
-	}
-	if activeChar.AllowGroup {
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGroupModeChanged, Param: 1}, nil)
-	} else {
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGroupModeChanged}, nil)
-	}
+	world.ApplyGroupSync(groupSyncAdapter{s: s}, result.Sync)
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMGroupModeChanged, Param: result.ResponseParam}, nil)
 }
 
 func (s *Server) handleCreateGroup(conn net.Conn, activeChar *storage.Character, text []byte) {
@@ -390,41 +522,37 @@ func (s *Server) handleCreateGroup(conn net.Conn, activeChar *storage.Character,
 		return
 	}
 	target, ok := s.ClientByName(targetName)
-	if !ok || target.ch.ID == activeChar.ID || target.ch.HP <= 0 {
+	if !ok {
 		s.sendCommand(conn, mir176.Command{Ident: mir176.SMCreateGroupFail, Recog: -2}, nil)
 		return
 	}
-	updatedOwner, updatedTarget, err := s.world.CreateGroup(*activeChar, target.ch, len(s.onlineGroupMembers(activeChar.ID)))
+	updatedOwner, updatedTarget, result, err := s.world.CreateGroupWithResult(*activeChar, target.ch, len(s.onlineGroupMembers(activeChar.ID)))
 	if err != nil {
 		s.sendCommand(conn, mir176.Command{Ident: mir176.SMCreateGroupFail}, nil)
 		return
 	}
 	*activeChar = updatedOwner
 	target.ch = updatedTarget
-	s.updateClientByCharacterID(updatedOwner)
-	s.updateClientByCharacterID(updatedTarget)
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMCreateGroupOK}, nil)
-	s.sendGroupMembers(activeChar.ID)
+	world.ApplyGroupSync(groupSyncAdapter{s: s}, result)
 }
 
 func (s *Server) handleAddGroupMember(conn net.Conn, activeChar *storage.Character, text []byte) {
 	targetName := strings.TrimSpace(DecodeString(text))
 	target, ok := s.ClientByName(targetName)
-	if !ok || target.ch.ID == activeChar.ID || target.ch.HP <= 0 {
+	if !ok {
 		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGroupAddMemFail, Recog: -2}, nil)
 		return
 	}
-	updatedOwner, updatedTarget, err := s.world.AddGroupMember(*activeChar, target.ch, len(s.onlineGroupMembers(activeChar.ID)))
+	updatedOwner, updatedTarget, result, err := s.world.AddGroupMemberWithResult(*activeChar, target.ch, len(s.onlineGroupMembers(activeChar.ID)))
 	if err != nil {
 		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGroupAddMemFail}, nil)
 		return
 	}
 	*activeChar = updatedOwner
 	target.ch = updatedTarget
-	s.updateClientByCharacterID(updatedOwner)
-	s.updateClientByCharacterID(updatedTarget)
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMGroupAddMemOK}, nil)
-	s.sendGroupMembers(activeChar.ID)
+	world.ApplyGroupSync(groupSyncAdapter{s: s}, result)
 }
 
 func (s *Server) handleDelGroupMember(conn net.Conn, activeChar *storage.Character, text []byte) {
@@ -438,28 +566,14 @@ func (s *Server) handleDelGroupMember(conn net.Conn, activeChar *storage.Charact
 		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGroupDelMemFail, Recog: -2}, nil)
 		return
 	}
-	updatedOwner, updatedTarget, err := s.world.DelGroupMember(*activeChar, target.ch)
+	updatedOwner, updatedTarget, result, err := s.world.DelGroupMemberWithResult(*activeChar, target.ch)
 	if err != nil {
 		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGroupDelMemFail}, nil)
 		return
 	}
 	*activeChar = updatedOwner
 	target.ch = updatedTarget
-	s.updateClientByCharacterID(updatedOwner)
-	s.updateClientByCharacterID(updatedTarget)
-	if updatedTarget.GroupOwnerID == "" {
-		if client, ok := s.ClientByCharacterID(updatedTarget.ID); ok {
-			client.writeCommand(s, mir176.Command{Ident: mir176.SMGroupCancel}, nil)
-		}
-	}
-	if updatedOwner.GroupOwnerID == "" && updatedOwner.ID != updatedTarget.ID {
-		if client, ok := s.ClientByCharacterID(updatedOwner.ID); ok {
-			client.writeCommand(s, mir176.Command{Ident: mir176.SMGroupCancel}, nil)
-		}
-	}
-	if updatedOwner.GroupOwnerID != "" {
-		s.sendGroupMembers(updatedOwner.GroupOwnerID)
-	}
+	world.ApplyGroupSync(groupSyncAdapter{s: s}, result)
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMGroupDelMemOK}, EncodeString(target.ch.Name))
 }
 
@@ -467,34 +581,27 @@ func (s *Server) handleDelGroupMember(conn net.Conn, activeChar *storage.Charact
 // MakeIndex, display-name, and equip-slot fields.
 func (s *Server) handleTakeOnItem(conn net.Conn, activeChar *storage.Character, cmd mir176.Command, text []byte) {
 	itemID := DecodeString(text)
-	prevItemID := EquippedItemAt(*activeChar, int(cmd.Param))
-	prevItemMakeIndex := EquippedItemMakeIndex(*activeChar, int(cmd.Param))
-	updated, err := s.world.EquipItemByBagIndex(*activeChar, int(cmd.Param), int(cmd.Recog), itemID)
+	updated, result, err := s.world.EquipItemByBagIndexWithResult(*activeChar, int(cmd.Param), int(cmd.Recog), itemID)
 	if err != nil {
 		s.log.Info("game take on item rejected", "account", activeChar.Account, "char", activeChar.Name, "item", itemID, "make_index", cmd.Recog, "slot", cmd.Param, "error", err)
 		s.sendCommand(conn, mir176.Command{Ident: mir176.SMTakeOnFail}, nil)
 		return
 	}
 	*activeChar = updated
-	if prevItemID != "" {
-		s.sendBagAddItem(conn, updated, prevItemID, prevItemMakeIndex)
-	}
-	s.sendAbilityRefresh(conn, *activeChar, mir176.SMTakeOnOK)
+	world.ApplyEquipSync(itemUseSyncAdapter{s: s, conn: conn}, result, mir176.SMTakeOnOK)
 }
 
 // handleTakeOffItem implements CM_TAKEOFFITEM (ClientTakeOffItems).
 func (s *Server) handleTakeOffItem(conn net.Conn, activeChar *storage.Character, cmd mir176.Command, text []byte) {
 	itemID := DecodeString(text)
-	prev := *activeChar
-	updated, err := s.world.UnequipItemByMakeIndex(*activeChar, int(cmd.Param), int(cmd.Recog), itemID)
+	updated, result, err := s.world.UnequipItemByMakeIndexWithResult(*activeChar, int(cmd.Param), int(cmd.Recog), itemID)
 	if err != nil {
 		s.log.Info("game take off item rejected", "account", activeChar.Account, "char", activeChar.Name, "slot", cmd.Param, "item", itemID, "error", err)
 		s.sendCommand(conn, mir176.Command{Ident: mir176.SMTakeOffFail}, nil)
 		return
 	}
 	*activeChar = updated
-	s.sendBagAddItem(conn, updated, itemID, EquippedItemMakeIndex(prev, int(cmd.Param)))
-	s.sendAbilityRefresh(conn, *activeChar, mir176.SMTakeOffOK)
+	world.ApplyUnequipSync(itemUseSyncAdapter{s: s, conn: conn}, result, mir176.SMTakeOffOK)
 }
 
 // handleDropItem implements CM_DROPITEM.
@@ -520,58 +627,25 @@ func (s *Server) handleDropItem(conn net.Conn, activeChar *storage.Character, cm
 func (s *Server) handlePickup(conn net.Conn, activeChar *storage.Character, cmd mir176.Command) {
 	x := int(cmd.Param)
 	y := int(cmd.Tag)
-	updated, drop, err := s.world.PickupAt(*activeChar, x, y)
+	updated, result, err := s.world.PickupAtWithResult(*activeChar, x, y)
 	if err != nil {
 		s.log.Info("game pickup rejected", "account", activeChar.Account, "char", activeChar.Name, "error", err)
 		return
 	}
 	*activeChar = updated
-	clients := s.ClientsInMap(updated.MapID)
-	if len(clients) > 0 {
-		s.broadcastDropHide(clients, drop.ID)
-	}
-	if drop.ItemID == "金币" {
-		s.sendGoldChanged(conn, updated.Gold)
-		return
-	}
-	for i := 0; i < drop.Count; i++ {
-		s.sendBagAddItem(conn, updated, drop.ItemID, drop.MakeIndex+int32(i))
-	}
-	s.sendWeightChanged(conn, s.world.AbilityStats(updated))
+	world.ApplyPickupSync(pickupSyncAdapter{s: s, conn: conn}, result)
 }
 
 // handleEatItem implements CM_EAT.
 func (s *Server) handleEatItem(conn net.Conn, activeChar *storage.Character, cmd mir176.Command, text []byte) {
 	_ = text
-	prev := *activeChar
 	updated, useResult, err := s.world.UseItemByBagIndex(*activeChar, int(cmd.Recog))
 	if err != nil {
 		s.sendCommand(conn, mir176.Command{Ident: mir176.SMEatFail}, nil)
 		return
 	}
 	*activeChar = updated
-	if prev.MapID != updated.MapID || prev.X != updated.X || prev.Y != updated.Y {
-		s.updateClient(conn, updated)
-		s.sendSpaceMoveState(conn, updated, false)
-		s.broadcastTeleportMove(conn, prev, updated)
-	}
-	for _, added := range useResult.AddedItems {
-		s.sendBagAddItem(conn, updated, added.ItemID, added.MakeIndex)
-	}
-	if useResult.AbilityChanged {
-		s.sendAbilityOnly(conn, updated)
-	}
-	if useResult.Experience > 0 {
-		s.sendWinExp(conn, useResult.Experience, useResult.CurrentExp)
-	}
-	if useResult.LevelUp {
-		s.sendLevelUp(conn, updated)
-		s.sendHealthSpellChanged(conn, world.CharacterActorID(updated), s.world.AbilityStats(updated))
-	} else if prev.HP != updated.HP || prev.MP != updated.MP {
-		s.sendHealthSpellChanged(conn, world.CharacterActorID(updated), s.world.AbilityStats(updated))
-	}
-	s.sendEquippedItems(conn, updated)
-	s.sendWeightChanged(conn, s.world.AbilityStats(updated))
+	world.ApplyItemUseSync(itemUseSyncAdapter{s: s, conn: conn}, useResult)
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMEatOK}, nil)
 }
 
@@ -790,6 +864,13 @@ func (s *Server) sendEnterWorld(conn net.Conn, login RunLogin) (storage.Characte
 	if !ok {
 		return storage.Character{}, false
 	}
+	if ch.HP <= 0 {
+		revived, err := s.world.ReviveCharacterAtHome(ch)
+		if err != nil {
+			return storage.Character{}, false
+		}
+		ch = revived
+	}
 	if normalized, changed := s.world.NormalizeCharacterState(ch); changed {
 		ch = normalized
 	}
@@ -833,7 +914,7 @@ func (s *Server) sendEnterWorldState(conn net.Conn, ch storage.Character) {
 	}
 }
 
-func (s *Server) sendSpaceMoveState(conn net.Conn, ch storage.Character, show2 bool) {
+func (s *Server) sendSpaceMoveState(conn net.Conn, ch storage.Character) {
 	versionDate := ch.SoftVersionDate
 	s.clientMu.Lock()
 	if client := s.clients[conn]; client != nil {
@@ -843,19 +924,15 @@ func (s *Server) sendSpaceMoveState(conn net.Conn, ch storage.Character, show2 b
 	s.clientMu.Unlock()
 	actorID := world.CharacterActorID(ch)
 	showIdent := uint16(mir176.SMSpacemoveShow)
-	if show2 {
-		showIdent = mir176.SMSpacemoveShow2
-	}
 	showBody := EncodeBuffer(CharDesc(s.world.HumanFeatureForCharacter(ch), s.world.CharacterStatus(ch)))
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMSpacemoveHide, Recog: actorID}, nil)
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMClearObjects, Recog: actorID}, nil)
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMChangeMap, Recog: actorID, Param: uint16(ch.X), Tag: uint16(ch.Y), Series: uint16(s.world.CharacterAreaState(ch))}, EncodeString(s.world.MapName(ch.MapID)))
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMChangeMap, Recog: actorID, Param: uint16(ch.X), Tag: uint16(ch.Y), Series: uint16(s.world.CharacterAreaState(ch))}, EncodeString(ch.MapID))
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMAreaState, Recog: s.world.CharacterAreaState(ch)}, nil)
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMMapDescription, Recog: -1}, EncodeString(s.world.MapName(ch.MapID)))
 	if versionDate != 0 {
 		s.sendCommand(conn, ServerConfigCommand(), EncodeBuffer(ServerConfigBody()))
 	}
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMServerUnbind}, nil)
 	s.sendCommand(conn, mir176.Command{Ident: showIdent, Recog: actorID, Param: uint16(ch.X), Tag: uint16(ch.Y), Series: makeWord(byte(ch.Dir), byte(s.world.MapLight(ch.MapID)))}, showBody)
 }
 
@@ -963,8 +1040,26 @@ func (s *Server) broadcastCharacterAppear(clients []*Client, ch storage.Characte
 }
 
 func (s *Server) applyWorldTick(result world.TickResult) {
+	hitIDs := map[string]struct{}{}
+	for _, hit := range result.CharacterHits {
+		if hit.Character.ID != "" {
+			hitIDs[hit.Character.ID] = struct{}{}
+		}
+	}
 	for _, ch := range result.Characters {
 		s.updateClientByCharacterID(ch)
+		if _, ok := hitIDs[ch.ID]; ok {
+			continue
+		}
+		if client, ok := s.ClientByCharacterID(ch.ID); ok {
+			client.writeCommand(s, mir176.Command{
+				Ident:  mir176.SMHealthSpellChanged,
+				Recog:  world.CharacterActorID(ch),
+				Param:  uint16(ch.HP),
+				Tag:    uint16(ch.MP),
+				Series: uint16(s.world.AbilityStats(ch).MaxHP),
+			}, nil)
+		}
 	}
 	for _, action := range result.MonsterActions {
 		clients := s.ClientsAround(action.MapID, action.X, action.Y, playerViewRange)
@@ -1249,18 +1344,12 @@ func (s *Server) sendGroupMembers(ownerID string) {
 }
 
 func (s *Server) handleClientDisconnect(ch storage.Character) {
-	changed, err := s.world.HandleGroupDisconnect(ch)
+	changed, result, err := s.world.HandleGroupDisconnectWithResult(ch)
 	if err != nil {
 		return
 	}
-	for _, updated := range changed {
-		s.updateClientByCharacterID(updated)
-		if updated.ID != ch.ID && updated.GroupOwnerID == "" {
-			if client, ok := s.ClientByCharacterID(updated.ID); ok {
-				client.writeCommand(s, mir176.Command{Ident: mir176.SMGroupCancel}, nil)
-			}
-		}
-	}
+	_ = changed
+	world.ApplyGroupSync(groupSyncAdapter{s: s}, result)
 }
 
 func (s *Server) PlayerSnapshots() []world.PlayerSnapshot {

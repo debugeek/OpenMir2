@@ -45,6 +45,7 @@ func (w *World) useBagItemEntryLocked(ch storage.Character, idx int) (storage.Ch
 		return ch, ItemUseResult{}, fmt.Errorf("item %s not found", itemID)
 	}
 	result := ItemUseResult{Character: ch}
+	prev := ch
 	prevLevel := ch.Level
 	switch {
 	case itemID == "金币":
@@ -143,6 +144,12 @@ func (w *World) useBagItemEntryLocked(ch storage.Character, idx int) (storage.Ch
 	}
 	result.Character = ch
 	result.Consumed = true
+	if prev.MapID != ch.MapID || prev.X != ch.X || prev.Y != ch.Y {
+		result.Teleport = newTeleportEvent(prev, ch)
+	}
+	if prev.HP != ch.HP || prev.MP != ch.MP || result.LevelUp {
+		result.HealthChanged = true
+	}
 	w.pruneStaleEquippedItemsLocked(&ch)
 	return ch, result, w.store.SaveCharacter(ch)
 }

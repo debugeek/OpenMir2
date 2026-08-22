@@ -13,7 +13,17 @@ type UserCommandResult struct {
 	Monsters   []Monster
 	AddedItems []storage.UserItem
 	Character  storage.Character
-	Moved      bool
+	Teleport   *TeleportEvent
+}
+
+type ChatResult struct {
+	Message string
+	Global  bool
+}
+
+type SayResult struct {
+	Command *UserCommandResult
+	Chat    *ChatResult
 }
 
 func (w *World) HandleUserCommand(activeChar storage.Character, line string) (UserCommandResult, bool) {
@@ -31,6 +41,39 @@ func (w *World) HandleUserCommand(activeChar storage.Character, line string) (Us
 	default:
 		return UserCommandResult{Message: "unknown command: @" + name}, true
 	}
+}
+
+func (w *World) HandleChat(activeChar storage.Character, line string) (ChatResult, bool) {
+	line = strings.TrimSpace(line)
+	if line == "" || strings.HasPrefix(line, "@") {
+		return ChatResult{}, false
+	}
+	if strings.HasPrefix(line, "!") {
+		return ChatResult{
+			Message: "(!)" + activeChar.Name + ": " + strings.TrimPrefix(line, "!"),
+			Global:  true,
+		}, true
+	}
+	return ChatResult{Message: activeChar.Name + ":" + line}, true
+}
+
+func (w *World) HandleSay(activeChar storage.Character, line string) (SayResult, bool) {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return SayResult{}, false
+	}
+	if strings.HasPrefix(line, "@") {
+		result, ok := w.HandleUserCommand(activeChar, line)
+		if !ok {
+			return SayResult{}, false
+		}
+		return SayResult{Command: &result}, true
+	}
+	result, ok := w.HandleChat(activeChar, line)
+	if !ok {
+		return SayResult{}, false
+	}
+	return SayResult{Chat: &result}, true
 }
 
 func parseUserCommand(line string) (string, []string, bool) {
@@ -153,7 +196,7 @@ func (w *World) handleMoveCommand(activeChar storage.Character, params []string)
 		return UserCommandResult{
 			Message:   fmt.Sprintf("moved to %s %d %d", updated.MapID, updated.X, updated.Y),
 			Character: updated,
-			Moved:     true,
+			Teleport:  newTeleportEvent(activeChar, updated),
 		}
 	case 1:
 		updated, err := w.TeleportRandomInMap(activeChar, params[0])
@@ -163,7 +206,7 @@ func (w *World) handleMoveCommand(activeChar storage.Character, params []string)
 		return UserCommandResult{
 			Message:   fmt.Sprintf("moved to %s %d %d", updated.MapID, updated.X, updated.Y),
 			Character: updated,
-			Moved:     true,
+			Teleport:  newTeleportEvent(activeChar, updated),
 		}
 	case 2:
 		if activeChar.MapID == "" {
@@ -184,7 +227,7 @@ func (w *World) handleMoveCommand(activeChar storage.Character, params []string)
 		return UserCommandResult{
 			Message:   fmt.Sprintf("moved to %s %d %d", updated.MapID, updated.X, updated.Y),
 			Character: updated,
-			Moved:     true,
+			Teleport:  newTeleportEvent(activeChar, updated),
 		}
 	case 3:
 		x, err := strconv.Atoi(params[1])
@@ -202,7 +245,7 @@ func (w *World) handleMoveCommand(activeChar storage.Character, params []string)
 		return UserCommandResult{
 			Message:   fmt.Sprintf("moved to %s %d %d", updated.MapID, updated.X, updated.Y),
 			Character: updated,
-			Moved:     true,
+			Teleport:  newTeleportEvent(activeChar, updated),
 		}
 	default:
 		return UserCommandResult{Message: "usage: @Move [map] x y"}

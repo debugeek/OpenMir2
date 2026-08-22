@@ -14,13 +14,14 @@ import (
 )
 
 const (
-	testConfigsDir = "../../configs"
-	testMapID      = "0"
-	testMonsterID  = "鸡"
-	testWeaponID   = "木剑"
-	testArmorID    = "布衣(男)"
-	testHPItemID   = "金创药(小量)"
-	testMPItemID   = "魔法药(小量)"
+	testConfigsDir      = "../../configs"
+	testMapID           = "0"
+	testMonsterID       = "鸡"
+	testWeaponID        = "木剑"
+	testArmorID         = "布衣(男)"
+	testHPItemID        = "金创药(小量)"
+	testInstantHPItemID = "太阳水"
+	testMPItemID        = "魔法药(小量)"
 )
 
 func loadTestBundle(t *testing.T) data.StdBundle {
@@ -1144,6 +1145,55 @@ func TestCombatDropPickupAndPersistence(t *testing.T) {
 	}
 	if len(saved.BagItems) < 2 {
 		t.Fatalf("pickup was not persisted")
+	}
+}
+
+func TestMonsterDeathResetsSearchCooldown(t *testing.T) {
+	bundle := loadTestBundle(t)
+	store, err := storage.Open(filepath.Join(t.TempDir(), "state.json"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	w := New(bundle, store)
+	mon := &Monster{
+		ID:                "mon-1",
+		MapID:             testMapID,
+		X:                 10,
+		Y:                 10,
+		Dir:               4,
+		ViewRange:         5,
+		LeashRange:        15,
+		SearchNoTargetMS:  1000,
+		SearchHasTargetMS: 8000,
+		HP:                1,
+		MaxHP:             1,
+		Alive:             true,
+		MinAttack:         1,
+		MaxAttack:         1,
+	}
+	ch := storage.Character{ID: "player-1", MapID: testMapID, X: 11, Y: 10, HP: 20, MaxHP: 20}
+	_, hit, err := w.monsterAttackCharacterWithDamageLocked(mon, ch, 999)
+	if err != nil {
+		t.Fatalf("monsterAttackCharacterWithDamageLocked() error = %v", err)
+	}
+	if !hit.Dead {
+		t.Fatalf("hit.Dead = false, want true")
+	}
+	if mon.TargetCharacterID != "" {
+		t.Fatalf("TargetCharacterID = %q, want empty", mon.TargetCharacterID)
+	}
+	if !mon.TargetFocusAt.IsZero() {
+		t.Fatalf("TargetFocusAt = %v, want zero", mon.TargetFocusAt)
+	}
+	if mon.NextSearchAt.IsZero() {
+		t.Fatalf("NextSearchAt = zero, want immediate re-search")
+	}
+	_, _, _, err = w.tickNormalMonsterLocked(mon, map[string]storage.Character{ch.ID: ch}, mon.NextSearchAt.Add(time.Millisecond))
+	if err != nil {
+		t.Fatalf("tickNormalMonsterLocked() error = %v", err)
+	}
+	if mon.TargetCharacterID != ch.ID {
+		t.Fatalf("TargetCharacterID = %q, want %q after cooldown reset", mon.TargetCharacterID, ch.ID)
 	}
 }
 
@@ -2370,7 +2420,7 @@ func TestUseWeaponDoesNotAutoEquipItem(t *testing.T) {
 	}
 }
 
-func TestUseItemConsumesPotionAndRestoresHealth(t *testing.T) {
+func TestUseItemConsumesSlowPotionAndQueuesRecovery(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
 	ch.HP = 10
 	ch.MaxHP = 100
@@ -2384,8 +2434,11 @@ func TestUseItemConsumesPotionAndRestoresHealth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UseItem() error = %v", err)
 	}
-	if updated.HP != 30 {
-		t.Fatalf("HP = %d, want 30", updated.HP)
+	if updated.HP != 10 {
+		t.Fatalf("HP = %d, want 10 before tick recovery", updated.HP)
+	}
+	if updated.IncHealth != 20 || updated.IncSpell != 0 {
+		t.Fatalf("queued recovery = %d/%d, want 20/0", updated.IncHealth, updated.IncSpell)
 	}
 	if countBagItems(updated.BagItems) != 1 {
 		t.Fatalf("bag = %+v, want one remaining potion", updated.BagItems)
@@ -2401,16 +2454,66 @@ func TestUseItemByBagIndexConsumesPotionAndRestoresHealth(t *testing.T) {
 	ch.MaxHP = 100
 	ch.MP = 5
 	ch.MaxMP = 40
-	ch.BagItems = []storage.UserItem{{ItemID: testHPItemID, MakeIndex: 200}}
+	ch.BagItems = []storage.UserItem{{ItemID: testInstantHPItemID, MakeIndex: 200}}
 	updated, _, err := w.UseItemByBagIndex(ch, 200)
 	if err != nil {
 		t.Fatalf("UseItemByBagIndex() error = %v", err)
 	}
-	if updated.HP != 30 {
-		t.Fatalf("HP = %d, want 30", updated.HP)
+	if updated.HP != 40 {
+		t.Fatalf("HP = %d, want 40", updated.HP)
+	}
+	if updated.MP != 40 {
+		t.Fatalf("MP = %d, want 40", updated.MP)
 	}
 	if countBagItems(updated.BagItems) != 0 {
 		t.Fatalf("bag = %+v, want empty after potion use", updated.BagItems)
+	}
+}
+
+func TestTickAppliesQueuedPotionRecoveryAndClearsAtMax(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	ch.HP = 10
+	ch.MaxHP = 100
+	ch.MP = 5
+	ch.MaxMP = 40
+	ch.IncHealth = 20
+	ch.IncSpell = 30
+	result, err := w.Tick([]PlayerSnapshot{{Character: ch}}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	if len(result.Characters) != 1 {
+		t.Fatalf("Characters = %+v, want one updated character", result.Characters)
+	}
+	updated := result.Characters[0]
+	if updated.HP != 15 || updated.MP != 10 {
+		t.Fatalf("HP/MP = %d/%d, want 15/10 after one recovery tick", updated.HP, updated.MP)
+	}
+	if updated.IncHealth != 15 || updated.IncSpell != 25 {
+		t.Fatalf("queued recovery = %d/%d, want 15/25 after one tick", updated.IncHealth, updated.IncSpell)
+	}
+	if updated.IncHealthSpellAt == 0 {
+		t.Fatalf("expected recovery tick timestamp to be set")
+	}
+	updated.HP = 99
+	updated.MaxHP = 100
+	updated.MP = 39
+	updated.MaxMP = 40
+	updated.IncHealth = 20
+	updated.IncSpell = 20
+	result, err = w.Tick([]PlayerSnapshot{{Character: updated}}, time.Unix(11, 0))
+	if err != nil {
+		t.Fatalf("second Tick() error = %v", err)
+	}
+	if len(result.Characters) != 1 {
+		t.Fatalf("Characters = %+v, want one updated character on second tick", result.Characters)
+	}
+	updated = result.Characters[0]
+	if updated.HP != 100 || updated.MP != 40 {
+		t.Fatalf("HP/MP = %d/%d, want capped at full on second tick", updated.HP, updated.MP)
+	}
+	if updated.IncHealth != 0 || updated.IncSpell != 0 {
+		t.Fatalf("queued recovery = %d/%d, want cleared at max HP/MP", updated.IncHealth, updated.IncSpell)
 	}
 }
 
@@ -2756,6 +2859,48 @@ func TestPickupGoldAddsToBalance(t *testing.T) {
 	}
 }
 
+func TestPickupAtWithResultDistinguishesGoldAndItem(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	ch.BagItems = []storage.UserItem{}
+	w.drops["drop-gold"] = GroundDrop{ID: "drop-gold", MapID: ch.MapID, X: ch.X, Y: ch.Y, ItemID: "金币", Count: 7}
+	_, goldResult, err := w.PickupAtWithResult(ch, ch.X, ch.Y)
+	if err != nil {
+		t.Fatalf("PickupAtWithResult() gold error = %v", err)
+	}
+	if !goldResult.GoldChanged || goldResult.Gold != 7 {
+		t.Fatalf("gold result = %+v, want gold change to 7", goldResult)
+	}
+
+	w.drops["drop-item"] = GroundDrop{ID: "drop-item", MapID: ch.MapID, X: ch.X, Y: ch.Y, ItemID: testHPItemID, Count: 1}
+	_, itemResult, err := w.PickupAtWithResult(ch, ch.X, ch.Y)
+	if err != nil {
+		t.Fatalf("PickupAtWithResult() item error = %v", err)
+	}
+	if itemResult.GoldChanged {
+		t.Fatalf("item result unexpectedly marked gold changed: %+v", itemResult)
+	}
+	if len(itemResult.AddedItems) != 1 || itemResult.AddedItems[0].ItemID != testHPItemID {
+		t.Fatalf("item result = %+v, want one %s added", itemResult, testHPItemID)
+	}
+}
+
+func TestSetGroupModeWithResultReturnsResponseParam(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	updated, result, err := w.SetGroupModeWithResult(ch, true)
+	if err != nil {
+		t.Fatalf("SetGroupModeWithResult() error = %v", err)
+	}
+	if result.ResponseParam != 1 {
+		t.Fatalf("response param = %d, want 1", result.ResponseParam)
+	}
+	if !updated.AllowGroup {
+		t.Fatalf("updated.AllowGroup = false, want true")
+	}
+	if len(result.Sync.Updated) != 1 || result.Sync.Updated[0].ID != ch.ID {
+		t.Fatalf("sync updated = %+v, want current character", result.Sync.Updated)
+	}
+}
+
 func TestAbilitiesMatchesBaseWithNothingEquipped(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
 	base := Base(ch.Class, ch.Level)
@@ -2895,8 +3040,8 @@ func TestHandleUserCommandMoveRandomCurrentMap(t *testing.T) {
 	if !ok {
 		t.Fatal("HandleUserCommand() returned ok=false")
 	}
-	if !result.Moved {
-		t.Fatal("HandleUserCommand() did not mark move result")
+	if result.Teleport == nil {
+		t.Fatal("HandleUserCommand() did not provide teleport event")
 	}
 	if result.Character.MapID != ch.MapID {
 		t.Fatalf("map = %q, want %q", result.Character.MapID, ch.MapID)
@@ -2910,8 +3055,8 @@ func TestHandleUserCommandMoveCurrentMapCoords(t *testing.T) {
 	if !ok {
 		t.Fatal("HandleUserCommand() returned ok=false")
 	}
-	if !result.Moved {
-		t.Fatal("HandleUserCommand() did not mark move result")
+	if result.Teleport == nil {
+		t.Fatal("HandleUserCommand() did not provide teleport event")
 	}
 	if result.Character.MapID != ch.MapID || result.Character.X != targetX || result.Character.Y != targetY {
 		t.Fatalf("move = %s (%d,%d), want %s (%d,%d)", result.Character.MapID, result.Character.X, result.Character.Y, ch.MapID, targetX, targetY)
@@ -2925,8 +3070,8 @@ func TestHandleUserCommandMoveTargetMapRandom(t *testing.T) {
 	if !ok {
 		t.Fatal("HandleUserCommand() returned ok=false")
 	}
-	if !result.Moved {
-		t.Fatal("HandleUserCommand() did not mark move result")
+	if result.Teleport == nil {
+		t.Fatal("HandleUserCommand() did not provide teleport event")
 	}
 	if result.Character.MapID != targetMap {
 		t.Fatalf("map = %q, want %q", result.Character.MapID, targetMap)
@@ -2942,11 +3087,57 @@ func TestHandleUserCommandMoveTargetMapCoords(t *testing.T) {
 	if !ok {
 		t.Fatal("HandleUserCommand() returned ok=false")
 	}
-	if !result.Moved {
-		t.Fatal("HandleUserCommand() did not mark move result")
+	if result.Teleport == nil {
+		t.Fatal("HandleUserCommand() did not provide teleport event")
 	}
 	if result.Character.MapID != targetMap || result.Character.X != targetX || result.Character.Y != targetY {
 		t.Fatalf("move = %s (%d,%d), want %s (%d,%d)", result.Character.MapID, result.Character.X, result.Character.Y, targetMap, targetX, targetY)
+	}
+}
+
+func TestHandleChatFormatsLocalMessage(t *testing.T) {
+	w, ch := newRealDataWorldCharacter(t)
+	result, ok := w.HandleChat(ch, " hello world ")
+	if !ok {
+		t.Fatal("HandleChat() returned ok=false")
+	}
+	if result.Global {
+		t.Fatal("HandleChat() marked local message as global")
+	}
+	if got, want := result.Message, ch.Name+":hello world"; got != want {
+		t.Fatalf("message = %q, want %q", got, want)
+	}
+}
+
+func TestHandleChatFormatsGlobalMessage(t *testing.T) {
+	w, ch := newRealDataWorldCharacter(t)
+	result, ok := w.HandleChat(ch, "! hello world ")
+	if !ok {
+		t.Fatal("HandleChat() returned ok=false")
+	}
+	if !result.Global {
+		t.Fatal("HandleChat() did not mark global message")
+	}
+	if got, want := result.Message, "(!)"+ch.Name+":  hello world"; got != want {
+		t.Fatalf("message = %q, want %q", got, want)
+	}
+}
+
+func TestHandleSayRoutesCommandAndChat(t *testing.T) {
+	w, ch := newRealDataWorldCharacter(t)
+	commandResult, ok := w.HandleSay(ch, "@Move")
+	if !ok {
+		t.Fatal("HandleSay() returned ok=false for command")
+	}
+	if commandResult.Command == nil || commandResult.Chat != nil {
+		t.Fatalf("HandleSay() command routing = %+v", commandResult)
+	}
+	chatResult, ok := w.HandleSay(ch, "hello")
+	if !ok {
+		t.Fatal("HandleSay() returned ok=false for chat")
+	}
+	if chatResult.Chat == nil || chatResult.Command != nil {
+		t.Fatalf("HandleSay() chat routing = %+v", chatResult)
 	}
 }
 

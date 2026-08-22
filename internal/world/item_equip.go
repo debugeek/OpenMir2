@@ -29,44 +29,50 @@ const (
 // EquipItem moves an item from the character's bag into the given equip slot,
 // returning whatever was previously equipped there to the bag.
 func (w *World) EquipItem(ch storage.Character, slot int, itemID string) (storage.Character, error) {
-	return w.EquipItemByBagIndex(ch, slot, 0, itemID)
+	updated, _, err := w.EquipItemByBagIndexWithResult(ch, slot, 0, itemID)
+	return updated, err
 }
 
 // EquipItemByBagIndex moves a bag item identified by its MakeIndex and
 // item ID into the given equip slot.
 func (w *World) EquipItemByBagIndex(ch storage.Character, slot int, bagIndex int, itemID string) (storage.Character, error) {
+	updated, _, err := w.EquipItemByBagIndexWithResult(ch, slot, bagIndex, itemID)
+	return updated, err
+}
+
+func (w *World) EquipItemByBagIndexWithResult(ch storage.Character, slot int, bagIndex int, itemID string) (storage.Character, EquipResult, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.normalizeBagItemMakeIndexesLocked(&ch) {
 		if err := w.store.SaveCharacter(ch); err != nil {
-			return ch, err
+			return ch, EquipResult{}, err
 		}
 	}
 	w.normalizeEquippedItemsLocked(&ch)
-	updated, err := w.equipItemLocked(ch, slot, bagIndex, itemID)
+	updated, result, err := w.equipItemLocked(ch, slot, bagIndex, itemID)
 	if err != nil {
-		return ch, err
+		return ch, EquipResult{}, err
 	}
-	return updated, w.store.SaveCharacter(updated)
+	return updated, result, w.store.SaveCharacter(updated)
 }
 
-func (w *World) equipItemLocked(ch storage.Character, slot int, bagIndex int, itemID string) (storage.Character, error) {
+func (w *World) equipItemLocked(ch storage.Character, slot int, bagIndex int, itemID string) (storage.Character, EquipResult, error) {
 	if slot < 0 || slot >= useSlotCount {
-		return ch, fmt.Errorf("unsupported equip slot %d", slot)
+		return ch, EquipResult{}, fmt.Errorf("unsupported equip slot %d", slot)
 	}
 	item, ok := w.data.Items[itemID]
 	if !ok {
-		return ch, fmt.Errorf("item %s not found", itemID)
+		return ch, EquipResult{}, fmt.Errorf("item %s not found", itemID)
 	}
 	if !w.canWearInSlotLocked(item, slot) {
-		return ch, fmt.Errorf("item %s is not wearable", itemID)
+		return ch, EquipResult{}, fmt.Errorf("item %s is not wearable", itemID)
 	}
 	if err := w.canEquipItemLocked(ch, item, slot); err != nil {
-		return ch, err
+		return ch, EquipResult{}, err
 	}
 	idx := w.findBagItemSlotLocked(ch, itemID, int32(bagIndex))
 	if idx < 0 {
-		return ch, fmt.Errorf("item %s not in bag", itemID)
+		return ch, EquipResult{}, fmt.Errorf("item %s not in bag", itemID)
 	}
 	previous, hasPrevious := w.equippedItemLocked(ch, slot)
 	entry := ch.BagItems[idx]
@@ -91,7 +97,7 @@ func (w *World) equipItemLocked(ch storage.Character, slot int, bagIndex int, it
 		}
 	}
 	if !w.canCarryWeightLocked(ch, addWeight) {
-		return ch, fmt.Errorf("item %s is too heavy", itemID)
+		return ch, EquipResult{}, fmt.Errorf("item %s is too heavy", itemID)
 	}
 	updated := storage.UserItem{
 		ItemID:    itemID,
@@ -105,59 +111,75 @@ func (w *World) equipItemLocked(ch storage.Character, slot int, bagIndex int, it
 	if hasPrevious {
 		ch.BagItems = append(ch.BagItems, previous)
 	}
-	return ch, nil
+	result := EquipResult{Character: ch}
+	if hasPrevious {
+		result.SwappedOut = previous
+		result.HasSwappedOut = true
+	}
+	return ch, result, nil
 }
 
 // UnequipItem returns the item worn in the given slot to the character's bag.
 // Mirrors CM_TAKEOFFITEM (ClientTakeOffItems).
 func (w *World) UnequipItem(ch storage.Character, slot int) (storage.Character, error) {
-	return w.UnequipItemByItemID(ch, slot, "")
+	updated, _, err := w.UnequipItemByItemIDWithResult(ch, slot, "")
+	return updated, err
 }
 
 // UnequipItemByItemID returns the item worn in the given slot after confirming the
 // equipped item ID when provided.
 func (w *World) UnequipItemByItemID(ch storage.Character, slot int, itemID string) (storage.Character, error) {
-	return w.unequipByIdentity(ch, slot, 0, itemID)
+	updated, _, err := w.UnequipItemByItemIDWithResult(ch, slot, itemID)
+	return updated, err
 }
 
 func (w *World) UnequipItemByMakeIndex(ch storage.Character, slot int, makeIndex int, itemID string) (storage.Character, error) {
-	return w.unequipByIdentity(ch, slot, makeIndex, itemID)
+	updated, _, err := w.UnequipItemByMakeIndexWithResult(ch, slot, makeIndex, itemID)
+	return updated, err
 }
 
-func (w *World) unequipByIdentity(ch storage.Character, slot, makeIndex int, itemID string) (storage.Character, error) {
+func (w *World) UnequipItemByItemIDWithResult(ch storage.Character, slot int, itemID string) (storage.Character, UnequipResult, error) {
+	return w.unequipByIdentityWithResult(ch, slot, 0, itemID)
+}
+
+func (w *World) UnequipItemByMakeIndexWithResult(ch storage.Character, slot, makeIndex int, itemID string) (storage.Character, UnequipResult, error) {
+	return w.unequipByIdentityWithResult(ch, slot, makeIndex, itemID)
+}
+
+func (w *World) unequipByIdentityWithResult(ch storage.Character, slot, makeIndex int, itemID string) (storage.Character, UnequipResult, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.normalizeEquippedItemsLocked(&ch)
-	updated, err := w.unequipItemLocked(ch, slot, makeIndex, itemID)
+	updated, result, err := w.unequipItemLocked(ch, slot, makeIndex, itemID)
 	if err != nil {
-		return ch, err
+		return ch, UnequipResult{}, err
 	}
-	return updated, w.store.SaveCharacter(updated)
+	return updated, result, w.store.SaveCharacter(updated)
 }
 
-func (w *World) unequipItemLocked(ch storage.Character, slot, requestedIndex int, itemID string) (storage.Character, error) {
+func (w *World) unequipItemLocked(ch storage.Character, slot, requestedIndex int, itemID string) (storage.Character, UnequipResult, error) {
 	if slot < 0 || slot >= useSlotCount {
-		return ch, fmt.Errorf("unsupported equip slot %d", slot)
+		return ch, UnequipResult{}, fmt.Errorf("unsupported equip slot %d", slot)
 	}
 	wornItem, ok := w.equippedItemLocked(ch, slot)
 	if !ok {
-		return ch, fmt.Errorf("slot %d is empty", slot)
+		return ch, UnequipResult{}, fmt.Errorf("slot %d is empty", slot)
 	}
 	if itemID != "" && wornItem.ItemID != itemID {
-		return ch, fmt.Errorf("item %s not in slot %d", itemID, slot)
+		return ch, UnequipResult{}, fmt.Errorf("item %s not in slot %d", itemID, slot)
 	}
 	if requestedIndex > 0 && wornItem.MakeIndex != int32(requestedIndex) {
-		return ch, fmt.Errorf("item identity mismatch in slot %d", slot)
+		return ch, UnequipResult{}, fmt.Errorf("item identity mismatch in slot %d", slot)
 	}
 	item, ok := w.data.Items[wornItem.ItemID]
 	if !ok {
-		return ch, fmt.Errorf("item %s not found", wornItem.ItemID)
+		return ch, UnequipResult{}, fmt.Errorf("item %s not found", wornItem.ItemID)
 	}
 	if !w.canCarryWeightLocked(ch, item.Weight) {
-		return ch, fmt.Errorf("item %s is too heavy", wornItem.ItemID)
+		return ch, UnequipResult{}, fmt.Errorf("item %s is too heavy", wornItem.ItemID)
 	}
 	if !w.canCarryBagItemsLocked(ch, 1) {
-		return ch, fmt.Errorf("bag is full")
+		return ch, UnequipResult{}, fmt.Errorf("bag is full")
 	}
 	bagItem := wornItem
 	if bagItem.DuraMax == 0 {
@@ -168,5 +190,5 @@ func (w *World) unequipItemLocked(ch storage.Character, slot, requestedIndex int
 	}
 	w.deleteEquippedItemLocked(&ch, slot)
 	ch.BagItems = append(ch.BagItems, bagItem)
-	return ch, nil
+	return ch, UnequipResult{Character: ch, RemovedItem: bagItem, HasRemovedItem: true}, nil
 }

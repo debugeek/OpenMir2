@@ -7,23 +7,21 @@ import (
 
 	"openmir2/internal/data"
 	"openmir2/internal/storage"
+	"openmir2/internal/world/core"
 )
 
 func applyStdMode0Use(ch storage.Character, entry storage.UserItem, item data.StdItem) (storage.Character, error) {
 	switch item.Shape {
 	case 1:
-		ch.HP = minInt(ch.MaxHP, ch.HP+item.Stats.AcMin)
-		ch.MP = minInt(ch.MaxMP, ch.MP+item.Stats.MacMin)
+		ch = core.ApplyVitalDelta(ch, item.Stats.AcMin, item.Stats.MacMin).Character
 	case 2:
 		return ch, nil
 	case 3:
 		hp := int(math.Round(float64(ch.MaxHP) * float64(item.Stats.AcMin) / 100.0))
 		mp := int(math.Round(float64(ch.MaxMP) * float64(item.Stats.MacMin) / 100.0))
-		ch.HP = minInt(ch.MaxHP, ch.HP+hp)
-		ch.MP = minInt(ch.MaxMP, ch.MP+mp)
+		ch = core.ApplyVitalDelta(ch, hp, mp).Character
 	default:
-		ch.HP = minInt(ch.MaxHP, ch.HP+item.Stats.AcMin)
-		ch.MP = minInt(ch.MaxMP, ch.MP+item.Stats.MacMin)
+		ch = core.QueueRecovery(ch, item.Stats.AcMin, item.Stats.MacMin)
 	}
 	_ = entry
 	return ch, nil
@@ -42,7 +40,7 @@ func applyStdMode3Use(w *World, ch storage.Character, entry storage.UserItem, it
 		next, err := w.homeTeleportCharacterLocked(ch)
 		return next, "", 0, false, err
 	case 2:
-		next, err := w.TeleportRandomInCurrentMap(ch)
+		next, err := w.teleportRandomInMapLocked(ch, ch.MapID)
 		return next, "", 0, false, err
 	case 12:
 		now := time.Now()

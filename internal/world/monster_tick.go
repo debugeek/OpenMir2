@@ -5,6 +5,7 @@ import (
 
 	"openmir2/internal/data"
 	"openmir2/internal/storage"
+	"openmir2/internal/world/core"
 )
 
 func (w *World) Tick(players []PlayerSnapshot, now time.Time) (TickResult, error) {
@@ -12,15 +13,20 @@ func (w *World) Tick(players []PlayerSnapshot, now time.Time) (TickResult, error
 	defer w.mu.Unlock()
 	w.respawnLocked(now)
 	result := TickResult{}
+	updated := map[string]storage.Character{}
 	playersByID := map[string]storage.Character{}
 	for _, player := range players {
 		ch := player.Character
 		if ch.ID == "" || ch.HP <= 0 {
 			continue
 		}
+		next, changed := core.ApplyQueuedRecovery(ch, now)
+		if changed {
+			ch = next
+			updated[ch.ID] = ch
+		}
 		playersByID[ch.ID] = ch
 	}
-	updated := map[string]storage.Character{}
 	for _, mon := range w.monsters {
 		if !mon.Alive {
 			continue
@@ -551,7 +557,7 @@ func (w *World) tickFleeAnimalMonsterLocked(mon *Monster, players map[string]sto
 }
 
 func (w *World) explosionSpiderLocked(mon *Monster, players map[string]storage.Character) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
-	mon.HP = 0
+	mon.HP = core.ApplyHPDelta(mon.HP, mon.MaxHP, -mon.HP).HP
 	var hits []CharacterHit
 	var updated []storage.Character
 	var nearest storage.Character
@@ -572,10 +578,8 @@ func (w *World) explosionSpiderLocked(mon *Monster, players map[string]storage.C
 			if dmg < 1 {
 				dmg = 1
 			}
-			ch.HP -= dmg / 2
-			if ch.HP < 0 {
-				ch.HP = 0
-			}
+			change := core.ApplyVitalDelta(ch, -(dmg / 2), 0)
+			ch = change.Character
 			hit := CharacterHit{
 				Character:       ch,
 				Damage:          dmg / 2,
@@ -584,7 +588,7 @@ func (w *World) explosionSpiderLocked(mon *Monster, players map[string]storage.C
 				AttackerAppr:    mon.Appr,
 				AttackerX:       mon.X,
 				AttackerY:       mon.Y,
-				Dead:            ch.HP == 0,
+				Dead:            change.Dead,
 			}
 			hits = append(hits, hit)
 			updated = append(updated, ch)

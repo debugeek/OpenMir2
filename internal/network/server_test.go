@@ -20,12 +20,13 @@ import (
 )
 
 const (
-	testConfigsDir = "../../configs"
-	testMapID      = "0"
-	testMonsterID  = "鸡"
-	testWeaponID   = "木剑"
-	testArmorID    = "布衣(男)"
-	testHPItemID   = "金创药(小量)"
+	testConfigsDir      = "../../configs"
+	testMapID           = "0"
+	testMonsterID       = "鸡"
+	testWeaponID        = "木剑"
+	testArmorID         = "布衣(男)"
+	testHPItemID        = "金创药(小量)"
+	testInstantHPItemID = "太阳水"
 )
 
 func WireString(t *testing.T, text string) []byte {
@@ -972,6 +973,31 @@ func TestSendEnterWorldReturnsCharacter(t *testing.T) {
 	}
 }
 
+func TestSendEnterWorldRevivesDeadCharacterAtHome(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := s.world.DefaultSpawn()
+	want, err := s.world.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	want.HP = 0
+	want.MP = 0
+	if err := s.store.SaveCharacter(want); err != nil {
+		t.Fatalf("SaveCharacter() error = %v", err)
+	}
+
+	got, ok := s.sendEnterWorld(nil, RunLogin{Account: "test", CharName: "tester"})
+	if !ok {
+		t.Fatalf("sendEnterWorld() = ok=false, want true")
+	}
+	if got.HP != got.MaxHP || got.MP != got.MaxMP {
+		t.Fatalf("sendEnterWorld() vitals = hp=%d mp=%d, want full restore", got.HP, got.MP)
+	}
+	if got.MapID != want.HomeMap || got.X != want.HomeX || got.Y != want.HomeY {
+		t.Fatalf("sendEnterWorld() location = %+v, want home %+v", got, want)
+	}
+}
+
 func TestSendEnterWorldSendsNearbyMonsters(t *testing.T) {
 	s := newDataDirTestServer(t, testConfigsDir)
 	mapID, x, y := s.world.DefaultSpawn()
@@ -1498,7 +1524,7 @@ func TestSendSpaceMoveStateSendsMapResetAndShow(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		s.sendSpaceMoveState(server, ch, false)
+		s.sendSpaceMoveState(server, ch)
 	}()
 
 	hideCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
@@ -1526,8 +1552,8 @@ func TestSendSpaceMoveStateSendsMapResetAndShow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodePlain6Payload(SM_CHANGEMAP) error = %v", err)
 	}
-	if got := DecodeString(changeMapDecoded); got != s.world.MapName(ch.MapID) {
-		t.Fatalf("SM_CHANGEMAP body = %q, want %q", got, s.world.MapName(ch.MapID))
+	if got := DecodeString(changeMapDecoded); got != ch.MapID {
+		t.Fatalf("SM_CHANGEMAP body = %q, want %q", got, ch.MapID)
 	}
 	areaCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
@@ -1550,19 +1576,12 @@ func TestSendSpaceMoveStateSendsMapResetAndShow(t *testing.T) {
 	if got := DecodeString(mapDescDecoded); got != s.world.MapName(ch.MapID) {
 		t.Fatalf("SM_MAPDESCRIPTION body = %q, want %q", got, s.world.MapName(ch.MapID))
 	}
-	unbindCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
-	if err != nil {
-		t.Fatalf("decode SM_SERVERUNBIND frame error = %v", err)
-	}
-	if unbindCmd.Ident != mir176.SMServerUnbind {
-		t.Fatalf("sixth frame ident = %d, want SM_SERVERUNBIND (%d)", unbindCmd.Ident, mir176.SMServerUnbind)
-	}
 	showCmd, showBody, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
 		t.Fatalf("decode SM_SPACEMOVE_SHOW frame error = %v", err)
 	}
 	if showCmd.Ident != mir176.SMSpacemoveShow {
-		t.Fatalf("seventh frame ident = %d, want SM_SPACEMOVE_SHOW (%d)", showCmd.Ident, mir176.SMSpacemoveShow)
+		t.Fatalf("sixth frame ident = %d, want SM_SPACEMOVE_SHOW (%d)", showCmd.Ident, mir176.SMSpacemoveShow)
 	}
 	showDecoded, err := mir176.DecodePlain6Payload(showBody)
 	if err != nil {
@@ -2276,7 +2295,7 @@ func TestHandleEatItemConsumesPotionAndRefreshesHealth(t *testing.T) {
 	ch.HP = 10
 	ch.MaxHP = baseStats.MaxHP
 	ch.MP = baseStats.MaxMP / 2
-	ch.BagItems = []storage.UserItem{{ItemID: testHPItemID, MakeIndex: 200}}
+	ch.BagItems = []storage.UserItem{{ItemID: testInstantHPItemID, MakeIndex: 200}}
 	server, client := net.Pipe()
 	defer server.Close()
 	defer client.Close()
@@ -2325,6 +2344,42 @@ func TestHandleEatItemConsumesPotionAndRefreshesHealth(t *testing.T) {
 	if countBagItems(ch.BagItems) != 0 {
 		t.Fatalf("bag = %+v, want empty after potion use", ch.BagItems)
 	}
+}
+
+func TestApplyWorldTickSendsHealthRefreshForQueuedRecovery(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := s.world.DefaultSpawn()
+	ch, err := s.world.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.HP = 10
+	ch.MP = 5
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+
+	updated := ch
+	updated.HP = 15
+	updated.MP = 10
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.applyWorldTick(world.TickResult{Characters: []storage.Character{updated}})
+	}()
+
+	healthCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode health refresh frame error = %v", err)
+	}
+	if healthCmd.Ident != mir176.SMHealthSpellChanged {
+		t.Fatalf("frame ident = %d, want SM_HEALTHSPELLCHANGED (%d)", healthCmd.Ident, mir176.SMHealthSpellChanged)
+	}
+	if healthCmd.Recog != world.CharacterActorID(updated) || healthCmd.Param != 15 || healthCmd.Tag != 10 {
+		t.Fatalf("health refresh = %+v, want actor=%d hp=15 mp=10", healthCmd, world.CharacterActorID(updated))
+	}
+	<-done
 }
 
 func TestHandleUserCommandMakeSendsAddItemFrames(t *testing.T) {

@@ -3,6 +3,7 @@ package world
 import (
 	"openmir2/internal/data"
 	"openmir2/internal/storage"
+	"openmir2/internal/world/core"
 )
 
 func canLearnSkill(ch storage.Character, skill data.StdSkill) bool {
@@ -54,9 +55,8 @@ func gainExperienceLocked(w *World, ch storage.Character, exp int) (storage.Char
 	if leveled {
 		base := Base(ch.Class, ch.Level)
 		ch.MaxHP = base.MaxHP
-		ch.HP = base.MaxHP
 		ch.MaxMP = base.MaxMP
-		ch.MP = base.MaxMP
+		ch = core.SetVitals(ch, base.MaxHP, base.MaxMP).Character
 	}
 	return ch, "", gained, leveled, nil
 }

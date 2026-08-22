@@ -74,24 +74,6 @@ func EquippedItemsBody(w *world.World, ch storage.Character) []byte {
 	return itemEntries
 }
 
-func EquippedItemsChanged(prev, updated storage.Character) bool {
-	for slot := 0; slot < 13; slot++ {
-		if EquippedItemAt(prev, slot) != EquippedItemAt(updated, slot) {
-			return true
-		}
-		if equippedItemDesc(prev, slot) != equippedItemDesc(updated, slot) {
-			return true
-		}
-		if EquippedItemMakeIndex(prev, slot) != EquippedItemMakeIndex(updated, slot) {
-			return true
-		}
-		if equippedItemDura(prev, slot) != equippedItemDura(updated, slot) {
-			return true
-		}
-	}
-	return false
-}
-
 func EquippedItemAt(ch storage.Character, slot int) string {
 	item, ok := equippedItem(ch, slot)
 	if !ok {

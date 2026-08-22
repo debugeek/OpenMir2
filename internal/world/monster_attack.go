@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"openmir2/internal/storage"
+	"openmir2/internal/world/core"
 )
 
 func (w *World) Attack(ch storage.Character, monsterID string, blockers ...storage.Character) (AttackResult, error) {
@@ -33,14 +34,15 @@ func (w *World) attackLocked(ch storage.Character, mon *Monster, blockers ...sto
 	if damage < 1 {
 		damage = 1
 	}
-	mon.HP -= damage
+	hp := core.ApplyHPDelta(mon.HP, mon.MaxHP, -damage)
+	mon.HP = hp.HP
 	mon.TargetCharacterID = ch.ID
 	mon.TargetFocusAt = now
 	mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchHasTargetMSLocked(mon)) * time.Millisecond)
 	result := AttackResult{
 		MonsterID:      mon.ID,
 		Damage:         damage,
-		MonsterHP:      max(mon.HP, 0),
+		MonsterHP:      hp.HP,
 		MonsterMaxHP:   mon.MaxHP,
 		MonsterRaceImg: mon.RaceImg,
 		MonsterWeapon:  mon.MonsterWeapon,
@@ -49,7 +51,7 @@ func (w *World) attackLocked(ch storage.Character, mon *Monster, blockers ...sto
 		MonsterY:       mon.Y,
 		MonsterDir:     mon.Dir,
 	}
-	if mon.HP <= 0 {
+	if hp.Dead {
 		w.vacateMonsterLocked(mon)
 		mon.Alive = false
 		mon.TargetCharacterID = ""
@@ -115,13 +117,14 @@ func (w *World) monsterAttackCharacterWithDamageLocked(mon *Monster, ch storage.
 	if damage < 1 {
 		damage = 1
 	}
-	ch.HP -= damage
+	change := core.ApplyVitalDelta(ch, -damage, 0)
+	ch = change.Character
 	dead := false
-	if ch.HP <= 0 {
-		ch.HP = 0
+	if change.Dead {
 		dead = true
 		mon.TargetCharacterID = ""
 		mon.TargetFocusAt = time.Time{}
+		mon.NextSearchAt = time.Now()
 	}
 	hit := CharacterHit{
 		Character:       ch,
