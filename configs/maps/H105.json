@@ -3,8 +3,6 @@
   "name": "幻境五层北",
   "width": 184,
   "height": 207,
-  "spawn_x": 100,
-  "spawn_y": 90,
   "blocked": [],
   "connections": [
     {

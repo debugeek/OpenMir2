@@ -1,0 +1,65 @@
+{
+  "id": "药剂师-1006",
+  "name": "药剂师",
+  "kind": "merchant",
+  "map_id": "1006",
+  "x": 12,
+  "y": 7,
+  "dir": 0,
+  "appr": 25,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true
+    },
+    "stock": [
+      { "item_id": "灰色药粉(少量)", "count": 10, "refill_minutes": 10 },
+      { "item_id": "灰色药粉(中量)", "count": 10, "refill_minutes": 10 },
+      { "item_id": "黄色药粉(少量)", "count": 10, "refill_minutes": 10 },
+      { "item_id": "黄色药粉(中量)", "count": 10, "refill_minutes": 10 }
+    ]
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "这里是制作和试验各种药品，同时也是教这些的地方。\\n从不老长生仙丹到剧毒药粉，样样俱全。\\n药根据使用人不同，可用在善事，也可用在坏事。\\n一定要记住这一点\\n<购买/@buy>药\\n<听/@helpmakedrug>有关毒药的说明\\n<关 闭/@exit>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "请选择您要购买的药。\\n<返 回/@main>"
+        }
+      ]
+    },
+    "@helpmakedrug": {
+      "name": "@helpmakedrug",
+      "procedures": [
+        {
+          "say": "药有两种。\\n<灰色毒粉/@helpdrug1> 药效 \\n<黄色毒粉/@helpdrug2> 药效 \\n<返 回/@main>"
+        }
+      ]
+    },
+    "@helpdrug1": {
+      "name": "@helpdrug1",
+      "procedures": [
+        {
+          "say": "灰色毒粉可以降低对方的体力.\\n只有道士通过施毒术才能使用.\\n<下一个/@helpmakedrug>"
+        }
+      ]
+    },
+    "@helpdrug2": {
+      "name": "@helpdrug2",
+      "procedures": [
+        {
+          "say": "黄色毒粉可以降低对方的防御力\\n只有道士通过施毒术才能使用.\\n<下一个/@helpmakedrug>"
+        }
+      ]
+    }
+  }
+}

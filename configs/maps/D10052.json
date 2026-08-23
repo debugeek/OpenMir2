@@ -3,8 +3,6 @@
   "name": "山谷秘道",
   "width": 170,
   "height": 205,
-  "spawn_x": 150,
-  "spawn_y": 150,
   "blocked": [],
   "connections": [
     {

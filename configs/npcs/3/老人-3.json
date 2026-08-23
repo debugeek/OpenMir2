@@ -1,0 +1,28 @@
+{
+  "id": "老人-3",
+  "name": "老人",
+  "kind": "special",
+  "map_id": "3",
+  "x": 669,
+  "y": 338,
+  "dir": 0,
+  "appr": 1,
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "这里是一直被封锁的古城！\\n你确定要进去吗？\\n<进入/@FM>\\n<不去/@exit>"
+        }
+      ]
+    },
+    "@FM": {
+      "name": "@FM",
+      "procedures": [
+        {
+          "say": "欢迎进入古城。"
+        }
+      ]
+    }
+  }
+}

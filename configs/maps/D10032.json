@@ -3,8 +3,6 @@
   "name": "右回廊",
   "width": 221,
   "height": 176,
-  "spawn_x": 150,
-  "spawn_y": 150,
   "blocked": [],
   "connections": [
     {

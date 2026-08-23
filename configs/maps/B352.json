@@ -3,8 +3,6 @@
   "name": "首饰店",
   "width": 50,
   "height": 50,
-  "spawn_x": 0,
-  "spawn_y": 0,
   "blocked": [],
   "connections": [
     {

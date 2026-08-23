@@ -3,8 +3,6 @@
   "name": "祖玛神殿七层大厅",
   "width": 59,
   "height": 63,
-  "spawn_x": 0,
-  "spawn_y": 0,
   "blocked": [],
   "connections": [
     {

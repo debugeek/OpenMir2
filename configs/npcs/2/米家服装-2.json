@@ -1,0 +1,52 @@
+{
+  "id": "米家服装-2",
+  "name": "米家服装老板",
+  "kind": "merchant",
+  "map_id": "2",
+  "x": 517,
+  "y": 477,
+  "dir": 0,
+  "appr": 7,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true,
+      "repair": true
+    }
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "请问什么事情需要我帮忙吗？\\n<买/@buy> 衣服\\n<卖/@sell> 衣服\\n<修复/@repair> 衣服\\n<关 闭/@exit>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "你想买什么样的衣服？\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "把要卖的衣服放上去，给你估价。\\n头盔和帽子也收购，\\n最好一起卖了吧。\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@repair": {
+      "name": "@repair",
+      "procedures": [
+        {
+          "say": "可以修复衣服，头盔，帽子。\\n<返 回/@Main>"
+        }
+      ]
+    }
+  }
+}

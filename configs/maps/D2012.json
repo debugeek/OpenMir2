@@ -3,8 +3,6 @@
   "name": "炼狱回廊",
   "width": 105,
   "height": 106,
-  "spawn_x": 48,
-  "spawn_y": 47,
   "blocked": [],
   "connections": [
     {

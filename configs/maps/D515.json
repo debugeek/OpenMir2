@@ -3,8 +3,6 @@
   "name": "祖玛教主之家",
   "width": 93,
   "height": 52,
-  "spawn_x": 22,
-  "spawn_y": 20,
   "blocked": [],
   "connections": [
     {

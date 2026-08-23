@@ -1,0 +1,53 @@
+{
+  "id": "彩票员-3",
+  "name": "彩票员",
+  "kind": "merchant",
+  "map_id": "3",
+  "x": 284,
+  "y": 343,
+  "dir": 0,
+  "appr": 3,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true
+    },
+    "stock": [
+      { "item_id": "彩票", "count": 1000, "refill_minutes": 10 }
+    ]
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "欢迎光临, 这么荒凉的地方还有什么事情可做呢?\\n是不是很无聊, 要不要试一下你的运气?\\n如果没有获奖, 你可别怪我阿.\\n一个人能携带的金币数量是有限制的,如果超过上限,金币将掉在地上,\\n你可要注意啊!!\\n彩票 <买/@buy>\\n奖金 <查询/@Bingo>\\n<对话./@talkwith>, <退出/@exit>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "购买我的彩票，试一下你的运气哦。\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@Bingo": {
+      "name": "@Bingo",
+      "procedures": [
+        {
+          "say": "1等奖 1000金币\\n2等奖 800金币\\n3等奖 700金币\\n4等奖 600金币\\n5等奖 500金币\\n6等奖 100金币\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@talkwith": {
+      "name": "@talkwith",
+      "procedures": [
+        {
+          "say": "我挖后面的洞...\\n花了很长时间才完成\\n但是我不能白送你去哦！\\n<移动到毒蛇山谷/@move1>\\n<移动到不归路/@move2>\\n<返 回/@Main>"
+        }
+      ]
+    }
+  }
+}

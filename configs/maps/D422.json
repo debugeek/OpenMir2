@@ -3,8 +3,6 @@
   "name": "山谷矿区",
   "width": 352,
   "height": 404,
-  "spawn_x": 332,
-  "spawn_y": 380,
   "blocked": [],
   "connections": [
     {

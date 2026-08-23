@@ -1,0 +1,103 @@
+{
+  "id": "边界村小店-0",
+  "name": "边界村小店老板",
+  "kind": "merchant",
+  "map_id": "0",
+  "x": 291,
+  "y": 610,
+  "dir": 0,
+  "appr": 1,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true,
+      "repair": true
+    },
+    "stock": [
+      { "item_id": "随机传送卷", "count": 10, "refill_minutes": 10 },
+      { "item_id": "地牢逃脱卷", "count": 10, "refill_minutes": 10 },
+      { "item_id": "随机传送卷包", "count": 10, "refill_minutes": 10 },
+      { "item_id": "地牢逃脱卷包", "count": 10, "refill_minutes": 10 },
+      { "item_id": "护身符", "count": 10, "refill_minutes": 10 },
+      { "item_id": "护身符(大)", "count": 10, "refill_minutes": 10 },
+      { "item_id": "修复油", "count": 10, "refill_minutes": 10 },
+      { "item_id": "行会回城卷", "count": 10, "refill_minutes": 10 },
+      { "item_id": "回城卷", "count": 30, "refill_minutes": 10 }
+    ]
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "欢迎，我能为你做点什么？\\n<买/@buy>  物品\\n<卖/@sell>  物品\\n<询问/@questionprize> 物品详细情况 \\n<离 开/@exit>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "你想买点什么？\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "给我看看你的东西，我会出个好价钱。\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@questionprize": {
+      "name": "@questionprize",
+      "procedures": [
+        {
+          "say": "我们只经营 <蜡烛/@candle>, 和 <地牢逃脱卷/@teleport>,\\n但我们听说有 <随机传送卷/@teleport2>,\\n<回城卷/@steleport>和<修复油/@repairoil>之类的东西。\\n他们可以从妖怪那里弄到或从其他地方买到。\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@candle": {
+      "name": "@candle",
+      "procedures": [
+        {
+          "say": "你可以在黑暗中使用它。如果你没有蜡烛的话，\\n你会发现如此黑暗，你只能看到周围一小点区域。\\n<返 回/@questionprize>"
+        }
+      ]
+    },
+    "@teleport": {
+      "name": "@teleport",
+      "procedures": [
+        {
+          "say": "地牢逃脱卷是一种可以\\n把你传到你最后去过的城镇附近的卷轴。\\n它的能力可能比回城卷要弱一些，\\n但总归能从危险中救你的命。\\n<返 回/@questionprize>"
+        }
+      ]
+    },
+    "@teleport2": {
+      "name": "@teleport2",
+      "procedures": [
+        {
+          "say": "随机传送卷是一种可以\\n把你传到当前地图随机位置的卷轴。\\n这很危险，但如果你还剩有很多药，并且想继续在远方狩猎，\\n这时候可是非常有用的。\\n<返 回/@questionprize>"
+        }
+      ]
+    },
+    "@steleport": {
+      "name": "@steleport",
+      "procedures": [
+        {
+          "say": "回城卷据说来自远古\\n的一种神奇法术。但不幸的是，现在已经丢失了。\\n但我们听说有些怪物还有这种卷轴，\\n如果使用它你可以立刻返回村庄。\\n<返 回/@questionprize>"
+        }
+      ]
+    },
+    "@repairoil": {
+      "name": "@repairoil",
+      "procedures": [
+        {
+          "say": "修复油可以恢复手中兵器的耐久力。\\n这并不是特殊修复，所以如果你用的话\\n不要忘了武器的耐久力会渐渐的减少。\\n如果武器不是太贵的话,\\n在长时间狩猎的时候带一瓶还是有用的。\\n或者干脆带上两瓶。\\n<返 回/@questionprize>"
+        }
+      ]
+    }
+  }
+}

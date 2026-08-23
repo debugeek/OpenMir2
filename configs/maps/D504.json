@@ -3,8 +3,6 @@
   "name": "祖玛寺庙四层",
   "width": 320,
   "height": 320,
-  "spawn_x": 200,
-  "spawn_y": 200,
   "blocked": [],
   "connections": [
     {

@@ -3,8 +3,6 @@
   "name": "祖玛寺庙一层",
   "width": 680,
   "height": 680,
-  "spawn_x": 200,
-  "spawn_y": 200,
   "blocked": [],
   "connections": [
     {

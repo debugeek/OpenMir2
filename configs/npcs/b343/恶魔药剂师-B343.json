@@ -1,0 +1,43 @@
+{
+  "id": "恶魔药剂师-B343",
+  "name": "恶魔药剂师",
+  "kind": "merchant",
+  "map_id": "B343",
+  "x": 9,
+  "y": 13,
+  "dir": 0,
+  "appr": 9,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true
+    }
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "请问你需要点什么吗？\\n<买/@buy> 药品\\n<卖/@sell> 药品\\n<离 开/@exit>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "需要什么物品呢？\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "让我看看你要卖什么东西.\\n<返 回/@Main>"
+        }
+      ]
+    }
+  }
+}

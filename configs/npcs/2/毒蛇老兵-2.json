@@ -1,0 +1,20 @@
+{
+  "id": "毒蛇老兵-2",
+  "name": "毒蛇老兵",
+  "kind": "special",
+  "map_id": "2",
+  "x": 501,
+  "y": 484,
+  "dir": 0,
+  "appr": 9,
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "我可以把你送到附近的这些商店。"
+        }
+      ]
+    }
+  }
+}

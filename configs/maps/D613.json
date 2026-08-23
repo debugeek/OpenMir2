@@ -3,8 +3,6 @@
   "name": "生死之间",
   "width": 99,
   "height": 96,
-  "spawn_x": 19,
-  "spawn_y": 17,
   "blocked": [],
   "connections": [
     {

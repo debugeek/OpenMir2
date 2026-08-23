@@ -3,8 +3,6 @@
   "name": "深渊魔域",
   "width": 101,
   "height": 100,
-  "spawn_x": 50,
-  "spawn_y": 80,
   "blocked": [],
   "connections": [],
   "monster_spawns": [

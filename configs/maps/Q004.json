@@ -3,8 +3,6 @@
   "name": "尸王殿",
   "width": 50,
   "height": 50,
-  "spawn_x": 15,
-  "spawn_y": 15,
   "blocked": [],
   "connections": [],
   "monster_spawns": [

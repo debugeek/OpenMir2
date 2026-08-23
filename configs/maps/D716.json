@@ -3,8 +3,6 @@
   "name": "石墓六层",
   "width": 57,
   "height": 50,
-  "spawn_x": 25,
-  "spawn_y": 25,
   "blocked": [],
   "connections": [
     {

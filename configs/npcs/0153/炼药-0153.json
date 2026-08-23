@@ -1,0 +1,91 @@
+{
+  "id": "炼药-0153",
+  "name": "炼药老板",
+  "kind": "merchant",
+  "map_id": "0153",
+  "x": 7,
+  "y": 14,
+  "dir": 0,
+  "appr": 0,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true
+    }
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "这地方是做药品买卖的，你需要点什么？\\n当然，如果你要的是可卡因或其他之类\\n精神药品的话，我们可不卖。\\n对于<$OWNERGUILD>的成员我们有20%的折扣\\n因为这座城堡是属于 <$OWNERGUILD>的。\\n<制作/@makedrug> 药品\\n<打听/@helpmakedrug> 药品的解释\\n<离 开/@exit>"
+        }
+      ]
+    },
+    "@makedrug": {
+      "name": "@makedrug",
+      "procedures": [
+        {
+          "say": "请选择你要制作的药品。\\n你肯定没忘了带做药的原料,对吗？\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@helpmakedrug": {
+      "name": "@helpmakedrug",
+      "procedures": [
+        {
+          "say": "这里我们可以做2种药品。\\n<灰色药粉/@helpdrug1>的效果\\n<黄色药粉/@helpdrug2>的效果\\n<灰色药粉/@helpmakedrug1>的成分\\n<黄色药粉/@helpmakedrug2>的成分\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@helpdrug1": {
+      "name": "@helpdrug1",
+      "procedures": [
+        {
+          "say": "道士在运用施毒术的时候可以使用灰色药粉。\\n如果中了毒，对手的体力值将会下降。\\n<返 回/@helpmakedrug>"
+        }
+      ]
+    },
+    "@helpdrug2": {
+      "name": "@helpdrug2",
+      "procedures": [
+        {
+          "say": "道士在运用施毒术的时候可以使用黄色药粉。\\n如果中了毒，对手的防御力将会下降。\\n<返 回/@helpmakedrug>"
+        }
+      ]
+    },
+    "@helpmakedrug1": {
+      "name": "@helpmakedrug1",
+      "procedures": [
+        {
+          "say": "制作灰色药粉,需要\\n1个食人花的果实\\n2颗毒蜘蛛牙齿。\\n4片食人植物树叶。\\n<返 回/@helpmakedrug>"
+        }
+      ]
+    },
+    "@helpmakedrug2": {
+      "name": "@helpmakedrug2",
+      "procedures": [
+        {
+          "say": "制作黄色药粉，需要\\n1粒蛆卵\\n1个蝎子的尾巴\\n4片食人树叶.\\n<返 回/@helpmakedrug>"
+        }
+      ]
+    },
+    "@helpitem_1": {
+      "name": "@helpitem_1",
+      "procedures": [
+        {
+          "say": "割食人草可以得到食人树的果子，\\n但是5个食人草中可以得到果实的，\\n只有1个。\\n<返 回/@helpmakedrug1>"
+        }
+      ]
+    },
+    "@helpitem_2": {
+      "name": "@helpitem_2",
+      "procedures": [
+        {
+          "say": "抓到洞穴里的洞蛆，就可以得到蛆卵。\\n长得像圆圆的茧。\\n<返 回/@helpmakedrug2>"
+        }
+      ]
+    }
+  }
+}

@@ -3,8 +3,6 @@
   "name": "连接通道",
   "width": 111,
   "height": 95,
-  "spawn_x": 75,
-  "spawn_y": 75,
   "blocked": [],
   "connections": [
     {

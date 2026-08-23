@@ -3,8 +3,6 @@
   "name": "沃玛寺庙入口",
   "width": 97,
   "height": 96,
-  "spawn_x": 50,
-  "spawn_y": 44,
   "blocked": [],
   "connections": [
     {

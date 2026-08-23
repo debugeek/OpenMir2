@@ -1,0 +1,77 @@
+{
+  "id": "戒指店-0154",
+  "name": "戒指店老板",
+  "kind": "merchant",
+  "map_id": "0154",
+  "x": 10,
+  "y": 15,
+  "dir": 0,
+  "appr": 22,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true,
+      "repair": true
+    },
+    "stock": [
+      { "item_id": "古铜戒指", "count": 10, "refill_minutes": 10 },
+      { "item_id": "六角戒指", "count": 10, "refill_minutes": 10 },
+      { "item_id": "玻璃戒指", "count": 10, "refill_minutes": 10 },
+      { "item_id": "牛角戒指", "count": 10, "refill_minutes": 10 },
+      { "item_id": "蓝色水晶戒指", "count": 10, "refill_minutes": 10 },
+      { "item_id": "生铁戒指", "count": 10, "refill_minutes": 10 },
+      { "item_id": "金戒指", "count": 10, "refill_minutes": 10 },
+      { "item_id": "魅力戒指", "count": 10, "refill_minutes": 10 },
+      { "item_id": "道德戒指", "count": 10, "refill_minutes": 10 },
+      { "item_id": "黑色水晶戒指", "count": 10, "refill_minutes": 10 },
+      { "item_id": "蛇眼戒指", "count": 10, "refill_minutes": 10 },
+      { "item_id": "珍珠戒指", "count": 10, "refill_minutes": 10 },
+      { "item_id": "骷髅戒指", "count": 10, "refill_minutes": 10 },
+      { "item_id": "珊瑚戒指", "count": 10, "refill_minutes": 10 },
+      { "item_id": "降妖除魔戒指", "count": 10, "refill_minutes": 10 }
+    ]
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "欢迎来商店, 我们出售戒指。\\n因为这里是<$OWNERGUILD>的城，\\n我们为<$OWNERGUILD>行会成员提供20%的优惠\\n<买/@buy> 戒指\\n<卖/@sell> 戒指\\n<修理/@repair> 戒指\\n<离 开/@exit>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "你要买戒指吗?\\n<返 回/@main>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "你要出售戒指?\\n<返 回/@main>"
+        }
+      ]
+    },
+    "@repair": {
+      "name": "@repair",
+      "procedures": [
+        {
+          "say": "您要修理戒指?\\n<返 回/@main>"
+        }
+      ]
+    },
+    "~@repair": {
+      "name": "~@repair",
+      "procedures": [
+        {
+          "say": "看上去修好了.\\n<返 回/@main>"
+        }
+      ]
+    }
+  }
+}

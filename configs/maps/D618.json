@@ -3,8 +3,6 @@
   "name": "一线天",
   "width": 198,
   "height": 191,
-  "spawn_x": 19,
-  "spawn_y": 39,
   "blocked": [],
   "connections": [
     {

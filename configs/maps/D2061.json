@@ -3,8 +3,6 @@
   "name": "骨魔洞一层",
   "width": 173,
   "height": 207,
-  "spawn_x": 110,
-  "spawn_y": 110,
   "blocked": [],
   "connections": [
     {

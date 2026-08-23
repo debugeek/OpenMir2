@@ -3,8 +3,6 @@
   "name": "阴森石路",
   "width": 79,
   "height": 91,
-  "spawn_x": 0,
-  "spawn_y": 0,
   "blocked": [],
   "connections": [
     {

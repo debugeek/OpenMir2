@@ -3,8 +3,6 @@
   "name": "地牢一层西",
   "width": 198,
   "height": 187,
-  "spawn_x": 60,
-  "spawn_y": 47,
   "blocked": [],
   "connections": [
     {

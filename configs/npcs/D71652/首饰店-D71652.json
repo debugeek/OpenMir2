@@ -1,0 +1,60 @@
+{
+  "id": "首饰店-D71652",
+  "name": "首饰店老板",
+  "kind": "merchant",
+  "map_id": "D71652",
+  "x": 23,
+  "y": 27,
+  "dir": 0,
+  "appr": 5,
+  "merchant": {
+    "price_rate": 200,
+    "capabilities": {
+      "repair": true
+    },
+    "stock": [
+      { "item_id": "金项链", "count": 10, "refill_minutes": 10 },
+      { "item_id": "传统项链", "count": 10, "refill_minutes": 10 },
+      { "item_id": "黑檀项链", "count": 10, "refill_minutes": 10 },
+      { "item_id": "黄色水晶项链", "count": 10, "refill_minutes": 10 },
+      { "item_id": "黑色水晶项链", "count": 10, "refill_minutes": 10 },
+      { "item_id": "灯笼项链", "count": 10, "refill_minutes": 10 },
+      { "item_id": "小手镯", "count": 10, "refill_minutes": 10 },
+      { "item_id": "银手镯", "count": 10, "refill_minutes": 10 },
+      { "item_id": "铁手镯", "count": 10, "refill_minutes": 10 },
+      { "item_id": "钢手镯", "count": 10, "refill_minutes": 10 },
+      { "item_id": "皮制手套", "count": 10, "refill_minutes": 10 },
+      { "item_id": "大手镯", "count": 10, "refill_minutes": 10 },
+      { "item_id": "古铜戒指", "count": 10, "refill_minutes": 10 },
+      { "item_id": "六角戒指", "count": 10, "refill_minutes": 10 },
+      { "item_id": "玻璃戒指", "count": 10, "refill_minutes": 10 },
+      { "item_id": "牛角戒指", "count": 10, "refill_minutes": 10 }
+    ]
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "你也是为了寻找新的东西才来到这里的吗？\\n你应该知道这里很危险。\\n我能够帮你的就是修理装饰品。\\n<修理/@repair>装饰品\\n<关 闭/@exit>"
+        }
+      ]
+    },
+    "@repair": {
+      "name": "@repair",
+      "procedures": [
+        {
+          "say": "要修理装饰品吗？\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "~@repair": {
+      "name": "~@repair",
+      "procedures": [
+        {
+          "say": "修理得还算可以。\\n<返 回/@Main>"
+        }
+      ]
+    }
+  }
+}

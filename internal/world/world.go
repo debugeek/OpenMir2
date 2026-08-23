@@ -2,25 +2,30 @@ package world
 
 import (
 	"math/rand"
+	"sort"
 	"sync"
 	"time"
 
 	"openmir2/internal/config"
 	"openmir2/internal/data"
+	"openmir2/internal/npc"
 	"openmir2/internal/storage"
 )
 
 type World struct {
-	mu       sync.Mutex
-	data     data.StdBundle
-	store    *storage.Store
-	monsters map[string]*Monster
-	occupied map[monsterPosition]string
-	drops    map[string]GroundDrop
-	spawns   map[string]*spawnState
-	nextID   int
-	rand     *rand.Rand
-	gameplay config.Gameplay
+	mu             sync.Mutex
+	data           data.StdBundle
+	store          *storage.Store
+	monsters       map[string]*Monster
+	occupied       map[monsterPosition]string
+	drops          map[string]GroundDrop
+	spawns         map[string]*spawnState
+	npcActors      map[string]int32
+	merchantStocks map[string][]npc.MerchantStockItem
+	nextID         int
+	nextNPCID      int32
+	rand           *rand.Rand
+	gameplay       config.Gameplay
 }
 
 type spawnState struct {
@@ -213,21 +218,54 @@ func New(bundle data.StdBundle, store *storage.Store, gameplayConfig ...config.G
 	}
 	bundle = normalizeStdBundle(bundle)
 	w := &World{
-		data:     bundle,
-		store:    store,
-		monsters: map[string]*Monster{},
-		occupied: map[monsterPosition]string{},
-		drops:    map[string]GroundDrop{},
-		spawns:   map[string]*spawnState{},
-		nextID:   1,
-		rand:     rand.New(rand.NewSource(1)),
-		gameplay: gameplay,
+		data:           bundle,
+		store:          store,
+		monsters:       map[string]*Monster{},
+		occupied:       map[monsterPosition]string{},
+		drops:          map[string]GroundDrop{},
+		spawns:         map[string]*spawnState{},
+		npcActors:      map[string]int32{},
+		merchantStocks: map[string][]npc.MerchantStockItem{},
+		nextID:         1,
+		nextNPCID:      300000,
+		rand:           rand.New(rand.NewSource(1)),
+		gameplay:       gameplay,
 	}
+	w.initNPCActors()
 	w.spawnInitial()
 	return w
 }
 
+func (w *World) initNPCActors() {
+	ids := make([]string, 0, len(w.data.NPCs.Entities))
+	for id := range w.data.NPCs.Entities {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		w.npcActors[id] = w.nextNPCID
+		w.nextNPCID++
+		if entity, ok := w.data.NPCs.Entities[id]; ok && len(entity.Merchant.Stock) > 0 {
+			stocks := make([]npc.MerchantStockItem, len(entity.Merchant.Stock))
+			copy(stocks, entity.Merchant.Stock)
+			w.merchantStocks[id] = stocks
+		}
+	}
+}
+
+func (w *World) Gameplay() config.Gameplay {
+	return w.gameplay
+}
+
 func normalizeStdBundle(bundle data.StdBundle) data.StdBundle {
+	if len(bundle.ItemOrder) == 0 && len(bundle.Items) > 0 {
+		ids := make([]string, 0, len(bundle.Items))
+		for id := range bundle.Items {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		bundle.ItemOrder = ids
+	}
 	for id, mp := range bundle.Maps {
 		if mp.MonsterSpawnRate <= 0 {
 			mp.MonsterSpawnRate = 10
@@ -256,4 +294,123 @@ func normalizeStdBundle(bundle data.StdBundle) data.StdBundle {
 		bundle.Monsters[id] = mon
 	}
 	return bundle
+}
+
+func (w *World) ItemIndex(itemID string) (int, bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for i, id := range w.data.ItemOrder {
+		if id == itemID {
+			return i + 1, true
+		}
+	}
+	return 0, false
+}
+
+func (w *World) ItemByIndex(index int) (data.StdItem, bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if index <= 0 || index > len(w.data.ItemOrder) {
+		return data.StdItem{}, false
+	}
+	itemID := w.data.ItemOrder[index-1]
+	item, ok := w.data.Items[itemID]
+	if !ok {
+		return data.StdItem{}, false
+	}
+	return item, true
+}
+
+func (w *World) NPCActorID(id string) int32 {
+	if actorID, ok := w.npcActors[id]; ok {
+		return actorID
+	}
+	return 300000
+}
+
+func (w *World) MerchantStock(npcID string) []npc.MerchantStockItem {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	stocks, ok := w.merchantStocks[npcID]
+	if !ok {
+		entity, ok := w.data.NPCs.Entities[npcID]
+		if !ok || len(entity.Merchant.Stock) == 0 {
+			return nil
+		}
+		stocks = make([]npc.MerchantStockItem, len(entity.Merchant.Stock))
+		copy(stocks, entity.Merchant.Stock)
+		w.merchantStocks[npcID] = stocks
+	}
+	out := make([]npc.MerchantStockItem, len(stocks))
+	copy(out, stocks)
+	return out
+}
+
+func (w *World) ConsumeMerchantStock(npcID, itemID string) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	stocks, ok := w.merchantStocks[npcID]
+	if !ok {
+		entity, ok := w.data.NPCs.Entities[npcID]
+		if !ok {
+			return false
+		}
+		stocks = make([]npc.MerchantStockItem, len(entity.Merchant.Stock))
+		copy(stocks, entity.Merchant.Stock)
+	}
+	for i := range stocks {
+		if stocks[i].ItemID != itemID || stocks[i].Count <= 0 {
+			continue
+		}
+		stocks[i].Count--
+		if stocks[i].Count <= 0 {
+			stocks = append(stocks[:i], stocks[i+1:]...)
+		}
+		w.merchantStocks[npcID] = stocks
+		return true
+	}
+	return false
+}
+
+func (w *World) AddMerchantStock(npcID, itemID string, count int) {
+	if count <= 0 {
+		return
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	stocks, ok := w.merchantStocks[npcID]
+	if !ok {
+		entity, ok := w.data.NPCs.Entities[npcID]
+		if ok && len(entity.Merchant.Stock) > 0 {
+			stocks = make([]npc.MerchantStockItem, len(entity.Merchant.Stock))
+			copy(stocks, entity.Merchant.Stock)
+		}
+	}
+	for i := range stocks {
+		if stocks[i].ItemID == itemID {
+			stocks[i].Count += count
+			w.merchantStocks[npcID] = stocks
+			return
+		}
+	}
+	stocks = append(stocks, npc.MerchantStockItem{ItemID: itemID, Count: count})
+	w.merchantStocks[npcID] = stocks
+}
+
+func (w *World) NPCByActorID(actorID int32) (npc.Entity, bool) {
+	for id, mapped := range w.npcActors {
+		if mapped == actorID {
+			entity, ok := w.data.NPCs.Entities[id]
+			return entity, ok
+		}
+	}
+	return npc.Entity{}, false
+}
+
+func (w *World) NPCFeature(entity npc.Entity) int32 {
+	raceImg := entity.RaceImg
+	if raceImg == 0 {
+		raceImg = 50
+	}
+	return int32(uint32(raceImg&0xFF) | uint32(entity.MonsterWeapon&0xFF)<<8 | uint32(entity.Appr&0xFFFF)<<16)
 }

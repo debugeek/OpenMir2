@@ -1,0 +1,51 @@
+{
+  "id": "仓库保管员-5",
+  "name": "仓库保管员",
+  "kind": "merchant",
+  "map_id": "5",
+  "x": 126,
+  "y": 332,
+  "dir": 0,
+  "appr": 12,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "storage": true,
+      "get_back": true
+    }
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "需要帮什么忙吗？\\n目前不收保管费，请多利用。\\n<保管/@storage>东西\\n<找回/@getback>东西\\n<捆/@mbind>各种卷书和药水\\n<关 闭/@exit>"
+        }
+      ]
+    },
+    "@storage": {
+      "name": "@storage",
+      "procedures": [
+        {
+          "say": "需要保管什么东西？\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@getback": {
+      "name": "@getback",
+      "procedures": [
+        {
+          "say": "请看目录决定找什么东西。\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@Mbind": {
+      "name": "@Mbind",
+      "procedures": [
+        {
+          "say": "你知道我是什么人吗？\\n我做的是这样的事情...\\n你要试一下吗？有什么要拜托的就说吧。\\n用金币<交换/@changeGold>金条 \\n用金条<交换/@changeMoney>金币 \\n<捆/@bind>\\n<离 开/@exit>"
+        }
+      ]
+    }
+  }
+}

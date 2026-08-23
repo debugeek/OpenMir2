@@ -3,8 +3,6 @@
   "name": "桃源之门",
   "width": 134,
   "height": 142,
-  "spawn_x": 114,
-  "spawn_y": 122,
   "blocked": [],
   "connections": [
     {

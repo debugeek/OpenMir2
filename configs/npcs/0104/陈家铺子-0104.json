@@ -1,0 +1,71 @@
+{
+  "id": "陈家铺子-0104",
+  "name": "陈家铺子老板",
+  "kind": "merchant",
+  "map_id": "0104",
+  "x": 5,
+  "y": 8,
+  "dir": 0,
+  "appr": 2,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true
+    },
+    "stock": [
+      { "item_id": "火球术", "count": 4, "refill_minutes": 10 },
+      { "item_id": "治愈术", "count": 4, "refill_minutes": 10 },
+      { "item_id": "基本剑术", "count": 4, "refill_minutes": 10 },
+      { "item_id": "精神力战法", "count": 4, "refill_minutes": 10 },
+      { "item_id": "大火球", "count": 4, "refill_minutes": 10 },
+      { "item_id": "施毒术", "count": 4, "refill_minutes": 10 },
+      { "item_id": "攻杀剑术", "count": 4, "refill_minutes": 10 },
+      { "item_id": "抗拒火环", "count": 4, "refill_minutes": 10 },
+      { "item_id": "地狱火", "count": 4, "refill_minutes": 10 },
+      { "item_id": "雷电术", "count": 4, "refill_minutes": 10 },
+      { "item_id": "灵魂火符", "count": 4, "refill_minutes": 10 },
+      { "item_id": "幽灵盾", "count": 4, "refill_minutes": 10 },
+      { "item_id": "召唤骷髅", "count": 4, "refill_minutes": 10 },
+      { "item_id": "隐身术", "count": 4, "refill_minutes": 10 },
+      { "item_id": "集体隐身术", "count": 4, "refill_minutes": 10 },
+      { "item_id": "诱惑之光", "count": 4, "refill_minutes": 10 },
+      { "item_id": "瞬息移动", "count": 4, "refill_minutes": 10 },
+      { "item_id": "爆裂火焰", "count": 4, "refill_minutes": 10 }
+    ]
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "欢迎，你想买些修炼的书吗？\\n<买/@buy>  书\\n<卖/@sell>  书 \\n<询问/@helpbooks> 各种武技的细节 \\n<离 开/@exit>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "请选择你想要买的书。\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "给我看看你的书。\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@helpbooks": {
+      "name": "@helpbooks",
+      "procedures": [
+        {
+          "say": "你对那种书感兴趣？\\n武士可以学<基本剑术/@help11>和<攻杀剑术/@help12>\\n魔法师可以学<火球术/@help21>和<大火球/@help22>\\n道士可以学<治愈术/@help31>,<精神力战法/@help32> \\n<施毒术/@help33>\\n<返 回/@Main>"
+        }
+      ]
+    }
+  }
+}

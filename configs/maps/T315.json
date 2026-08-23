@@ -3,8 +3,6 @@
   "name": "堕落坟场",
   "width": 170,
   "height": 160,
-  "spawn_x": 150,
-  "spawn_y": 140,
   "blocked": [],
   "connections": [],
   "monster_spawns": [

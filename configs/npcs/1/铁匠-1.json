@@ -1,0 +1,58 @@
+{
+  "id": "铁匠-1",
+  "name": "铁匠",
+  "kind": "merchant",
+  "map_id": "1",
+  "x": 314,
+  "y": 72,
+  "dir": 0,
+  "appr": 0,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "repair": true
+    }
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "欢迎光临，需要我帮什么忙吗？\\n<修理/@repair> 武器\\n<特殊修理/@s_repair>\\n<离开/@exit>"
+        }
+      ]
+    },
+    "@repair": {
+      "name": "@repair",
+      "procedures": [
+        {
+          "say": "把你的武器交给我，我会修好它。\\n<返回/@main>"
+        }
+      ]
+    },
+    "@s_repair": {
+      "name": "@s_repair",
+      "procedures": [
+        {
+          "say": "把你的武器交给我，我会修好它。\\n<返回/@main>"
+        }
+      ]
+    },
+    "~@repair": {
+      "name": "~@repair",
+      "procedures": [
+        {
+          "say": "它看起来已经修好了，\\n<返回/@main>"
+        }
+      ]
+    },
+    "~@s_repair": {
+      "name": "~@s_repair",
+      "procedures": [
+        {
+          "say": "它看起来已经修好了，\\n<返回/@main>"
+        }
+      ]
+    }
+  }
+}

@@ -3,8 +3,6 @@
   "name": "幻境迷宫",
   "width": 50,
   "height": 51,
-  "spawn_x": 19,
-  "spawn_y": 24,
   "blocked": [],
   "connections": [
     {

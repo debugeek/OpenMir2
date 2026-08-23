@@ -3,8 +3,6 @@
   "name": "洞穴二层",
   "width": 398,
   "height": 220,
-  "spawn_x": 200,
-  "spawn_y": 200,
   "blocked": [],
   "connections": [
     {

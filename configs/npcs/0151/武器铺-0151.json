@@ -1,0 +1,80 @@
+{
+  "id": "武器铺-0151",
+  "name": "武器铺老板",
+  "kind": "merchant",
+  "map_id": "0151",
+  "x": 7,
+  "y": 14,
+  "dir": 0,
+  "appr": 5,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true,
+      "repair": true
+    },
+    "stock": [
+      { "item_id": "木剑", "count": 5, "refill_minutes": 10 },
+      { "item_id": "青铜剑", "count": 5, "refill_minutes": 10 },
+      { "item_id": "铁剑", "count": 5, "refill_minutes": 10 },
+      { "item_id": "短剑", "count": 5, "refill_minutes": 10 },
+      { "item_id": "匕首", "count": 5, "refill_minutes": 10 },
+      { "item_id": "乌木剑", "count": 5, "refill_minutes": 10 },
+      { "item_id": "青铜斧", "count": 5, "refill_minutes": 10 },
+      { "item_id": "海魂", "count": 5, "refill_minutes": 10 },
+      { "item_id": "凌风", "count": 5, "refill_minutes": 10 },
+      { "item_id": "破魂", "count": 5, "refill_minutes": 10 },
+      { "item_id": "斩马刀", "count": 5, "refill_minutes": 10 },
+      { "item_id": "八荒", "count": 5, "refill_minutes": 10 },
+      { "item_id": "半月", "count": 5, "refill_minutes": 10 },
+      { "item_id": "偃月", "count": 5, "refill_minutes": 10 },
+      { "item_id": "降魔", "count": 5, "refill_minutes": 10 },
+      { "item_id": "凝霜", "count": 5, "refill_minutes": 10 },
+      { "item_id": "修罗", "count": 5, "refill_minutes": 10 },
+      { "item_id": "黑铁矿石", "count": 10, "refill_minutes": 10 }
+    ]
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "欢迎.. 您想要些什么?\\n我们这里有许多便宜锋利的剑. 请您挑选.\\n根据这个城堡的主人<$LORD>的命令, \\n我们特别对<$OWNERGUILD>的成员提供20%的折扣\\n<买/@buy> 武器\\n<卖/@sell> 武器\\n<修理/@repair> 武器\\n<离 开/@exit>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "不要担心我们这里武器的数量,请您尽量挑选您需要的武器.\\n<返 回/@main>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "放下你要卖的武器.\\n<返 回/@main>"
+        }
+      ]
+    },
+    "@repair": {
+      "name": "@repair",
+      "procedures": [
+        {
+          "say": "想修理武器吗?  你想修理哪个?\\n<返 回/@main>"
+        }
+      ]
+    },
+    "~@repair": {
+      "name": "~@repair",
+      "procedures": [
+        {
+          "say": "看起来完全修好了?  还有要修理的吗?\\n<返 回/@main>"
+        }
+      ]
+    }
+  }
+}

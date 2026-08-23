@@ -1,0 +1,64 @@
+{
+  "id": "老张头盔店-0149",
+  "name": "老张头盔店",
+  "kind": "merchant",
+  "map_id": "0149",
+  "x": 8,
+  "y": 5,
+  "dir": 0,
+  "appr": 5,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true,
+      "repair": true
+    },
+    "stock": [
+      { "item_id": "青铜头盔", "count": 3, "refill_minutes": 10 },
+      { "item_id": "魔法头盔", "count": 3, "refill_minutes": 10 }
+    ]
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "欢迎！我能为你做点什么？\\n<买/@buy>  头盔\\n<卖/@sell>  头盔\\n<修理/@repair>头盔\\n<特殊修理/@s_repair>\\n<离 开/@exit>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "你想买什么样的头盔？\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "把你要卖的头盔给我看看，\\n我会给你估价。\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@repair": {
+      "name": "@repair",
+      "procedures": [
+        {
+          "say": "这里你可以修补头盔.\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "~@repair": {
+      "name": "~@repair",
+      "procedures": [
+        {
+          "say": "这个看上去已经补好了。\\n<返 回/@Main>"
+        }
+      ]
+    }
+  }
+}

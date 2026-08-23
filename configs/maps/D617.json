@@ -3,8 +3,6 @@
   "name": "恐怖空间",
   "width": 110,
   "height": 104,
-  "spawn_x": 51,
-  "spawn_y": 45,
   "blocked": [],
   "connections": [
     {

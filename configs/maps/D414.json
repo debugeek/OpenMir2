@@ -3,8 +3,6 @@
   "name": "矿区C一层",
   "width": 91,
   "height": 99,
-  "spawn_x": 0,
-  "spawn_y": 0,
   "blocked": [],
   "connections": [
     {

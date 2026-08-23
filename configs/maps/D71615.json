@@ -3,8 +3,6 @@
   "name": "石墓阵",
   "width": 57,
   "height": 57,
-  "spawn_x": 25,
-  "spawn_y": 25,
   "blocked": [],
   "connections": [
     {

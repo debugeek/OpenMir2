@@ -3,8 +3,6 @@
   "name": "封魔矿区",
   "width": 199,
   "height": 202,
-  "spawn_x": 100,
-  "spawn_y": 100,
   "blocked": [],
   "connections": [
     {

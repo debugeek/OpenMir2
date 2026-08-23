@@ -1,0 +1,127 @@
+{
+  "id": "杂货店-1007",
+  "name": "杂货店老板",
+  "kind": "merchant",
+  "map_id": "1007",
+  "x": 11,
+  "y": 14,
+  "dir": 0,
+  "appr": 17,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true,
+      "repair": true
+    },
+    "stock": [
+      { "item_id": "随机传送卷", "count": 10, "refill_minutes": 10 },
+      { "item_id": "地牢逃脱卷", "count": 10, "refill_minutes": 10 },
+      { "item_id": "随机传送卷包", "count": 110, "refill_minutes": 10 },
+      { "item_id": "地牢逃脱卷包", "count": 10, "refill_minutes": 10 },
+      { "item_id": "护身符", "count": 20, "refill_minutes": 10 },
+      { "item_id": "护身符(大)", "count": 20, "refill_minutes": 10 },
+      { "item_id": "修复油", "count": 110, "refill_minutes": 10 },
+      { "item_id": "行会回城卷", "count": 110, "refill_minutes": 10 },
+      { "item_id": "回城卷", "count": 30, "refill_minutes": 10 }
+    ]
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "这里专门管理道馆里的人们所使用的物品。\\n偶尔也会出售给访客。\\n由于这里过于偏僻，有很多受难人。\\n<购买/@buy>物品\\n<出售/@sell>物品\\n<特殊修理/@s_repair>\\n<关 闭/@exit>"
+        }
+      ]
+    },
+    "@laba": {
+      "name": "@laba",
+      "procedures": [
+        {
+          "say": "哈哈，我这里新到了一批喇叭，小的每个15W，可以使用3次。\\n大的每个50W，可以使用10次。要买的赶紧！\\n向全服喊话，佩带在四格装备宝石处，输入@传+内容，\\n可向所有玩家发布公告哦\\n<购买大喇叭/@大> <购买小喇叭/@小> <取消/@exit>"
+        }
+      ]
+    },
+    "@大": {
+      "name": "@大",
+      "procedures": [
+        {
+          "say": "你开玩笑吗？你没钱还想买？\\n我再也不想见到你了。\\n<返回/@main>"
+        }
+      ]
+    },
+    "@小": {
+      "name": "@小",
+      "procedures": [
+        {
+          "say": "你开玩笑吗？你没钱还想买？\\n我再也不想见到你了。\\n<返回/@main>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "请选择您需要的物品。\\n<返 回/@main>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "请把不用的物品放上去。\\n我会给您好价钱。\\n<返 回/@main>"
+        }
+      ]
+    },
+    "@questionprize": {
+      "name": "@questionprize",
+      "procedures": [
+        {
+          "say": "我们店有<蜡烛/@candle>, <地牢逃脱卷/@teleport>,\\n<随机传送卷/@teleport2>, <修复油/@repairoil> 等等。\\n据说还有从妖怪身上拿到的<回城卷/@steleport>。\\n<返 回/@main>"
+        }
+      ]
+    },
+    "@candle": {
+      "name": "@candle",
+      "procedures": [
+        {
+          "say": "蜡烛用在黑天。\\n没有蜡烛，连自己的脚底下都看不到。\\n<返 回/@questionprize>"
+        }
+      ]
+    },
+    "@teleport": {
+      "name": "@teleport",
+      "procedures": [
+        {
+          "say": "地牢逃脱卷是将自己瞬间移动到最后经过的村庄的咒文书，\\n当然和相比，它的威力还算弱，\\n但是救自己一条命，已经足够了。\\n<返 回/@questionprize>"
+        }
+      ]
+    },
+    "@teleport2": {
+      "name": "@teleport2",
+      "procedures": [
+        {
+          "say": "随机传送卷是自己目前所在的地图，也就是在或在店里面，\\n可以移动到任何地方的咒文书。\\n尽管比较危险，但是还剩很多药的话，\\n使用这个，会对你打猎有帮助的。\\n<返 回/@questionprize>"
+        }
+      ]
+    },
+    "@steleport": {
+      "name": "@steleport",
+      "procedures": [
+        {
+          "say": "回城卷是从古代传下来的技术，\\n可惜的是没能传到人类身上，所以不能再制造。\\n据说有的妖怪有此技术，\\n用它就可以直接回到村庄。\\n<返 回/@questionprize>"
+        }
+      ]
+    },
+    "@repairoil": {
+      "name": "@repairoil",
+      "procedures": [
+        {
+          "say": "修复油是提高自己拿着的武器的耐久力的油。\\n但是因为没有特殊修理的效果，\\n用修理油修理的武器的耐久力会越来越小。\\n如果不是很贵的武器，带着一个用来做修理，\\n会对你长久时间打猎有帮助。\\n<返 回/@questionprize>"
+        }
+      ]
+    }
+  }
+}

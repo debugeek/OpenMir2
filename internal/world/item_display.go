@@ -191,6 +191,15 @@ func isStdModeShapeMode(stdMode int) bool {
 	}
 }
 
+func IsAccessoryStdMode(stdMode int) bool {
+	switch stdMode {
+	case 19, 20, 21, 22, 23, 24, 26:
+		return true
+	default:
+		return false
+	}
+}
+
 func ItemDuraForDrop(item data.StdItem, drop GroundDrop) uint16 {
 	dura := drop.DuraMax
 	if dura <= 0 {

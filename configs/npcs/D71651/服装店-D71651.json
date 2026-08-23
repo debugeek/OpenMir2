@@ -1,0 +1,52 @@
+{
+  "id": "服装店-D71651",
+  "name": "服装店老板",
+  "kind": "merchant",
+  "map_id": "D71651",
+  "x": 23,
+  "y": 27,
+  "dir": 0,
+  "appr": 7,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true,
+      "repair": true
+    },
+    "stock": [
+      { "item_id": "布衣(男)", "count": 10, "refill_minutes": 10 },
+      { "item_id": "布衣(女)", "count": 10, "refill_minutes": 10 },
+      { "item_id": "轻型盔甲(男)", "count": 10, "refill_minutes": 10 },
+      { "item_id": "轻型盔甲(女)", "count": 10, "refill_minutes": 10 },
+      { "item_id": "中型盔甲(男)", "count": 10, "refill_minutes": 10 },
+      { "item_id": "中型盔甲(女)", "count": 10, "refill_minutes": 10 }
+    ]
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "看你的衣服，很像打了很多猎的勇士。\\n以我的能力，能为你做的事情就是 \\n帮你修复衣服和头盔，\\n你需要修复衣服和头盔吗？\\n<修复/@repair>衣服\\n<关 闭/@exit>"
+        }
+      ]
+    },
+    "@repair": {
+      "name": "@repair",
+      "procedures": [
+        {
+          "say": "请放上去要修复的物品。\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "~@repair": {
+      "name": "~@repair",
+      "procedures": [
+        {
+          "say": "修得还算不错。\\n<返 回/@Main>"
+        }
+      ]
+    }
+  }
+}

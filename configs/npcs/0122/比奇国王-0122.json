@@ -1,0 +1,60 @@
+{
+  "id": "比奇国王-0122",
+  "name": "比奇国王",
+  "kind": "special",
+  "map_id": "0122",
+  "x": 26,
+  "y": 26,
+  "dir": 0,
+  "appr": 8,
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "我是比奇皇宫管理人,掌管着许多事物。希望我能对你有帮助\\n<请求创建行会./@buildguildnow>\\n<申请行会战争./@guildwar>\\n<如何建立行会./@buildguildexp>\\n<有关行会战争./@guildwarexp>\\n<申请攻城战争./@requestcastlewarnow>"
+        }
+      ]
+    },
+    "@buildguildnow": {
+      "name": "@buildguildnow",
+      "procedures": [
+        {
+          "say": "申请创建行会需要100万金币，并且要准备好沃玛号角。\\n<返回/@main>"
+        }
+      ]
+    },
+    "@buildguildexp": {
+      "name": "@buildguildexp",
+      "procedures": [
+        {
+          "say": "建立行会你应该证明你有资格。必须支付100万金币作为基础\\n而且要取得位于沃玛寺庙底部深处的沃玛教主所拥有的号角!\\n<返回/@main>"
+        }
+      ]
+    },
+    "@guildwar": {
+      "name": "@guildwar",
+      "procedures": [
+        {
+          "say": "填写与你交战的敌对行会的名字，申请行会战争必须支付3万金币\\n<立即申请行会战争/@@guildwar>\\n<返回/@main>"
+        }
+      ]
+    },
+    "@guildwarexp": {
+      "name": "@guildwarexp",
+      "procedures": [
+        {
+          "say": "申请行会战争时，需要先输入敌对行会名称，再支付3万金币。\\n<返回/@main>"
+        }
+      ]
+    },
+    "@requestcastlewarnow": {
+      "name": "@requestcastlewarnow",
+      "procedures": [
+        {
+          "say": "请求对 沙巴克 作战你应该有祖玛教主的头像,你有它吗？战争将会在申请日期的第二天内开始。\\n<给祖玛头像/@requestcastlewarnow>\\n<返回/@main>"
+        }
+      ]
+    }
+  }
+}

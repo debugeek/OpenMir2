@@ -1,0 +1,116 @@
+{
+  "id": "炼武器-0151",
+  "name": "炼武器老板",
+  "kind": "special",
+  "map_id": "0151",
+  "x": 12,
+  "y": 10,
+  "dir": 0,
+  "appr": 5,
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "没有一个人来光顾，顾客，请进。\\n我的自尊使我不允许对这个物品的价格再要求打折。\\n<开始武器升级/@upgrade>\\n<返回武器升级/@getbackupgnow>\\n<离开/@exit>"
+        }
+      ]
+    },
+    "@upgrade": {
+      "name": "@upgrade",
+      "procedures": [
+        {
+          "say": "你像是想要升级你的武器。给我看你的武器，\\n升级价格是<$UPGRADEWEAPONFEE>金币。修炼这个武器需要原料\\n<黑铁矿/@Biron>，<饰品/@Etc>，<武器/@Weapon>和<金币/@Gold>。\\n别的原料你可以使用你包内的物品。\\n你想委托你的武器进入修炼系统吗?\\n<确认修炼/@confirmupgrade>\\n<取消/@main>"
+        }
+      ]
+    },
+    "@confirmupgrade": {
+      "name": "@confirmupgrade",
+      "procedures": [
+        {
+          "say": "给我看你给我的原料，修炼你的<$USERWEAPON>，我的视力不好，\\n我想从你的包里取得更多的饰品和黑铁矿石。\\n如果你有重要的物品，在你寄存在仓库后请回来。\\n<请求修炼/@upgradenow>\\n<在安排好以后再回来/@exit>"
+        }
+      ]
+    },
+    "@heardsing": {
+      "name": "@heardsing",
+      "procedures": [
+        {
+          "say": " 如果你给我3万金子我会再考虑一下...\\n<支付3万金币/@paythree>\\n<退出/@main>"
+        }
+      ]
+    },
+    "@paythree": {
+      "name": "@paythree",
+      "procedures": [
+        {
+          "say": "不知名的杂草...\\n<退出/@exit>"
+        }
+      ]
+    },
+    "~@upgradenow_ok": {
+      "name": "~@upgradenow_ok",
+      "procedures": [
+        {
+          "say": "我会把它弄得像新的一样，\\n所以请十分钟后再回来。\\n<返回/@Main>"
+        }
+      ]
+    },
+    "~@upgradenow_ing": {
+      "name": "~@upgradenow_ing",
+      "procedures": [
+        {
+          "say": "我们工作的规则是一个人只能进行一个项目。\\n请下次再来...\\n<返回/@Main>"
+        }
+      ]
+    },
+    "~@upgradenow_fail": {
+      "name": "~@upgradenow_fail",
+      "procedures": [
+        {
+          "say": "材料不够。请你下次来的时候，\\n准备好所有的矿石，武器和饰品。\\n当然，我的工作才是最基本的...\\n<返回/@Main>"
+        }
+      ]
+    },
+    "~@getbackupgnow_ok": {
+      "name": "~@getbackupgnow_ok",
+      "procedures": [
+        {
+          "say": "就这样了，我尽我最大努力精炼了你的武器， \\n结果是否<成功/@Success>\\n只有在你使用过一次后才知道，出去试试吧。\\n<退出/@exit>"
+        }
+      ]
+    },
+    "~@getbackupgnow_ing": {
+      "name": "~@getbackupgnow_ing",
+      "procedures": [
+        {
+          "say": "这个工作正忙着呢，请稍等片刻...\\n<返回/@Main>"
+        }
+      ]
+    },
+    "~@getbackupgnow_bagfull": {
+      "name": "~@getbackupgnow_bagfull",
+      "procedures": [
+        {
+          "say": "你的背包已经满了，先腾出一个空位再来吧。\\n<返回/@Main>"
+        }
+      ]
+    },
+    "~@getbackupgnow_fail": {
+      "name": "~@getbackupgnow_fail",
+      "procedures": [
+        {
+          "say": "以前你是不是寄存了很多东西？\\n如果你找我是为了取回你很久前寄存在这里的物品，\\n那你还是回去吧，我可记不起来了。\\n这也过去太长时间了...\\n<返回/@Main>"
+        }
+      ]
+    },
+    "@Success": {
+      "name": "@Success",
+      "procedures": [
+        {
+          "say": "通过使用它，你可以体会到它精炼的好处。\\n无论你的战斗对象是其他玩家还是怪物...\\n你都会发现这个成果...\\n<退出/@exit>"
+        }
+      ]
+    }
+  }
+}

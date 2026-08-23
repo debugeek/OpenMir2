@@ -1,0 +1,52 @@
+{
+  "id": "恶魔首饰店-B344",
+  "name": "恶魔首饰店老板",
+  "kind": "merchant",
+  "map_id": "B344",
+  "x": 13,
+  "y": 10,
+  "dir": 0,
+  "appr": 4,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true,
+      "repair": true
+    }
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "请问你需要什么装饰品吗?\\n<购买/@buy> 首饰\\n<出售/@sell> 首饰\\n<修理/@repair> 首饰品\\n<关 闭/@exit>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "这里有戒指，手镯，项链，您需要什么?\\n<返 回/@main>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "为了防止万一，我要准备一些必要的首饰品做备用\\n如果您有多余的首饰品，可以卖给我\\n<返 回/@main>"
+        }
+      ]
+    },
+    "@repair": {
+      "name": "@repair",
+      "procedures": [
+        {
+          "say": "我可以给您修理陈旧或损坏的首饰品.\\n您需要修理什么?\\n<返 回/@main>"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "id": "书店-1004",
+  "name": "书店老板",
+  "kind": "merchant",
+  "map_id": "1004",
+  "x": 9,
+  "y": 11,
+  "dir": 0,
+  "appr": 18,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true
+    },
+    "stock": [
+      { "item_id": "基本剑术", "count": 5, "refill_minutes": 10 },
+      { "item_id": "火球术", "count": 5, "refill_minutes": 10 },
+      { "item_id": "大火球", "count": 5, "refill_minutes": 10 },
+      { "item_id": "治愈术", "count": 5, "refill_minutes": 10 },
+      { "item_id": "精神力战法", "count": 5, "refill_minutes": 10 },
+      { "item_id": "施毒术", "count": 5, "refill_minutes": 10 }
+    ]
+  },
+  "labels": {
+    "@书店": {
+      "name": "@书店",
+      "procedures": [
+        {
+          "say": "这里保存着学徒们需要练学的各种书籍. 你需要什么书?\\n<购买/@buy> 书籍\\n<出售/@sell> 书籍\\n<关 闭/@exit>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "请你自己选择你需要的书。\\n<返 回/@main>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "如果你有不错的书籍，我也可以购买. 请把要出售的书籍放入栏里\\n<返 回/@main>"
+        }
+      ]
+    }
+  }
+}

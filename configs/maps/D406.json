@@ -3,8 +3,6 @@
   "name": "废矿区南部",
   "width": 206,
   "height": 153,
-  "spawn_x": 100,
-  "spawn_y": 100,
   "blocked": [],
   "connections": [
     {

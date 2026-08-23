@@ -3,8 +3,6 @@
   "name": "光芒回廊",
   "width": 105,
   "height": 107,
-  "spawn_x": 41,
-  "spawn_y": 44,
   "blocked": [],
   "connections": [
     {

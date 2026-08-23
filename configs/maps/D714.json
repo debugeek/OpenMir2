@@ -3,8 +3,6 @@
   "name": "石墓四层",
   "width": 402,
   "height": 360,
-  "spawn_x": 251,
-  "spawn_y": 41,
   "blocked": [],
   "connections": [
     {

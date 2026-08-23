@@ -3,8 +3,6 @@
   "name": "地狱烈焰",
   "width": 50,
   "height": 50,
-  "spawn_x": 18,
-  "spawn_y": 26,
   "blocked": [],
   "connections": [],
   "monster_spawns": [

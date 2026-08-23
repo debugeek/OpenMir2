@@ -3,8 +3,6 @@
   "name": "邪恶势力",
   "width": 108,
   "height": 103,
-  "spawn_x": 82,
-  "spawn_y": 78,
   "blocked": [],
   "connections": [
     {

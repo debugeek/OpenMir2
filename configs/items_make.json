@@ -1,0 +1,65 @@
+{
+  "灰色药粉(少量)": [
+    { "item_id": "食人树叶", "count": 4 },
+    { "item_id": "毒蜘蛛牙齿", "count": 2 },
+    { "item_id": "食人树果实", "count": 1 }
+  ],
+  "灰色药粉(中量)": [
+    { "item_id": "食人树叶", "count": 8 },
+    { "item_id": "毒蜘蛛牙齿", "count": 4 },
+    { "item_id": "食人树果实", "count": 2 }
+  ],
+  "灰色药粉(大量)": [
+    { "item_id": "食人树叶", "count": 12 },
+    { "item_id": "毒蜘蛛牙齿", "count": 6 },
+    { "item_id": "食人树果实", "count": 3 }
+  ],
+  "黄色药粉(少量)": [
+    { "item_id": "食人树叶", "count": 4 },
+    { "item_id": "蝎子尾巴", "count": 1 },
+    { "item_id": "蛆卵", "count": 1 }
+  ],
+  "黄色药粉(中量)": [
+    { "item_id": "食人树叶", "count": 8 },
+    { "item_id": "蝎子尾巴", "count": 2 },
+    { "item_id": "蛆卵", "count": 2 }
+  ],
+  "黄色药粉(大量)": [
+    { "item_id": "食人树叶", "count": 12 },
+    { "item_id": "蝎子尾巴", "count": 3 },
+    { "item_id": "蛆卵", "count": 3 }
+  ],
+  "赤血魔剑": [
+    { "item_id": "罗刹", "count": 1 },
+    { "item_id": "攻击神水", "count": 1 },
+    { "item_id": "魔力神水", "count": 1 },
+    { "item_id": "精神神水", "count": 1 },
+    { "item_id": "疾风神水", "count": 1 },
+    { "item_id": "体力强效神水", "count": 1 },
+    { "item_id": "魔力强效神水", "count": 1 }
+  ],
+  "魔血戒指": [
+    { "item_id": "虹魔戒指", "count": 1 },
+    { "item_id": "金条", "count": 1 }
+  ],
+  "魔血手镯": [
+    { "item_id": "虹魔手镯", "count": 1 },
+    { "item_id": "金条", "count": 1 }
+  ],
+  "魔血项链": [
+    { "item_id": "虹魔项链", "count": 1 },
+    { "item_id": "金条", "count": 1 }
+  ],
+  "虹魔戒指": [
+    { "item_id": "魔血戒指", "count": 1 },
+    { "item_id": "金条", "count": 1 }
+  ],
+  "虹魔手镯": [
+    { "item_id": "魔血手镯", "count": 1 },
+    { "item_id": "金条", "count": 1 }
+  ],
+  "虹魔项链": [
+    { "item_id": "魔血项链", "count": 1 },
+    { "item_id": "金条", "count": 1 }
+  ]
+}

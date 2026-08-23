@@ -3,8 +3,6 @@
   "name": "幻境九层",
   "width": 310,
   "height": 228,
-  "spawn_x": 128,
-  "spawn_y": 91,
   "blocked": [],
   "connections": [
     {

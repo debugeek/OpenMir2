@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"testing"
 	"time"
 
@@ -32,6 +33,37 @@ func loadTestBundle(t *testing.T) data.StdBundle {
 	}
 	bundle.Spawns = nil
 	return bundle
+}
+
+func allStartPoints(bundle data.StdBundle) []data.StdStartPoint {
+	points := make([]data.StdStartPoint, 0)
+	mapIDs := make([]string, 0, len(bundle.Maps))
+	for mapID := range bundle.Maps {
+		mapIDs = append(mapIDs, mapID)
+	}
+	sort.Slice(mapIDs, func(i, j int) bool {
+		return compareMapIDs(mapIDs[i], mapIDs[j]) < 0
+	})
+	for _, mapID := range mapIDs {
+		mp := bundle.Maps[mapID]
+		for _, sp := range mp.StartPoints {
+			sp.MapID = mapID
+			points = append(points, sp)
+		}
+	}
+	return points
+}
+
+func startCoordsForMap(t *testing.T, bundle data.StdBundle, mapID string) (int, int) {
+	t.Helper()
+	mp, ok := bundle.Maps[mapID]
+	if !ok {
+		t.Fatalf("map %s missing from configs", mapID)
+	}
+	if len(mp.StartPoints) > 0 {
+		return mp.StartPoints[0].X, mp.StartPoints[0].Y
+	}
+	return mp.Width / 2, mp.Height / 2
 }
 
 func countBagItems(items []storage.UserItem) int {
@@ -71,15 +103,12 @@ func TestWorldNewNormalizesMonsterDefaults(t *testing.T) {
 
 func addSpawnNearDefault(t *testing.T, bundle *data.StdBundle, monsterID string, dx, dy int) {
 	t.Helper()
-	mp, ok := bundle.Maps[testMapID]
-	if !ok {
-		t.Fatalf("map %s missing from configs", testMapID)
-	}
+	x, y := startCoordsForMap(t, *bundle, testMapID)
 	bundle.Spawns = []data.StdSpawn{{
 		MapID:          testMapID,
 		MonsterID:      monsterID,
-		X:              mp.SpawnX + dx,
-		Y:              mp.SpawnY + dy,
+		X:              x + dx,
+		Y:              y + dy,
 		Count:          1,
 		RespawnSeconds: 10,
 	}}
@@ -240,7 +269,7 @@ func TestMonsterTickWandersForwardWhenIdle(t *testing.T) {
 	w.monsters = map[string]*Monster{}
 	w.occupied = map[monsterPosition]string{}
 	mp := bundle.Maps[testMapID]
-	x, y := mp.SpawnX, mp.SpawnY
+	x, y := startCoordsForMap(t, bundle, testMapID)
 	found := false
 	for dx := 1; dx < 10; dx++ {
 		if mp.Walkable(x+dx, y) && mp.Walkable(x+dx+1, y) {
@@ -300,7 +329,7 @@ func TestMonsterTickWandersByTurningWhenIdle(t *testing.T) {
 	w.monsters = map[string]*Monster{}
 	w.occupied = map[monsterPosition]string{}
 	mp := bundle.Maps[testMapID]
-	x, y := mp.SpawnX, mp.SpawnY
+	x, y := startCoordsForMap(t, bundle, testMapID)
 	found := false
 	for dx := 1; dx < 10; dx++ {
 		if mp.Walkable(x+dx, y) {
@@ -360,7 +389,7 @@ func TestAnimalMonsterDoesNotRunAwayFromPlayer(t *testing.T) {
 	w.monsters = map[string]*Monster{}
 	w.occupied = map[monsterPosition]string{}
 	mp := bundle.Maps[testMapID]
-	x, y := mp.SpawnX, mp.SpawnY
+	x, y := startCoordsForMap(t, bundle, testMapID)
 	found := false
 	for dx := 1; dx < 10; dx++ {
 		if mp.Walkable(x+dx, y) && mp.Walkable(x-dx, y) {
@@ -430,7 +459,7 @@ func TestSpecialAnimalMonsterRunsAwayFromPlayer(t *testing.T) {
 	w.monsters = map[string]*Monster{}
 	w.occupied = map[monsterPosition]string{}
 	mp := bundle.Maps[testMapID]
-	x, y := mp.SpawnX, mp.SpawnY
+	x, y := startCoordsForMap(t, bundle, testMapID)
 	found := false
 	for dx := 1; dx < 10; dx++ {
 		if mp.Walkable(x+dx, y) && mp.Walkable(x-dx, y) {
@@ -1204,12 +1233,85 @@ func TestDefaultSpawnIsDeterministic(t *testing.T) {
 		t.Fatalf("Open() error = %v", err)
 	}
 	w := New(bundle, store)
-	mp := bundle.Maps[testMapID]
-	for i := 0; i < 20; i++ {
-		mapID, x, y := w.DefaultSpawn()
-		if mapID != mp.ID || x != mp.SpawnX || y != mp.SpawnY {
-			t.Fatalf("DefaultSpawn() call %d = (%s,%d,%d), want (%s,%d,%d)", i, mapID, x, y, mp.ID, mp.SpawnX, mp.SpawnY)
+	mapID, x, y := w.DefaultSpawn()
+	if mapID == "" {
+		t.Fatal("DefaultSpawn() returned empty map id")
+	}
+	found := false
+	for _, sp := range allStartPoints(bundle) {
+		if sp.MapID == mapID && sp.X == x && sp.Y == y {
+			found = true
+			break
 		}
+	}
+	if !found {
+		t.Fatalf("DefaultSpawn() = (%s,%d,%d), want one of configured start points", mapID, x, y)
+	}
+	for i := 0; i < 20; i++ {
+		nextMapID, nextX, nextY := w.DefaultSpawn()
+		if nextMapID != mapID || nextX != x || nextY != y {
+			t.Fatalf("DefaultSpawn() call %d = (%s,%d,%d), want (%s,%d,%d)", i, nextMapID, nextX, nextY, mapID, x, y)
+		}
+	}
+}
+
+func TestRandomNewCharacterSpawnUsesConfiguredDefaultPoints(t *testing.T) {
+	bundle := loadTestBundle(t)
+	store, err := storage.Open(filepath.Join(t.TempDir(), "state.json"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	w := New(bundle, store)
+	points := allStartPoints(bundle)
+	if len(points) < 2 {
+		t.Fatal("need at least two start points for random spawn test")
+	}
+	seen := map[string]bool{}
+	for i := 0; i < 16; i++ {
+		mapID, x, y := w.RandomNewCharacterSpawn()
+		matched := false
+		for _, sp := range points[:2] {
+			if sp.MapID == mapID && sp.X == x && sp.Y == y {
+				seen[fmt.Sprintf("%s:%d:%d", sp.MapID, sp.X, sp.Y)] = true
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			t.Fatalf("RandomNewCharacterSpawn() = (%s,%d,%d), want one of first two configured start points", mapID, x, y)
+		}
+	}
+	if len(seen) < 2 {
+		t.Fatalf("RandomNewCharacterSpawn() only hit %d start point(s), want both configured new-character points", len(seen))
+	}
+}
+
+func TestStartPointUpdatesHomeWhenNearby(t *testing.T) {
+	bundle := loadTestBundle(t)
+	store, err := storage.Open(filepath.Join(t.TempDir(), "state.json"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	w := New(bundle, store)
+	sp := allStartPoints(bundle)[0]
+	ch := storage.Character{
+		ID:      "char-1",
+		Account: "test",
+		Name:    "tester-home",
+		Class:   "warrior",
+		MapID:   sp.MapID,
+		X:       sp.X + 1,
+		Y:       sp.Y,
+	}
+	updated, changed, err := w.SyncCharacterHomeFromStartPoint(ch)
+	if err != nil {
+		t.Fatalf("SyncCharacterHomeFromStartPoint() error = %v", err)
+	}
+	if !changed {
+		t.Fatal("SyncCharacterHomeFromStartPoint() changed = false, want true")
+	}
+	if updated.HomeMap != sp.MapID || updated.HomeX != sp.X || updated.HomeY != sp.Y {
+		t.Fatalf("home = %s (%d,%d), want %s (%d,%d)", updated.HomeMap, updated.HomeX, updated.HomeY, sp.MapID, sp.X, sp.Y)
 	}
 }
 
@@ -1221,16 +1323,16 @@ func TestOfficialConfigMapSupportsWalkAndCombat(t *testing.T) {
 		t.Fatalf("Open() error = %v", err)
 	}
 	w := New(bundle, store)
-	mp := bundle.Maps[testMapID]
-	ch, err := w.CreateCharacter("test", "tester3", "warrior", testMapID, mp.SpawnX, mp.SpawnY)
+	startX, startY := startCoordsForMap(t, bundle, testMapID)
+	ch, err := w.CreateCharacter("test", "tester3", "warrior", testMapID, startX, startY)
 	if err != nil {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
-	ch, err = w.Walk(ch, mp.SpawnX+1, mp.SpawnY, 2)
+	ch, err = w.Walk(ch, startX+1, startY, 2)
 	if err != nil {
 		t.Fatalf("Walk() on config map error = %v", err)
 	}
-	ch, err = w.Walk(ch, mp.SpawnX+2, mp.SpawnY, 2)
+	ch, err = w.Walk(ch, startX+2, startY, 2)
 	if err != nil {
 		t.Fatalf("Walk() on config map error = %v", err)
 	}
@@ -1299,18 +1401,19 @@ func TestRunRejectsCoordinatesOffTheDirectionLine(t *testing.T) {
 func TestRunRejectsBlockedIntermediateTile(t *testing.T) {
 	bundle := loadTestBundle(t)
 	mp := bundle.Maps[testMapID]
-	mp.Blocked = append(mp.Blocked, data.StdPoint{X: mp.SpawnX + 1, Y: mp.SpawnY})
+	startX, startY := startCoordsForMap(t, bundle, testMapID)
+	mp.Blocked = append(mp.Blocked, data.StdPoint{X: startX + 1, Y: startY})
 	bundle.Maps[testMapID] = mp
 	store, err := storage.Open(filepath.Join(t.TempDir(), "state.json"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
 	w := New(bundle, store)
-	ch, err := w.CreateCharacter("test", "tester1", "warrior", testMapID, mp.SpawnX, mp.SpawnY)
+	ch, err := w.CreateCharacter("test", "tester1", "warrior", testMapID, startX, startY)
 	if err != nil {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
-	if _, err := w.Run(ch, mp.SpawnX+2, mp.SpawnY, 2); err == nil {
+	if _, err := w.Run(ch, startX+2, startY, 2); err == nil {
 		t.Fatalf("Run() expected error crossing the blocked intermediate tile")
 	}
 }
@@ -1446,9 +1549,8 @@ func TestSpawnMonsterCarriesConfiguredCombatAttributes(t *testing.T) {
 
 func TestSpawnMonsterByNameReturnsErrorWhenNoSpaceIsAvailable(t *testing.T) {
 	bundle := loadTestBundle(t)
-	mp := bundle.Maps[testMapID]
-	targetX := mp.SpawnX + 1
-	targetY := mp.SpawnY
+	targetX, targetY := startCoordsForMap(t, bundle, testMapID)
+	targetX++
 	blockedMap := bundle.Maps[testMapID]
 	for dy := -1; dy <= 1; dy++ {
 		for dx := -1; dx <= 1; dx++ {
@@ -1473,8 +1575,8 @@ func TestSpawnMonsterByNameReturnsErrorWhenNoSpaceIsAvailable(t *testing.T) {
 
 func TestInitialSpawnDoesNotOverlapWhenCountExceedsRange(t *testing.T) {
 	bundle := loadTestBundle(t)
-	mp := bundle.Maps[testMapID]
-	bundle.Spawns = []data.StdSpawn{{MapID: testMapID, MonsterID: "鹿", X: mp.SpawnX + 2, Y: mp.SpawnY, Range: 1, Count: 3, RespawnSeconds: 10}}
+	startX, startY := startCoordsForMap(t, bundle, testMapID)
+	bundle.Spawns = []data.StdSpawn{{MapID: testMapID, MonsterID: "鹿", X: startX + 2, Y: startY, Range: 1, Count: 3, RespawnSeconds: 10}}
 	store, err := storage.Open(filepath.Join(t.TempDir(), "state.json"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
@@ -1497,7 +1599,8 @@ func TestInitialSpawnDoesNotOverlapWhenCountExceedsRange(t *testing.T) {
 func TestInitialSpawnScalesWithMapMonsterSpawnRate(t *testing.T) {
 	bundle := loadTestBundle(t)
 	mp := bundle.Maps[testMapID]
-	bundle.Spawns = []data.StdSpawn{{MapID: testMapID, MonsterID: "鹿", X: mp.SpawnX + 2, Y: mp.SpawnY, Range: 1, Count: 4, RespawnSeconds: 10}}
+	startX, startY := startCoordsForMap(t, bundle, testMapID)
+	bundle.Spawns = []data.StdSpawn{{MapID: testMapID, MonsterID: "鹿", X: startX + 2, Y: startY, Range: 1, Count: 4, RespawnSeconds: 10}}
 	mp.MonsterSpawnRate = 20
 	bundle.Maps[testMapID] = mp
 	store, err := storage.Open(filepath.Join(t.TempDir(), "state.json"))
@@ -1513,8 +1616,8 @@ func TestInitialSpawnScalesWithMapMonsterSpawnRate(t *testing.T) {
 
 func TestRespawnDoesNotOverlapLivingMonster(t *testing.T) {
 	bundle := loadTestBundle(t)
-	mp := bundle.Maps[testMapID]
-	spawn := data.StdSpawn{MapID: testMapID, MonsterID: "鹿", X: mp.SpawnX + 2, Y: mp.SpawnY, Range: 1, Count: 1, RespawnSeconds: 10}
+	startX, startY := startCoordsForMap(t, bundle, testMapID)
+	spawn := data.StdSpawn{MapID: testMapID, MonsterID: "鹿", X: startX + 2, Y: startY, Range: 1, Count: 1, RespawnSeconds: 10}
 	bundle.Spawns = []data.StdSpawn{spawn}
 	store, err := storage.Open(filepath.Join(t.TempDir(), "state.json"))
 	if err != nil {
@@ -2148,8 +2251,6 @@ func TestPlaceDropsAvoidsBlockedTiles(t *testing.T) {
 				Name:   "tiny",
 				Width:  3,
 				Height: 3,
-				SpawnX: 1,
-				SpawnY: 1,
 			},
 		},
 		Monsters: map[string]data.StdMonster{},
@@ -2360,8 +2461,6 @@ func TestPlaceDropsAbandonsWhenNoCandidateCellsExist(t *testing.T) {
 				Name:   "tiny",
 				Width:  1,
 				Height: 1,
-				SpawnX: 0,
-				SpawnY: 0,
 			},
 		},
 		Monsters: map[string]data.StdMonster{},
@@ -2748,6 +2847,21 @@ func TestUseTeleportRandomScrollMovesWithinSameMap(t *testing.T) {
 	}
 }
 
+func TestUseDungeonEscapeScrollUsesHomeMapRandomPosition(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	ch.BagItems = []storage.UserItem{{ItemID: "地牢逃脱卷", MakeIndex: 302}}
+	updated, _, err := w.UseItemByBagIndex(ch, 302)
+	if err != nil {
+		t.Fatalf("UseItemByBagIndex() error = %v", err)
+	}
+	if updated.MapID != ch.HomeMap {
+		t.Fatalf("MapID = %q, want home map %q", updated.MapID, ch.HomeMap)
+	}
+	if updated.X == ch.X && updated.Y == ch.Y {
+		t.Fatalf("teleport did not move character")
+	}
+}
+
 func TestUseBlessingOilUpdatesEquippedWeaponLuck(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
 	ch.BagItems = []storage.UserItem{
@@ -3081,8 +3195,8 @@ func TestHandleUserCommandMoveTargetMapRandom(t *testing.T) {
 func TestHandleUserCommandMoveTargetMapCoords(t *testing.T) {
 	w, ch := newRealDataWorldCharacter(t)
 	targetMap := otherMapID(t, w, ch.MapID)
-	mp := w.data.Maps[targetMap]
-	targetX, targetY := firstWalkableAround(t, w, targetMap, mp.SpawnX, mp.SpawnY, 4)
+	targetX, targetY := startCoordsForMap(t, w.data, targetMap)
+	targetX, targetY = firstWalkableAround(t, w, targetMap, targetX, targetY, 4)
 	result, ok := w.HandleUserCommand(ch, fmt.Sprintf("@Move %s %d %d", targetMap, targetX, targetY))
 	if !ok {
 		t.Fatal("HandleUserCommand() returned ok=false")

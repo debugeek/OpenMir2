@@ -3,8 +3,6 @@
   "name": "钳虫巢穴",
   "width": 50,
   "height": 50,
-  "spawn_x": 22,
-  "spawn_y": 24,
   "blocked": [],
   "connections": [],
   "monster_spawns": [

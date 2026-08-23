@@ -3,8 +3,6 @@
   "name": "丛林迷宫",
   "width": 348,
   "height": 496,
-  "spawn_x": 200,
-  "spawn_y": 200,
   "blocked": [],
   "connections": [
     {

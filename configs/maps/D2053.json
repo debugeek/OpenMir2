@@ -3,8 +3,6 @@
   "name": "尸魔洞二层",
   "width": 220,
   "height": 300,
-  "spawn_x": 200,
-  "spawn_y": 190,
   "blocked": [],
   "connections": [
     {

@@ -3,8 +3,6 @@
   "name": "传奇部落",
   "width": 107,
   "height": 102,
-  "spawn_x": 67,
-  "spawn_y": 79,
   "blocked": [],
   "connections": [
     {

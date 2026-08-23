@@ -3,8 +3,6 @@
   "name": "崎路",
   "width": 279,
   "height": 290,
-  "spawn_x": 238,
-  "spawn_y": 120,
   "blocked": [],
   "connections": [
     {

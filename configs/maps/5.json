@@ -3,8 +3,12 @@
   "name": "苍月岛",
   "width": 676,
   "height": 631,
-  "spawn_x": 0,
-  "spawn_y": 0,
+  "start_points": [
+    {
+      "x": 141,
+      "y": 337
+    }
+  ],
   "blocked": [],
   "connections": [
     {

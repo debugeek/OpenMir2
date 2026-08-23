@@ -3,8 +3,6 @@
   "name": "虎卫堂",
   "width": 50,
   "height": 50,
-  "spawn_x": 12,
-  "spawn_y": 12,
   "blocked": [],
   "connections": [
     {

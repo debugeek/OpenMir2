@@ -3,8 +3,6 @@
   "name": "霸者大厅",
   "width": 104,
   "height": 104,
-  "spawn_x": 41,
-  "spawn_y": 74,
   "blocked": [],
   "connections": [
     {

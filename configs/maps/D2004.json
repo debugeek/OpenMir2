@@ -3,8 +3,6 @@
   "name": "疾风殿",
   "width": 97,
   "height": 97,
-  "spawn_x": 49,
-  "spawn_y": 44,
   "blocked": [],
   "connections": [
     {

@@ -3,8 +3,6 @@
   "name": "石墓五层",
   "width": 220,
   "height": 365,
-  "spawn_x": 200,
-  "spawn_y": 200,
   "blocked": [],
   "connections": [
     {

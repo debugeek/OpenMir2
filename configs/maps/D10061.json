@@ -3,8 +3,6 @@
   "name": "恶魔祭坛",
   "width": 170,
   "height": 170,
-  "spawn_x": 17,
-  "spawn_y": 21,
   "blocked": [],
   "connections": [
     {

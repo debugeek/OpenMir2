@@ -3,8 +3,6 @@
   "name": "幻境八层",
   "width": 103,
   "height": 105,
-  "spawn_x": 26,
-  "spawn_y": 58,
   "blocked": [],
   "connections": [
     {

@@ -1,12 +1,17 @@
 package data
 
+import "openmir2/internal/npc"
+
 type StdBundle struct {
-	Items    map[string]StdItem
-	Skills   map[string]StdSkill
-	Monsters map[string]StdMonster
-	Drops    map[string]StdDropTable
-	Maps     map[string]StdMap
-	Spawns   []StdSpawn
+	Items     map[string]StdItem
+	ItemOrder []string
+	Skills    map[string]StdSkill
+	Monsters  map[string]StdMonster
+	Drops     map[string]StdDropTable
+	Maps      map[string]StdMap
+	Spawns    []StdSpawn
+	MakeItems map[string][]StdMakeIngredient
+	NPCs      npc.Library
 }
 
 type StdLoadReport struct {
@@ -141,18 +146,28 @@ type StdDropEntry struct {
 	MaxCount int     `json:"max_count"`
 }
 
+type StdMakeIngredient struct {
+	ItemID string `json:"item_id"`
+	Count  int    `json:"count"`
+}
+
 type StdMap struct {
 	ID               string             `json:"id"`
 	Name             string             `json:"name"`
 	Light            int                `json:"light,omitempty"`
 	Width            int                `json:"width"`
 	Height           int                `json:"height"`
-	SpawnX           int                `json:"spawn_x"`
-	SpawnY           int                `json:"spawn_y"`
 	MonsterSpawnRate int                `json:"monster_spawn_rate"`
 	Blocked          []StdPoint         `json:"blocked"`
+	StartPoints      []StdStartPoint    `json:"start_points,omitempty"`
 	Connections      []StdMapConnection `json:"connections"`
 	Spawns           []StdMapSpawn      `json:"monster_spawns"`
+}
+
+type StdStartPoint struct {
+	MapID string `json:"-"`
+	X     int    `json:"x"`
+	Y     int    `json:"y"`
 }
 
 type StdMapConnection struct {

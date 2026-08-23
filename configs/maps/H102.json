@@ -3,8 +3,6 @@
   "name": "幻境二层北",
   "width": 383,
   "height": 360,
-  "spawn_x": 200,
-  "spawn_y": 200,
   "blocked": [],
   "connections": [
     {

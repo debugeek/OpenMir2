@@ -3,8 +3,6 @@
   "name": "矿物回收站",
   "width": 186,
   "height": 168,
-  "spawn_x": 100,
-  "spawn_y": 100,
   "blocked": [],
   "connections": [
     {

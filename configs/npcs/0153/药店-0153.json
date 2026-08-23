@@ -1,0 +1,58 @@
+{
+  "id": "药店-0153",
+  "name": "药店",
+  "kind": "merchant",
+  "map_id": "0153",
+  "x": 14,
+  "y": 7,
+  "dir": 0,
+  "appr": 0,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true
+    },
+    "stock": [
+      { "item_id": "金创药(小量)", "count": 100, "refill_minutes": 3 },
+      { "item_id": "魔法药(小量)", "count": 100, "refill_minutes": 3 },
+      { "item_id": "金创药(中量)", "count": 100, "refill_minutes": 3 },
+      { "item_id": "魔法药(中量)", "count": 100, "refill_minutes": 3 },
+      { "item_id": "强效金创药", "count": 500, "refill_minutes": 3 },
+      { "item_id": "强效魔法药", "count": 500, "refill_minutes": 3 },
+      { "item_id": "金创药(小)包", "count": 100, "refill_minutes": 3 },
+      { "item_id": "魔法药(小)包", "count": 100, "refill_minutes": 3 },
+      { "item_id": "金创药(中)包", "count": 300, "refill_minutes": 3 },
+      { "item_id": "魔法药(中)包", "count": 300, "refill_minutes": 3 },
+      { "item_id": "超级金创药", "count": 600, "refill_minutes": 3 },
+      { "item_id": "超级魔法药", "count": 600, "refill_minutes": 3 },
+      { "item_id": "太阳水", "count": 500, "refill_minutes": 3 }
+    ]
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "这里是卖药的... 什么？你已经知道了？\\n哼，好吧，那么买了东西赶紧走吧，能走多快就走多快\\n你是 <$OWNERGUILD>的成员吗？ \\n那么我会给你打20%的折扣， 这有什么好奇怪的？ \\n<买/@buy> 药品\\n<卖/@sell> 药品\\n<离 开/@exit>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "找到你想要了吗？\\n怎么这么慢？请快点做出选择！\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "你想卖东西？这太过分了，我的生意最近不大好...\\n卖了以后赶紧该干啥干啥去吧！\\n<返 回/@Main>"
+        }
+      ]
+    }
+  }
+}

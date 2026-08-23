@@ -1,0 +1,79 @@
+{
+  "id": "杂货店-5",
+  "name": "杂货店老板",
+  "kind": "merchant",
+  "map_id": "5",
+  "x": 143,
+  "y": 354,
+  "dir": 0,
+  "appr": 3,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true,
+      "repair": true
+    },
+    "stock": [
+      { "item_id": "随机传送卷", "count": 10, "refill_minutes": 10 },
+      { "item_id": "地牢逃脱卷", "count": 10, "refill_minutes": 10 },
+      { "item_id": "随机传送卷包", "count": 110, "refill_minutes": 10 },
+      { "item_id": "地牢逃脱卷包", "count": 10, "refill_minutes": 10 },
+      { "item_id": "护身符", "count": 10, "refill_minutes": 10 },
+      { "item_id": "护身符(大)", "count": 10, "refill_minutes": 10 },
+      { "item_id": "修复油", "count": 10, "refill_minutes": 10 },
+      { "item_id": "行会回城卷", "count": 10, "refill_minutes": 10 },
+      { "item_id": "回城卷", "count": 30, "refill_minutes": 10 }
+    ]
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "欢迎. 我可以为你做什么吗?\\n<购买/@buy> 物品 \\n<出售/@sell> 物品 \\n<特殊修理/@s_repair>\\n<离 开/@exit>"
+        }
+      ]
+    },
+    "@laba": {
+      "name": "@laba",
+      "procedures": [
+        {
+          "say": "哈哈，我这里新到了一批喇叭，小的每个15W，可以使用3次。\\n大的每个50W，可以使用10次。要买的赶紧！\\n向全服喊话，佩带在四格装备宝石处，输入@传+内容，\\n可向所有玩家发布公告哦\\n<购买大喇叭/@大> <购买小喇叭/@小> <取消/@exit>"
+        }
+      ]
+    },
+    "@大": {
+      "name": "@大",
+      "procedures": [
+        {
+          "say": "你开玩笑吗？你没钱还想买？\\n我再也不想见到你了。\\n<返回/@main>"
+        }
+      ]
+    },
+    "@小": {
+      "name": "@小",
+      "procedures": [
+        {
+          "say": "你开玩笑吗？你没钱还想买？\\n我再也不想见到你了。\\n<返回/@main>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "你需要哪种杂货呢?\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "我这出售蜡烛，护身符，卷轴，修理液等.\\n<返 回/@Main>"
+        }
+      ]
+    }
+  }
+}

@@ -3,8 +3,6 @@
   "name": "王者禁地",
   "width": 120,
   "height": 134,
-  "spawn_x": 75,
-  "spawn_y": 114,
   "blocked": [],
   "connections": [],
   "monster_spawns": [

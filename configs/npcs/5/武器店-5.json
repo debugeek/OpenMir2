@@ -1,0 +1,74 @@
+{
+  "id": "武器店-5",
+  "name": "武器店老板",
+  "kind": "merchant",
+  "map_id": "5",
+  "x": 129,
+  "y": 306,
+  "dir": 0,
+  "appr": 0,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true,
+      "repair": true
+    },
+    "stock": [
+      { "item_id": "木剑", "count": 10, "refill_minutes": 10 },
+      { "item_id": "青铜剑", "count": 10, "refill_minutes": 10 },
+      { "item_id": "铁剑", "count": 10, "refill_minutes": 10 },
+      { "item_id": "短剑", "count": 10, "refill_minutes": 10 },
+      { "item_id": "匕首", "count": 10, "refill_minutes": 10 },
+      { "item_id": "鹤嘴锄", "count": 10, "refill_minutes": 10 },
+      { "item_id": "乌木剑", "count": 5, "refill_minutes": 10 },
+      { "item_id": "八荒", "count": 5, "refill_minutes": 10 },
+      { "item_id": "海魂", "count": 5, "refill_minutes": 10 },
+      { "item_id": "半月", "count": 5, "refill_minutes": 10 },
+      { "item_id": "凌风", "count": 5, "refill_minutes": 10 },
+      { "item_id": "破魂", "count": 5, "refill_minutes": 10 }
+    ]
+  },
+  "labels": {
+    "@武器店": {
+      "name": "@武器店",
+      "procedures": [
+        {
+          "say": "欢迎光临.  感谢您到我们的铁匠铺.\\n<买/@buy> 武器\\n<卖/@sell> 武器\\n<修理/@repair> 武器\\n<离 开/@exit>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "您想买些什么武器?\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "给我您要卖的武器.\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@repair": {
+      "name": "@repair",
+      "procedures": [
+        {
+          "say": "您要修理武器吗?\\n给我您要修理的武器.\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "~@repair": {
+      "name": "~@repair",
+      "procedures": [
+        {
+          "say": "看起来修好了,欢迎下次再来.\\n<返 回/@Main>"
+        }
+      ]
+    }
+  }
+}

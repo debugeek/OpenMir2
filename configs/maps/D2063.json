@@ -3,8 +3,6 @@
   "name": "骨魔洞三层",
   "width": 125,
   "height": 184,
-  "spawn_x": 105,
-  "spawn_y": 95,
   "blocked": [],
   "connections": [
     {

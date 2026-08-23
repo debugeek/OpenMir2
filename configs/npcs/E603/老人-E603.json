@@ -1,0 +1,28 @@
+{
+  "id": "老人-E603",
+  "name": "老人",
+  "kind": "special",
+  "map_id": "E603",
+  "x": 31,
+  "y": 191,
+  "dir": 0,
+  "appr": 9,
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "我可以让你进去,但只能在里面待3个小时\\n自己小心..\\n<进入山洞/@ad>"
+        }
+      ]
+    },
+    "@ad": {
+      "name": "@ad",
+      "procedures": [
+        {
+          "say": "进入山洞。"
+        }
+      ]
+    }
+  }
+}

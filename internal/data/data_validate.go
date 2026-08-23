@@ -30,12 +30,23 @@ func (b StdBundle) Validate() error {
 		if mp.Width <= 0 || mp.Height <= 0 {
 			return fmt.Errorf("map %s dimensions must be positive", id)
 		}
-		if !mp.Walkable(mp.SpawnX, mp.SpawnY) {
-			return fmt.Errorf("map %s spawn is not walkable", id)
-		}
 		for _, conn := range mp.Connections {
 			if conn.ToMap == "" {
 				return fmt.Errorf("map %s has a connection with missing destination map", id)
+			}
+		}
+	}
+	totalStartPoints := 0
+	for _, mp := range b.Maps {
+		totalStartPoints += len(mp.StartPoints)
+	}
+	if totalStartPoints == 0 {
+		return fmt.Errorf("start points are required")
+	}
+	for id, mp := range b.Maps {
+		for _, sp := range mp.StartPoints {
+			if !mp.Walkable(sp.X, sp.Y) {
+				return fmt.Errorf("start point is not walkable on map %s", id)
 			}
 		}
 	}
@@ -54,6 +65,32 @@ func (b StdBundle) Validate() error {
 		}
 		if sp.MissionGenRate < 0 || sp.MissionGenRate > 100 {
 			return fmt.Errorf("spawn %s mission_gen_rate must be between 0 and 100", sp.ID)
+		}
+	}
+	for itemName, recipe := range b.MakeItems {
+		if _, ok := b.Items[itemName]; !ok {
+			return fmt.Errorf("make item %s references missing output item", itemName)
+		}
+		if len(recipe) == 0 {
+			return fmt.Errorf("make item %s requires at least one ingredient", itemName)
+		}
+		for _, ing := range recipe {
+			if _, ok := b.Items[ing.ItemID]; !ok {
+				return fmt.Errorf("make item %s references missing ingredient %s", itemName, ing.ItemID)
+			}
+			if ing.Count <= 0 {
+				return fmt.Errorf("make item %s has invalid ingredient count for %s", itemName, ing.ItemID)
+			}
+		}
+	}
+	for id, entity := range b.NPCs.Entities {
+		if _, ok := b.Maps[entity.MapID]; !ok {
+			return fmt.Errorf("npc %s references missing map %s", id, entity.MapID)
+		}
+		if entity.ScriptID != "" {
+			if _, ok := b.NPCs.Scripts[entity.ScriptID]; !ok {
+				return fmt.Errorf("npc %s references missing script %s", id, entity.ScriptID)
+			}
 		}
 	}
 	return nil

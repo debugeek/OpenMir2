@@ -3,8 +3,6 @@
   "name": "牛魔寺庙六层",
   "width": 275,
   "height": 276,
-  "spawn_x": 150,
-  "spawn_y": 150,
   "blocked": [],
   "connections": [
     {

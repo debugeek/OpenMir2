@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"sort"
 	"strconv"
@@ -18,6 +19,7 @@ import (
 
 	"openmir2/internal/config"
 	"openmir2/internal/data"
+	"openmir2/internal/npc"
 	"openmir2/internal/protocol/mir176"
 	"openmir2/internal/storage"
 	"openmir2/internal/world"
@@ -63,13 +65,18 @@ func (s *Server) SetMonsterTickInterval(interval time.Duration) {
 }
 
 type Client struct {
-	conn            net.Conn
-	mu              sync.Mutex
-	ch              storage.Character
-	softVersionDate int
-	active          *storage.Character
-	visibleMonsters map[string]world.Monster
-	visibleDrops    map[string]world.GroundDrop
+	conn                  net.Conn
+	mu                    sync.Mutex
+	ch                    storage.Character
+	softVersionDate       int
+	active                *storage.Character
+	visibleMonsters       map[string]world.Monster
+	visibleDrops          map[string]world.GroundDrop
+	visibleNPCs           map[string]npc.Entity
+	activeNPCID           string
+	merchantCurrentLabel  string
+	merchantGoBackLabel   string
+	pendingMerchantAction string
 }
 
 type teleportSyncAdapter struct {
@@ -367,11 +374,11 @@ func (s *Server) handleProtocol(ctx context.Context, conn net.Conn) {
 				if err == nil && isPlausibleProtocolIdent(cmd.Ident) {
 					if cmd.Ident == mir176.CMLoginNoticeOK && pendingLogin != nil {
 						if ch, ok := s.sendEnterWorld(conn, *pendingLogin); ok {
+							activeClient = s.registerClient(conn, ch)
+							activeChar = &ch
+							activeClient.active = activeChar
 							s.sendEnterWorldState(conn, ch)
 							s.sendInitialLoginState(conn, ch)
-							activeChar = &ch
-							activeClient = s.registerClient(conn, ch)
-							activeClient.active = activeChar
 						}
 						pendingLogin = nil
 						continue
@@ -390,6 +397,28 @@ func (s *Server) handleProtocol(ctx context.Context, conn net.Conn) {
 							s.handleHit(conn, activeChar, cmd)
 						case mir176.CMSay, mir176.CMUserCommand:
 							s.handleSay(conn, activeChar, text)
+						case mir176.CMClickNPC:
+							s.handleClickNPC(conn, activeChar, activeClient, cmd)
+						case mir176.CMMerchantQuerySellPrice:
+							s.handleMerchantQuerySellPrice(conn, activeChar, activeClient, cmd, text)
+						case mir176.CMMerchantDlgSelect:
+							s.handleMerchantDlgSelect(conn, activeChar, activeClient, cmd, text)
+						case mir176.CMUserSellItem:
+							s.handleUserSellItem(conn, activeChar, activeClient, cmd, text)
+						case mir176.CMUserBuyItem:
+							s.handleUserBuyItem(conn, activeChar, activeClient, cmd, text)
+						case mir176.CMUserGetDetailItem:
+							s.handleUserGetDetailItem(conn, activeChar, activeClient, cmd, text)
+						case mir176.CMUserRepairItem:
+							s.handleUserRepairItem(conn, activeChar, activeClient, cmd, text)
+						case mir176.CMMerchantQueryRepairCost:
+							s.handleMerchantQueryRepairCost(conn, activeChar, activeClient, cmd, text)
+						case mir176.CMUserStorageItem:
+							s.handleUserStorageItem(conn, activeChar, activeClient, cmd, text)
+						case mir176.CMUserTakeBackStorageItem:
+							s.handleUserTakeBackStorageItem(conn, activeChar, activeClient, cmd, text)
+						case mir176.CMUserMakeDrugItem:
+							s.handleUserMakeDrugItem(conn, activeChar, activeClient, cmd, text)
 						case mir176.CMQueryUserName:
 							s.handleQueryUserName(conn, activeChar, cmd)
 						case mir176.CMQueryUserState:
@@ -501,7 +530,986 @@ func (s *Server) handleSay(conn net.Conn, activeChar *storage.Character, text []
 	if !ok {
 		return
 	}
+	if result.Command != nil {
+		s.handleUserCommandResult(conn, activeChar, *result.Command)
+		return
+	}
 	world.ApplySaySync(itemUseSyncAdapter{s: s, conn: conn}, *activeChar, result)
+}
+
+func (s *Server) handleClickNPC(conn net.Conn, activeChar *storage.Character, activeClient *Client, cmd mir176.Command) {
+	entity, ok := s.world.NPCByActorID(cmd.Recog)
+	if !ok {
+		return
+	}
+	if entity.MapID != activeChar.MapID || absInt(entity.X-activeChar.X) > 15 || absInt(entity.Y-activeChar.Y) > 15 {
+		return
+	}
+	if activeClient != nil {
+		activeClient.mu.Lock()
+		activeClient.activeNPCID = entity.ID
+		activeClient.merchantCurrentLabel = "@main"
+		activeClient.merchantGoBackLabel = ""
+		activeClient.mu.Unlock()
+	}
+	conversation, ok := s.world.NPCConversation(*activeChar, entity.ID, "@main")
+	if !ok {
+		return
+	}
+	s.sendNPCConversation(conn, conversation)
+}
+
+func (s *Server) handleMerchantDlgSelect(conn net.Conn, activeChar *storage.Character, activeClient *Client, cmd mir176.Command, text []byte) {
+	entity, ok := s.resolveMerchantEntity(activeClient, cmd)
+	if !ok {
+		return
+	}
+	rawText := strings.TrimSpace(DecodeString(text))
+	if activeClient != nil {
+		activeClient.mu.Lock()
+		activeClient.activeNPCID = entity.ID
+		activeClient.mu.Unlock()
+	}
+	label := s.world.NPCLabelSelection(rawText)
+	if s.handleTeleportMerchantDlgSelect(conn, activeChar, entity, label) {
+		return
+	}
+	if s.handleWarehouseMerchantDlgSelect(conn, activeChar, entity, label) {
+		return
+	}
+	if s.handleSpecialMerchantDlgSelect(conn, activeChar, activeClient, entity, label, rawText) {
+		return
+	}
+	if activeClient != nil {
+		activeClient.mu.Lock()
+		if strings.EqualFold(label, "@back") {
+			if activeClient.merchantGoBackLabel == "" {
+				activeClient.merchantGoBackLabel = "@main"
+			}
+			label = activeClient.merchantGoBackLabel
+		}
+		if strings.HasPrefix(rawText, "@") {
+			if activeClient.merchantCurrentLabel != "" && !strings.EqualFold(activeClient.merchantCurrentLabel, label) {
+				activeClient.merchantGoBackLabel = activeClient.merchantCurrentLabel
+			}
+			activeClient.merchantCurrentLabel = label
+		}
+		pendingAction := activeClient.pendingMerchantAction
+		if pendingAction != "" && rawText != "" && !strings.HasPrefix(rawText, "@") {
+			activeClient.pendingMerchantAction = ""
+			activeClient.mu.Unlock()
+			if s.handlePendingMerchantAction(conn, activeChar, entity, pendingAction, rawText) {
+				return
+			}
+			activeClient.mu.Lock()
+		}
+		activeClient.mu.Unlock()
+	}
+	if s.sendMerchantMenu(conn, cmd.Recog, *activeChar, entity, label) {
+		return
+	}
+	if strings.EqualFold(label, "@exit") {
+		s.sendMerchantDlgClose(conn, cmd.Recog)
+		return
+	}
+	conversation, ok := s.world.NPCConversation(*activeChar, entity.ID, label)
+	if !ok {
+		return
+	}
+	s.sendNPCConversation(conn, conversation)
+}
+
+func (s *Server) handlePendingMerchantAction(conn net.Conn, activeChar *storage.Character, entity npc.Entity, action, text string) bool {
+	switch strings.ToLower(strings.TrimSpace(action)) {
+	case "buildguild":
+		if text == "" {
+			s.sendMerchantSay(conn, entity.Name, "请填写行会名称。\n<返回/@main>")
+			return true
+		}
+		price := s.world.Gameplay().Guild.BuildGuildPrice
+		if activeChar.Gold < price {
+			s.sendMerchantSay(conn, entity.Name, "你身上的钱不够！请准备好后再来。\n<返回/@main>")
+			return true
+		}
+		if !bagHasItemID(*activeChar, "沃玛号角") {
+			s.sendMerchantSay(conn, entity.Name, "你没有准备好需要的全部物品。\n<返回/@main>")
+			return true
+		}
+		updated, removed, ok := removeBagItemsByID(*activeChar, "沃玛号角", 1)
+		if !ok {
+			s.sendMerchantSay(conn, entity.Name, "你没有准备好需要的全部物品。\n<返回/@main>")
+			return true
+		}
+		updated.Gold -= price
+		*activeChar = updated
+		s.sendDelItemList(conn, removed)
+		s.sendGoldChanged(conn, updated.Gold)
+		s.sendMerchantSay(conn, entity.Name, "行会创建申请已提交: "+text+"\n<返回/@main>")
+		if err := s.store.SaveCharacter(updated); err != nil {
+			s.log.Info("guild build request save failed", "char", updated.Name, "guild", text, "error", err)
+		}
+		return true
+	case "guildwar":
+		if text == "" {
+			s.sendMerchantSay(conn, entity.Name, fmt.Sprintf("填写与你交战的敌对行会的名字，申请行会战争必须支付%d金币。\n<立即申请行会战争/@@guildwar>\n<返回/@main>", s.world.Gameplay().Guild.GuildWarPrice))
+			return true
+		}
+		price := s.world.Gameplay().Guild.GuildWarPrice
+		if activeChar.Gold < price {
+			s.sendMerchantSay(conn, entity.Name, "你身上的钱不够！请准备好后再来。\n<返回/@main>")
+			return true
+		}
+		updated := *activeChar
+		updated.Gold -= price
+		*activeChar = updated
+		s.sendGoldChanged(conn, updated.Gold)
+		s.sendMerchantSay(conn, entity.Name, "行会战争申请已提交: "+text+"\n<返回/@main>")
+		if err := s.store.SaveCharacter(updated); err != nil {
+			s.log.Info("guild war request save failed", "char", updated.Name, "guild", text, "error", err)
+		}
+		return true
+	}
+	return false
+}
+
+func (s *Server) handleTeleportMerchantDlgSelect(conn net.Conn, activeChar *storage.Character, entity npc.Entity, label string) bool {
+	switch strings.ToLower(strings.TrimSpace(label)) {
+	case "@anquan":
+		if activeChar.Level <= 6 {
+			s.sendMerchantSay(conn, entity.Name, "照你现在这个级别,我没什么能帮的上你!\n请你练到7级再来找我吧，祝你好运!")
+			return true
+		}
+		s.sendMerchantSay(conn, entity.Name, "这里是<城区传送>服务,你必须给我2000金币的报酬!\n┏━━━━┳━━━━┳━━━━┳━━━━┓\n┃<比齐大城/@JIANAN>┃<毒蛇山谷/@FENGDI>┃<银杏小村/@XIAGU>┃<比奇村庄/@HAIBIN>┃\n┣━━━━╋━━━━╋━━━━╋━━━━┫\n┃<盟重土城/@YASHU>┃<苍月之岛/@HUANGCHENG>┃<封魔神谷/@JIANYU>┃<白 日 门/@SHADINDAO>┃\n┗━━━━┻━━━━┻━━━━┻━━━━┛")
+		return true
+	case "@xiane":
+		if activeChar.Level > 34 {
+			s.sendMerchantSay(conn, entity.Name, "这里是<险恶地区>服务，按照你的级别你可以前往以下地区:\n当然你还得付给我3000金币的报酬!\n┏━━━━┳━━━━┳━━━━┳━━━━┳━━━━┓\n┃<沃玛三层/@JM7>┃<猪洞七层/@JM8>┃<祖玛七层/@JM5>┃<死亡棺材/@JM6>┃<抉择之地/@S6>┃\n┣━━━━╋━━━━╋━━━━╋━━━━╋━━━━┫\n┃<比齐矿区/@JN1>┃<蜈蚣洞穴/@JN2>┃<天然洞穴/@JM1>┃<牛魔四层/@JM2>┃<封魔矿区/@FENGMOKOU>┃\n┣━━━━╋━━━━╋━━━━╋━━━━╋━━━━┫\n┃<未知暗殿/@JXJDVE>┃<尸 魔 洞/@JM3>┃<骨 魔 洞/@JM4>┃<尸王大殿/@LM2>┃<沙城区域/@沙城区域>┃\n┗━━━━┻━━━━┻━━━━┻━━━━┻━━━━┛")
+			return true
+		}
+		if activeChar.Level > 21 {
+			s.sendMerchantSay(conn, entity.Name, "这里是<险恶地区>服务，按照你的级别35级前你可以前往以下地区:\n当然你还得付给我3000金币的报酬!\n┏━━━━┳━━━━┳━━━━┳━━━━┳━━━━┓\n┃<沃玛二层/@S1>┃<猪洞一层/@S2>┃<祖玛三层/@S3>┃<赤月峡谷/@S5>┃<封魔矿区/@FENGMOKOU>┃\n┣━━━━╋━━━━╋━━━━╋━━━━╋━━━━┫\n┃<比齐矿区/@JN1>┃<蜈蚣洞穴/@JN2>┃<天然洞穴/@JM1>┃<牛魔一层/@NN7>┃<尸 魔 洞/@JM3>┃\n┣━━━━╋━━━━╋━━━━┻━━━━┻━━━━┫\n┃<骨 魔 洞/@JM4>┃<尸王大殿/@LM2>┃\n┗━━━━┻━━━━┛")
+			return true
+		}
+		if activeChar.Level > 6 {
+			s.sendMerchantSay(conn, entity.Name, "这里是<险恶地区>服务，按照你的级别22级前你只能前往以下地区:\n当然你还得付给我3000金币的报酬!\n┏━━━━┳━━━━┳━━━━┓\n┃<比齐矿区/@JN1>┃<蜈蚣洞穴/@JN2>┃<天然洞穴/@JM1>┃\n┣━━━━╋━━━━┻━━━━┛\n┃<封魔矿区/@FENGMOKOU>┃\n┗━━━━┛")
+			return true
+		}
+		s.sendMerchantSay(conn, entity.Name, "照你现在这个级别,我没什么能帮的上你!\n请你练到7级再来找我吧，祝你好运!")
+		return true
+	case "@huan":
+		s.sendMerchantSay(conn, entity.Name, "移动到幻境需要2万金币，移动吗？\n<移动/@移动> \n<不/@exit> \n<返 回/@Main>")
+		return true
+	case "@time":
+		s.sendMerchantSay(conn, entity.Name, teleporterTimeMessage(time.Now(), activeChar.Name))
+		return true
+	case "@jianan":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "0", 333, 268, false, 2000, "比齐大城", "")
+	case "@fengdi":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "2", 500, 485, false, 2000, "毒蛇山谷", "")
+	case "@xiagu":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "0", 635, 612, false, 2000, "银杏小村", "")
+	case "@haibin":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "0", 290, 615, false, 2000, "比奇村庄", "")
+	case "@yashu":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "3", 330, 330, false, 2000, "盟重土城", "")
+	case "@huangcheng":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "5", 140, 330, false, 2000, "苍月之岛", "")
+	case "@jianyu":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "4", 240, 200, false, 2000, "封魔神谷", "")
+	case "@shadindao":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "11", 180, 325, false, 2000, "白日门", "")
+	case "@jm7":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "D024", 0, 0, true, 3000, "沃玛三层", "回城卷")
+	case "@jm8":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "D716", 0, 0, true, 3000, "猪洞七层", "回城卷")
+	case "@jm5":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "D5071", 8, 10, false, 3000, "祖玛七层", "回城卷")
+	case "@jm6":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "D606", 0, 0, true, 3000, "死亡棺材", "回城卷")
+	case "@s6":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "D1004", 0, 0, true, 3000, "抉择之地", "回城卷")
+	case "@jn1":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "D401", 0, 0, true, 3000, "比齐矿区", "回城卷")
+	case "@jn2":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "D601", 0, 0, true, 3000, "蜈蚣洞穴", "回城卷")
+	case "@jm1":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "E001", 0, 0, true, 3000, "天然洞穴", "回城卷")
+	case "@jm2":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "D2075", 0, 0, true, 3000, "牛魔四层", "回城卷")
+	case "@fengmokou":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "4", 138, 69, false, 3000, "封魔矿区", "回城卷")
+	case "@jxjdve":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "M001", 0, 0, true, 3000, "未知暗殿", "回城卷")
+	case "@jm3":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "D2051", 0, 0, true, 3000, "尸魔洞", "回城卷")
+	case "@jm4":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "D2061", 0, 0, true, 3000, "骨魔洞", "回城卷")
+	case "@lm2":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "Q004", 0, 0, true, 3000, "尸王大殿", "回城卷")
+	case "@沙城区域":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "3", 716, 407, false, 3000, "沙城区域", "回城卷")
+	case "@s1":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "D023", 0, 0, true, 3000, "沃玛二层", "回城卷")
+	case "@s2":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "D711", 0, 0, true, 3000, "猪洞一层", "回城卷")
+	case "@s3":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "D503", 0, 0, true, 3000, "祖玛三层", "回城卷")
+	case "@s5":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "D10011", 0, 0, true, 3000, "赤月峡谷", "回城卷")
+	case "@nn7":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "D2071", 0, 0, true, 3000, "牛魔一层", "回城卷")
+	case "@移动":
+		return s.teleportMerchantCharacter(conn, activeChar, entity, "H001", 73, 67, false, 20000, "幻境", "回城卷")
+	}
+	return false
+}
+
+func (s *Server) teleportMerchantCharacter(conn net.Conn, activeChar *storage.Character, entity npc.Entity, mapID string, x, y int, random bool, goldCost int, destination, giftItemID string) bool {
+	if activeChar.Gold < goldCost {
+		s.sendMerchantSay(conn, entity.Name, "你身上的钱不够！请准备好后再来。\n<离 开/@exit>")
+		return true
+	}
+	if giftItemID != "" && !s.world.CanCarryBagItems(*activeChar, 1) {
+		s.sendMerchantSay(conn, entity.Name, "你的包裹已经满了，暂时不能前往那里。\n<离 开/@exit>")
+		return true
+	}
+	prev := *activeChar
+	var (
+		updated storage.Character
+		err     error
+	)
+	if random {
+		updated, err = s.world.TeleportRandomInMap(prev, mapID)
+	} else {
+		updated, err = s.world.Teleport(prev, mapID, x, y)
+	}
+	if err != nil {
+		s.sendMerchantSay(conn, entity.Name, "目的地暂时无法前往。\n<离 开/@exit>")
+		return true
+	}
+	updated.Gold -= goldCost
+	if giftItemID != "" && s.world.CanCarryBagItems(updated, 1) {
+		gift := storage.UserItem{ItemID: giftItemID, MakeIndex: int32(time.Now().UnixNano() & 0x7fffffff)}
+		updated.BagItems = append(updated.BagItems, gift)
+		s.sendBagAddItem(conn, updated, gift.ItemID, gift.MakeIndex)
+	}
+	*activeChar = updated
+	world.ApplyTeleportSync(teleportSyncAdapter{s: s, conn: conn}, world.TeleportEvent{From: prev, To: updated})
+	s.sendGoldChanged(conn, updated.Gold)
+	s.sendMerchantDlgClose(conn, s.world.NPCActorID(entity.ID))
+	if err := s.store.SaveCharacter(updated); err != nil {
+		s.log.Info("merchant teleport save failed", "char", updated.Name, "destination", destination, "error", err)
+	}
+	return true
+}
+
+func teleporterTimeMessage(now time.Time, username string) string {
+	day := map[time.Weekday]string{
+		time.Sunday:    "星期天",
+		time.Monday:    "星期一",
+		time.Tuesday:   "星期二",
+		time.Wednesday: "星期三",
+		time.Thursday:  "星期四",
+		time.Friday:    "星期五",
+		time.Saturday:  "星期六",
+	}[now.Weekday()]
+	if day == "" {
+		day = "星期天"
+	}
+	hour := now.Hour()
+	minute := now.Minute()
+	greeting := "晚上好！"
+	switch {
+	case hour <= 5:
+		greeting = "凌晨好！"
+	case hour <= 10:
+		greeting = "早上好！"
+	case hour <= 12:
+		greeting = "中午好！"
+	case hour <= 17:
+		greeting = "下午好！"
+	}
+	return fmt.Sprintf("%s %s今天是 <%s> 游戏时间 %02d:%02d。\n<返 回/@main>", username, greeting, day, hour, minute)
+}
+
+func (s *Server) handleWarehouseMerchantDlgSelect(conn net.Conn, activeChar *storage.Character, entity npc.Entity, label string) bool {
+	if !entity.Merchant.Capabilities.Storage || !entity.Merchant.Capabilities.GetBack {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(label)) {
+	case "@mbind":
+		s.sendMerchantSay(conn, entity.Name, "你知道我是什么人吗？\n我做的是这样的事情...\n你要试一下吗？有什么要拜托的就说吧。\n用金币<交换/@changeGold>金条 \n用金条<交换/@changeMoney>金币 \n<捆/@bind>\n<离 开/@exit>")
+		return true
+	case "@changegold":
+		if activeChar.Gold < 1002000 {
+			s.sendMerchantSay(conn, entity.Name, "你连这点钱都没有，还换什么？\n等你有足够的钱，再来找我吧\n<返 回/@Main>")
+			return true
+		}
+		s.sendMerchantSay(conn, entity.Name, "你说你要用金币换成金条?\n好的，我帮你换\n但是要支付手续费\n费用是2000金币，你还换吗？\n<交换/@changeGold_1>\n<离 开/@exit>")
+		return true
+	case "@changegold_1":
+		if activeChar.Gold < 1002000 {
+			s.sendMerchantSay(conn, entity.Name, "你的包里东西已经满了，或者你没有足够的钱支付手续费\n你再确认一下吧\n<离 开/@exit>")
+			return true
+		}
+		if !s.world.CanCarryBagItems(*activeChar, 1) {
+			s.sendMerchantSay(conn, entity.Name, "你的包里东西已经满了，或者你没有足够的钱支付手续费\n你再确认一下吧\n<离 开/@exit>")
+			return true
+		}
+		updated := *activeChar
+		updated.Gold -= 1002000
+		bought := storage.UserItem{ItemID: "金条", MakeIndex: int32(time.Now().UnixNano() & 0x7fffffff)}
+		updated.BagItems = append(updated.BagItems, bought)
+		*activeChar = updated
+		s.sendBagAddItem(conn, updated, bought.ItemID, bought.MakeIndex)
+		s.sendGoldChanged(conn, updated.Gold)
+		s.sendWeightChanged(conn, s.world.AbilityStats(updated))
+		s.sendMerchantSay(conn, entity.Name, "金币已经换好金条了.\n还换吗？\n<交换/@changeGold>\n<离 开/@exit>")
+		if err := s.store.SaveCharacter(updated); err != nil {
+			s.log.Info("warehouse gold exchange save failed", "char", updated.Name, "error", err)
+		}
+		return true
+	case "@changemoney":
+		if !bagHasItemID(*activeChar, "金条") {
+			s.sendMerchantSay(conn, entity.Name, "你都没有金条还换什么?\n想骗我?快滚!\n<离 开/@exit>")
+			return true
+		}
+		s.sendMerchantSay(conn, entity.Name, "你要把金条换成金币?\n好的，我给你换\n不过需要支付手续费\n费用是2000金币，你还换吗？\n<交换/@changeMoney_1>\n<离 开/@exit>")
+		return true
+	case "@changemoney_1":
+		if !bagHasItemID(*activeChar, "金条") {
+			s.sendMerchantSay(conn, entity.Name, "你都没有金条还换什么?\n想骗我?快滚!\n<离 开/@exit>")
+			return true
+		}
+		if activeChar.Gold >= 14000001 {
+			s.sendMerchantSay(conn, entity.Name, "我也很想给你换，\n但是你钱太多了，我没办法给你换.\n<离 开/@exit>")
+			return true
+		}
+		updated, removed, ok := removeBagItemsByID(*activeChar, "金条", 1)
+		if !ok {
+			s.sendMerchantSay(conn, entity.Name, "你都没有金条还换什么?\n想骗我?快滚!\n<离 开/@exit>")
+			return true
+		}
+		updated.Gold += 998000
+		*activeChar = updated
+		s.sendDelItemList(conn, removed)
+		s.sendGoldChanged(conn, updated.Gold)
+		s.sendWeightChanged(conn, s.world.AbilityStats(updated))
+		s.sendMerchantSay(conn, entity.Name, "金条已经换好金币.\n还继续换吗?\n<交换/@changeMoney>\n<返 回/@main>\n<关闭/@exit>")
+		if err := s.store.SaveCharacter(updated); err != nil {
+			s.log.Info("warehouse money exchange save failed", "char", updated.Name, "error", err)
+		}
+		return true
+	case "@bind":
+		s.sendMerchantSay(conn, entity.Name, "目前我能捆的只有卷书和药水\n你要捆吗？\n要捆东西需要100金币.\n<捆/@P_bind>药水\n<捆/@Z_bind>卷书")
+		return true
+	case "@p_bind":
+		s.sendMerchantSay(conn, entity.Name, "<捆/@ch_bind1>强效金创药\n<捆/@ma_bind1>强效魔法药 \n<捆/@ch_bind2>金创药(中量)\n<捆/@ma_bind2>魔法药(中量)\n<捆/@ch_bind3>金创药\n<捆/@ma_bind3>魔法药\n<返 回/@bind>")
+		return true
+	case "@z_bind":
+		s.sendMerchantSay(conn, entity.Name, "<捆/@zum_bind1>地牢逃脱卷\n<捆/@zum_bind2>随机传送卷\n<捆/@zum_bind3>回城卷\n<捆/@zum_bind4>行会回城卷\n<返 回/@bind>")
+		return true
+	case "@ch_bind1":
+		return s.handleWarehousePackExchange(conn, activeChar, entity, "强效金创药", "超级金创药")
+	case "@ma_bind1":
+		return s.handleWarehousePackExchange(conn, activeChar, entity, "强效魔法药", "超级魔法药")
+	case "@ch_bind2":
+		return s.handleWarehousePackExchange(conn, activeChar, entity, "金创药(中量)", "金创药(中)包")
+	case "@ma_bind2":
+		return s.handleWarehousePackExchange(conn, activeChar, entity, "魔法药(中量)", "魔法药(中)包")
+	case "@ch_bind3":
+		return s.handleWarehousePackExchange(conn, activeChar, entity, "金创药", "金创药(小)包")
+	case "@ma_bind3":
+		return s.handleWarehousePackExchange(conn, activeChar, entity, "魔法药", "魔法药(小)包")
+	case "@zum_bind1":
+		return s.handleWarehousePackExchange(conn, activeChar, entity, "地牢逃脱卷", "地牢逃脱卷包")
+	case "@zum_bind2":
+		return s.handleWarehousePackExchange(conn, activeChar, entity, "随机传送卷", "随机传送卷包")
+	case "@zum_bind3":
+		return s.handleWarehousePackExchange(conn, activeChar, entity, "回城卷", "回城卷包")
+	case "@zum_bind4":
+		return s.handleWarehousePackExchange(conn, activeChar, entity, "行会回城卷", "行会回城卷包")
+	}
+	return false
+}
+
+func (s *Server) handleSpecialMerchantDlgSelect(conn net.Conn, activeChar *storage.Character, activeClient *Client, entity npc.Entity, label, text string) bool {
+	switch strings.ToLower(strings.TrimSpace(label)) {
+	case "@upgradenow":
+		return s.handleWeaponUpgradeStart(conn, activeChar, entity)
+	case "@getbackupgnow":
+		return s.handleWeaponUpgradeGetBack(conn, activeChar, entity)
+	case "@buildguildnow":
+		if activeClient != nil {
+			activeClient.mu.Lock()
+			activeClient.pendingMerchantAction = "buildguild"
+			activeClient.mu.Unlock()
+		}
+		if text == "" || strings.EqualFold(text, label) || strings.HasPrefix(text, "@") {
+			s.sendMerchantSay(conn, entity.Name, "请填写行会名称。\n<返回/@main>")
+			return true
+		}
+		return s.handlePendingMerchantAction(conn, activeChar, entity, "buildguild", text)
+	case "@guildwar":
+		if activeClient != nil {
+			activeClient.mu.Lock()
+			activeClient.pendingMerchantAction = "guildwar"
+			activeClient.mu.Unlock()
+		}
+		if text == "" || strings.EqualFold(text, label) || strings.HasPrefix(text, "@") {
+			s.sendMerchantSay(conn, entity.Name, "填写与你交战的敌对行会的名字，申请行会战争必须支付3万金币。\n<立即申请行会战争/@@guildwar>\n<返回/@main>")
+			return true
+		}
+		return s.handlePendingMerchantAction(conn, activeChar, entity, "guildwar", text)
+	case "@@guildwar":
+		if text == "" || strings.EqualFold(text, label) || strings.HasPrefix(text, "@") {
+			if activeClient != nil {
+				activeClient.mu.Lock()
+				activeClient.pendingMerchantAction = "guildwar"
+				activeClient.mu.Unlock()
+			}
+			s.sendMerchantSay(conn, entity.Name, "填写与你交战的敌对行会的名字，申请行会战争必须支付3万金币。\n<立即申请行会战争/@@guildwar>\n<返回/@main>")
+			return true
+		}
+		return s.handlePendingMerchantAction(conn, activeChar, entity, "guildwar", text)
+	case "@@withdrawal", "@@receipts":
+		s.sendMerchantSay(conn, entity.Name, "沙巴克城堡功能暂未接入。\n<返回/@main>")
+		return true
+	case "@requestcastlewarnow":
+		if !bagHasItemID(*activeChar, "祖玛头像") {
+			s.sendMerchantSay(conn, entity.Name, "你没有祖玛教主的头像。\n<返回/@main>")
+			return true
+		}
+		updated, removed, ok := removeBagItemsByID(*activeChar, "祖玛头像", 1)
+		if !ok {
+			s.sendMerchantSay(conn, entity.Name, "你没有祖玛教主的头像。\n<返回/@main>")
+			return true
+		}
+		*activeChar = updated
+		s.sendDelItemList(conn, removed)
+		s.sendMerchantSay(conn, entity.Name, "沙巴克攻城申请已经提交。\n战争会在第二天内开始。\n<返回/@main>")
+		if err := s.store.SaveCharacter(updated); err != nil {
+			s.log.Info("castle war request save failed", "char", updated.Name, "error", err)
+		}
+		return true
+	case "@openmaindoor":
+		s.sendMerchantSay(conn, entity.Name, "城门已打开.\n<返回/@treatdoor>")
+		return true
+	case "@closemaindoor":
+		s.sendMerchantSay(conn, entity.Name, "城门已关闭.\n<返回/@treatdoor>")
+		return true
+	case "@repairdoornow":
+		s.sendMerchantSay(conn, entity.Name, "城堡功能暂未接入。\n<返回/@repairdoor>")
+		return true
+	case "@repairwallnow1", "@repairwallnow2", "@repairwallnow3":
+		s.sendMerchantSay(conn, entity.Name, "城堡功能暂未接入。\n<返回/@repairwalls>")
+		return true
+	case "@hireguardnow1", "@hireguardnow2", "@hireguardnow3", "@hireguardnow4":
+		s.sendMerchantSay(conn, entity.Name, "城堡功能暂未接入。\n<返回/@hireguards>")
+		return true
+	case "@hirearchernow1", "@hirearchernow2", "@hirearchernow3", "@hirearchernow4", "@hirearchernow5", "@hirearchernow6", "@hirearchernow7", "@hirearchernow8", "@hirearchernow9", "@hirearchernow10", "@hirearchernow11", "@hirearchernow12":
+		s.sendMerchantSay(conn, entity.Name, "城堡功能暂未接入。\n<返回/@hirearchers>")
+		return true
+	case "@guardrule_normalnow":
+		s.sendMerchantSay(conn, entity.Name, "防守方式已经更改，守卫们已经目前处于正常防御状态.\n<返回/@guardcmd>")
+		return true
+	case "@guardrule_pkattack":
+		s.sendMerchantSay(conn, entity.Name, "防守方式已经更改，守卫们已经目前处于对来犯者进攻状态.\n<返回/@guardcmd>")
+		return true
+	}
+	return false
+}
+
+func (s *Server) handleWarehousePackExchange(conn net.Conn, activeChar *storage.Character, entity npc.Entity, fromItemID, toItemID string) bool {
+	if !bagHasItemCount(*activeChar, fromItemID, 6) {
+		s.sendMerchantSay(conn, entity.Name, "你都没有要捆的药水，还捆什么?\n等准备好药水之后再来找我吧..\n<离 开/@exit>")
+		return true
+	}
+	if activeChar.Gold < 100 {
+		s.sendMerchantSay(conn, entity.Name, "你都没有钱捆东西，\n还捆什么?\n快走吧....\n<离 开/@exit>")
+		return true
+	}
+	updated, removed, ok := removeBagItemsByID(*activeChar, fromItemID, 6)
+	if !ok {
+		s.sendMerchantSay(conn, entity.Name, "你都没有要捆的药水，还捆什么?\n等准备好药水之后再来找我吧..\n<离 开/@exit>")
+		return true
+	}
+	updated.Gold -= 100
+	bought := storage.UserItem{ItemID: toItemID, MakeIndex: int32(time.Now().UnixNano() & 0x7fffffff)}
+	updated.BagItems = append(updated.BagItems, bought)
+	*activeChar = updated
+	s.sendDelItemList(conn, removed)
+	s.sendBagAddItem(conn, updated, bought.ItemID, bought.MakeIndex)
+	s.sendGoldChanged(conn, updated.Gold)
+	s.sendWeightChanged(conn, s.world.AbilityStats(updated))
+	s.sendMerchantSay(conn, entity.Name, "已经捆好了... 我的技术不错吧..\n以后还有要捆的，就来找我吧..\n<继续捆/@P_bind>\n<离 开/@exit>")
+	if err := s.store.SaveCharacter(updated); err != nil {
+		s.log.Info("warehouse bundle save failed", "char", updated.Name, "error", err)
+	}
+	return true
+}
+
+func (s *Server) handleMerchantQuerySellPrice(conn net.Conn, activeChar *storage.Character, activeClient *Client, cmd mir176.Command, text []byte) {
+	entity, ok := s.resolveMerchantEntity(activeClient, cmd)
+	if !ok || !entity.Merchant.Capabilities.Sell {
+		return
+	}
+	makeIndex := merchantMakeIndex(cmd)
+	itemName := strings.TrimSpace(DecodeString(text))
+	entry, item, ok := merchantBagItemByMakeIndex(*activeChar, makeIndex, itemName, s.world)
+	if !ok {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendBuyPrice, Recog: 0}, nil)
+		return
+	}
+	price := merchantSellPrice(item, entry, entity.Merchant.PriceRate)
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendBuyPrice, Recog: int32(price)}, nil)
+}
+
+func (s *Server) handleUserSellItem(conn net.Conn, activeChar *storage.Character, activeClient *Client, cmd mir176.Command, text []byte) {
+	entity, ok := s.resolveMerchantEntity(activeClient, cmd)
+	if !ok || !entity.Merchant.Capabilities.Sell {
+		return
+	}
+	makeIndex := merchantMakeIndex(cmd)
+	itemName := strings.TrimSpace(DecodeString(text))
+	slot, entry, ok := merchantBagItemSlotByMakeIndex(*activeChar, makeIndex, itemName, s.world)
+	if !ok {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMUserSellItemFail, Recog: cmd.Recog}, nil)
+		return
+	}
+	item, _ := s.world.Item(entry.ItemID)
+	price := merchantSellPrice(item, entry, entity.Merchant.PriceRate)
+	if price <= 0 {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMUserSellItemFail, Recog: cmd.Recog}, nil)
+		return
+	}
+	updated := *activeChar
+	updated.BagItems = append(updated.BagItems[:slot], updated.BagItems[slot+1:]...)
+	updated.Gold += price
+	*activeChar = updated
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMUserSellItemOK, Recog: int32(updated.Gold)}, nil)
+	s.sendGoldChanged(conn, updated.Gold)
+	s.world.AddMerchantStock(entity.ID, item.ID, 1)
+	if err := s.store.SaveCharacter(updated); err != nil {
+		s.log.Info("merchant sell save failed", "char", updated.Name, "error", err)
+	}
+}
+
+func (s *Server) handleUserBuyItem(conn net.Conn, activeChar *storage.Character, activeClient *Client, cmd mir176.Command, text []byte) {
+	entity, ok := s.resolveMerchantEntity(activeClient, cmd)
+	if !ok || !entity.Merchant.Capabilities.Buy {
+		return
+	}
+	itemName := strings.TrimSpace(DecodeString(text))
+	item, ok := merchantStockItemByName(s.world, entity, itemName)
+	if !ok {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMBuyItemFail, Recog: cmd.Recog}, nil)
+		return
+	}
+	price := merchantPrice(item, entity.Merchant.PriceRate)
+	if price <= 0 || activeChar.Gold < price {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMBuyItemFail, Recog: cmd.Recog}, nil)
+		return
+	}
+	if !s.world.CanCarryBagItems(*activeChar, 1) {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMBuyItemFail, Param: 2}, nil)
+		return
+	}
+	if !s.world.ConsumeMerchantStock(entity.ID, item.ID) {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMBuyItemFail, Recog: cmd.Recog}, nil)
+		return
+	}
+	updated := *activeChar
+	updated.Gold -= price
+	bought := storage.UserItem{ItemID: item.ID, MakeIndex: int32(time.Now().UnixNano() & 0x7fffffff)}
+	updated.BagItems = append(updated.BagItems, bought)
+	*activeChar = updated
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMBuyItemSuccess, Recog: int32(updated.Gold), Param: 1}, nil)
+	s.sendBagAddItem(conn, updated, bought.ItemID, bought.MakeIndex)
+	s.sendGoldChanged(conn, updated.Gold)
+	if err := s.store.SaveCharacter(updated); err != nil {
+		s.log.Info("merchant buy save failed", "char", updated.Name, "error", err)
+	}
+}
+
+func (s *Server) handleUserGetDetailItem(conn net.Conn, activeChar *storage.Character, activeClient *Client, cmd mir176.Command, text []byte) {
+	entity, ok := s.resolveMerchantEntity(activeClient, cmd)
+	if !ok {
+		return
+	}
+	itemName := strings.TrimSpace(DecodeString(text))
+	if _, ok := merchantStockItemByName(s.world, entity, itemName); !ok {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendDetailGoodsList, Recog: cmd.Recog}, nil)
+		return
+	}
+	body, count, page := merchantDetailGoodsListBody(s.world, s.world.MerchantStock(entity.ID), itemName, int(cmd.Param), entity.Merchant.PriceRate)
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendDetailGoodsList, Recog: cmd.Recog, Param: uint16(count), Tag: uint16(page)}, body)
+}
+
+func (s *Server) handleMerchantQueryRepairCost(conn net.Conn, activeChar *storage.Character, activeClient *Client, cmd mir176.Command, text []byte) {
+	entity, ok := s.resolveMerchantEntity(activeClient, cmd)
+	if !ok || !entity.Merchant.Capabilities.Repair {
+		return
+	}
+	makeIndex := merchantMakeIndex(cmd)
+	itemName := strings.TrimSpace(DecodeString(text))
+	entry, item, ok := merchantBagItemByMakeIndex(*activeChar, makeIndex, itemName, s.world)
+	if !ok {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendRepairCost, Recog: cmd.Recog}, nil)
+		return
+	}
+	price := merchantRepairPrice(item, entry, entity.Merchant.PriceRate)
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendRepairCost, Recog: cmd.Recog, Param: uint16(price)}, nil)
+}
+
+func (s *Server) handleUserRepairItem(conn net.Conn, activeChar *storage.Character, activeClient *Client, cmd mir176.Command, text []byte) {
+	entity, ok := s.resolveMerchantEntity(activeClient, cmd)
+	if !ok || !entity.Merchant.Capabilities.Repair {
+		return
+	}
+	makeIndex := merchantMakeIndex(cmd)
+	itemName := strings.TrimSpace(DecodeString(text))
+	slot, entry, ok := merchantBagItemSlotByMakeIndex(*activeChar, makeIndex, itemName, s.world)
+	if !ok {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMUserRepairItemFail, Recog: cmd.Recog}, nil)
+		return
+	}
+	item, _ := s.world.Item(entry.ItemID)
+	price := merchantRepairPrice(item, entry, entity.Merchant.PriceRate)
+	if price <= 0 || activeChar.Gold < price || entry.DuraMax == 0 || entry.Dura >= entry.DuraMax {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMUserRepairItemFail, Recog: cmd.Recog}, nil)
+		return
+	}
+	updated := *activeChar
+	updated.Gold -= price
+	updated.BagItems[slot].Dura = updated.BagItems[slot].DuraMax
+	*activeChar = updated
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMUserRepairItemOK, Recog: int32(updated.Gold), Param: updated.BagItems[slot].Dura, Tag: updated.BagItems[slot].DuraMax}, nil)
+	s.sendGoldChanged(conn, updated.Gold)
+	if err := s.store.SaveCharacter(updated); err != nil {
+		s.log.Info("merchant repair save failed", "char", updated.Name, "error", err)
+	}
+}
+
+func (s *Server) handleUserStorageItem(conn net.Conn, activeChar *storage.Character, activeClient *Client, cmd mir176.Command, text []byte) {
+	entity, ok := s.resolveMerchantEntity(activeClient, cmd)
+	if !ok {
+		return
+	}
+	if !entity.Merchant.Capabilities.Storage {
+		return
+	}
+	makeIndex := merchantMakeIndex(cmd)
+	itemName := strings.TrimSpace(DecodeString(text))
+	slot, entry, ok := merchantBagItemSlotByMakeIndex(*activeChar, makeIndex, itemName, s.world)
+	if !ok {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMStorageFail}, nil)
+		return
+	}
+	if len(activeChar.StorageItems) >= 39 {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMStorageFull}, nil)
+		return
+	}
+	updated := *activeChar
+	updated.StorageItems = append(updated.StorageItems, entry)
+	updated.BagItems = append(updated.BagItems[:slot], updated.BagItems[slot+1:]...)
+	*activeChar = updated
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMStorageOK}, nil)
+	s.sendWeightChanged(conn, s.world.AbilityStats(updated))
+	if err := s.store.SaveCharacter(updated); err != nil {
+		s.log.Info("merchant storage save failed", "char", updated.Name, "error", err)
+	}
+}
+
+func (s *Server) handleUserTakeBackStorageItem(conn net.Conn, activeChar *storage.Character, activeClient *Client, cmd mir176.Command, text []byte) {
+	entity, ok := s.resolveMerchantEntity(activeClient, cmd)
+	if !ok {
+		return
+	}
+	if !entity.Merchant.Capabilities.GetBack {
+		return
+	}
+	makeIndex := merchantMakeIndex(cmd)
+	itemName := strings.TrimSpace(DecodeString(text))
+	slot, entry, ok := merchantStorageItemSlotByMakeIndex(*activeChar, makeIndex, itemName, s.world)
+	if !ok {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMTakeBackStorageItemFail}, nil)
+		return
+	}
+	if !s.world.CanCarryBagItems(*activeChar, 1) {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMTakeBackStorageItemFullBag}, nil)
+		return
+	}
+	updated := *activeChar
+	updated.BagItems = append(updated.BagItems, entry)
+	updated.StorageItems = append(updated.StorageItems[:slot], updated.StorageItems[slot+1:]...)
+	*activeChar = updated
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMTakeBackStorageItemOK, Recog: int32(entry.MakeIndex)}, nil)
+	s.sendBagAddItem(conn, updated, entry.ItemID, entry.MakeIndex)
+	s.sendWeightChanged(conn, s.world.AbilityStats(updated))
+	if err := s.store.SaveCharacter(updated); err != nil {
+		s.log.Info("merchant getback save failed", "char", updated.Name, "error", err)
+	}
+}
+
+func (s *Server) handleUserMakeDrugItem(conn net.Conn, activeChar *storage.Character, activeClient *Client, cmd mir176.Command, text []byte) {
+	entity, ok := s.resolveMerchantEntity(activeClient, cmd)
+	if !ok {
+		return
+	}
+	itemName := strings.TrimSpace(DecodeString(text))
+	if itemName == "" {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMMakeDrugFail, Recog: 1}, nil)
+		return
+	}
+	if _, ok := merchantStockItemByName(s.world, entity, itemName); !ok {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMMakeDrugFail, Recog: 1}, nil)
+		return
+	}
+	if activeChar.Gold < makeDrugPrice {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMMakeDrugFail, Recog: 3}, nil)
+		return
+	}
+	updated, removed, err := s.world.ConsumeMakeIngredients(*activeChar, itemName)
+	if err != nil {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMMakeDrugFail, Recog: 4}, nil)
+		return
+	}
+	item, ok := s.world.Item(itemName)
+	if !ok {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMMakeDrugFail, Recog: 1}, nil)
+		return
+	}
+	if !s.world.CanCarryBagItems(updated, 1) {
+		*activeChar = updated
+		s.sendDelItemList(conn, removed)
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMMakeDrugFail, Recog: 2}, nil)
+		if err := s.store.SaveCharacter(updated); err != nil {
+			s.log.Info("merchant make drug save failed", "char", updated.Name, "error", err)
+		}
+		return
+	}
+	updated.Gold -= makeDrugPrice
+	bought := storage.UserItem{ItemID: item.ID, MakeIndex: int32(time.Now().UnixNano() & 0x7fffffff)}
+	updated.BagItems = append(updated.BagItems, bought)
+	*activeChar = updated
+	s.sendDelItemList(conn, removed)
+	s.sendBagAddItem(conn, updated, bought.ItemID, bought.MakeIndex)
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMMakeDrugSuccess, Recog: int32(updated.Gold)}, nil)
+	if err := s.store.SaveCharacter(updated); err != nil {
+		s.log.Info("merchant make drug save failed", "char", updated.Name, "error", err)
+	}
+}
+
+func (s *Server) resolveMerchantEntity(activeClient *Client, cmd mir176.Command) (npc.Entity, bool) {
+	entity, ok := s.world.NPCByActorID(cmd.Recog)
+	if ok {
+		return entity, true
+	}
+	if activeClient == nil {
+		return npc.Entity{}, false
+	}
+	activeClient.mu.Lock()
+	defer activeClient.mu.Unlock()
+	if activeClient.activeNPCID == "" {
+		return npc.Entity{}, false
+	}
+	return s.world.NPCByID(activeClient.activeNPCID)
+}
+
+func bagHasItemID(ch storage.Character, itemID string) bool {
+	return bagHasItemCount(ch, itemID, 1)
+}
+
+func bagHasItemCount(ch storage.Character, itemID string, count int) bool {
+	if count <= 0 {
+		return true
+	}
+	have := 0
+	for _, entry := range ch.BagItems {
+		if strings.EqualFold(entry.ItemID, itemID) {
+			have++
+			if have >= count {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func removeBagItemsByID(ch storage.Character, itemID string, count int) (storage.Character, []storage.UserItem, bool) {
+	if count <= 0 {
+		return ch, nil, true
+	}
+	if !bagHasItemCount(ch, itemID, count) {
+		return ch, nil, false
+	}
+	updated := ch
+	removed := make([]storage.UserItem, 0, count)
+	for i := len(updated.BagItems) - 1; i >= 0 && len(removed) < count; i-- {
+		if !strings.EqualFold(updated.BagItems[i].ItemID, itemID) {
+			continue
+		}
+		removed = append(removed, updated.BagItems[i])
+		updated.BagItems = append(updated.BagItems[:i], updated.BagItems[i+1:]...)
+	}
+	return updated, removed, len(removed) == count
+}
+
+func merchantMakeIndex(cmd mir176.Command) int32 {
+	return int32(uint32(cmd.Param) | uint32(cmd.Tag)<<16)
+}
+
+func merchantBagItemSlotByMakeIndex(ch storage.Character, makeIndex int32, itemName string, w *world.World) (int, storage.UserItem, bool) {
+	for i := len(ch.BagItems) - 1; i >= 0; i-- {
+		entry := ch.BagItems[i]
+		if entry.MakeIndex != makeIndex {
+			continue
+		}
+		if itemName != "" {
+			item, ok := w.Item(entry.ItemID)
+			if !ok || !strings.EqualFold(item.Name, itemName) {
+				continue
+			}
+		}
+		return i, entry, true
+	}
+	return -1, storage.UserItem{}, false
+}
+
+func merchantBagItemByMakeIndex(ch storage.Character, makeIndex int32, itemName string, w *world.World) (storage.UserItem, data.StdItem, bool) {
+	_, entry, ok := merchantBagItemSlotByMakeIndex(ch, makeIndex, itemName, w)
+	if !ok {
+		return storage.UserItem{}, data.StdItem{}, false
+	}
+	item, ok := w.Item(entry.ItemID)
+	if !ok {
+		return storage.UserItem{}, data.StdItem{}, false
+	}
+	return entry, item, true
+}
+
+func merchantStorageItemSlotByMakeIndex(ch storage.Character, makeIndex int32, itemName string, w *world.World) (int, storage.UserItem, bool) {
+	for i := len(ch.StorageItems) - 1; i >= 0; i-- {
+		entry := ch.StorageItems[i]
+		if entry.MakeIndex != makeIndex {
+			continue
+		}
+		if itemName != "" {
+			item, ok := w.Item(entry.ItemID)
+			if !ok || !strings.EqualFold(item.Name, itemName) {
+				continue
+			}
+		}
+		return i, entry, true
+	}
+	return -1, storage.UserItem{}, false
+}
+
+func merchantStockItemByName(w *world.World, entity npc.Entity, itemName string) (data.StdItem, bool) {
+	for _, stock := range w.MerchantStock(entity.ID) {
+		item, ok := w.Item(stock.ItemID)
+		if !ok {
+			continue
+		}
+		if strings.EqualFold(item.Name, itemName) {
+			return item, true
+		}
+	}
+	return data.StdItem{}, false
+}
+
+func (s *Server) sendDelItemList(conn net.Conn, removed []storage.UserItem) {
+	if len(removed) == 0 {
+		return
+	}
+	var body strings.Builder
+	for _, item := range removed {
+		fmt.Fprintf(&body, "%s/%d/", item.ItemID, item.MakeIndex)
+	}
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMDelItems, Series: uint16(len(removed))}, EncodeString(body.String()))
+}
+
+func merchantSellPrice(item data.StdItem, entry storage.UserItem, rate int) int {
+	base := merchantUserItemPrice(item, entry)
+	if base <= 0 {
+		return 0
+	}
+	return int(math.Round(float64(merchantPriceValue(base, rate)) / 2.0))
+}
+
+func merchantRepairPrice(item data.StdItem, entry storage.UserItem, rate int) int {
+	base := merchantUserItemPrice(item, entry)
+	if base <= 0 || entry.DuraMax == 0 || entry.Dura >= entry.DuraMax {
+		return 0
+	}
+	base = merchantPriceValue(base, rate)
+	if base <= 0 {
+		return 0
+	}
+	missing := float64(entry.DuraMax - entry.Dura)
+	return int(math.Round((float64(base) / 3.0 / float64(entry.DuraMax)) * missing))
+}
+
+func merchantPriceValue(base, rate int) int {
+	if base <= 0 {
+		return 0
+	}
+	if rate <= 0 {
+		rate = 100
+	}
+	return int(math.Round(float64(base) * float64(rate) / 100.0))
+}
+
+func merchantUserItemPrice(item data.StdItem, entry storage.UserItem) int {
+	price := float64(item.Price)
+	if price <= 0 {
+		return 0
+	}
+	if item.StdMode > 4 && item.DuraMax > 0 && entry.DuraMax > 0 {
+		switch item.StdMode {
+		case 40:
+			if entry.Dura <= entry.DuraMax {
+				price = math.Max(2, math.Round(price-price/2.0/float64(entry.DuraMax)*float64(entry.DuraMax-entry.Dura)))
+			} else {
+				price = price + math.Round(price/float64(entry.DuraMax)*2.0*float64(entry.DuraMax-entry.Dura))
+			}
+		case 43:
+			userDuraMax := float64(entry.DuraMax)
+			if userDuraMax < 10000 {
+				userDuraMax = 10000
+			}
+			if float64(entry.Dura) <= userDuraMax {
+				missing := userDuraMax - float64(entry.Dura)
+				price = math.Max(2, math.Round(price-price/2.0/userDuraMax*missing))
+			} else {
+				excess := float64(entry.Dura) - userDuraMax
+				price = price + math.Round(price/userDuraMax*1.3*excess)
+			}
+		}
+		if item.StdMode > 4 {
+			n14 := 0
+			for i := 0; i < 8; i++ {
+				if item.StdMode == 5 || item.StdMode == 6 {
+					if i == 6 {
+						if entry.Desc[i] > 10 {
+							n14 += int(entry.Desc[i]-10) * 2
+						}
+					} else {
+						n14 += int(entry.Desc[i])
+					}
+				} else {
+					n14 += int(entry.Desc[i])
+				}
+			}
+			if n14 > 0 {
+				price = price / 5.0 * float64(n14)
+			}
+			price = math.Round(price / float64(item.DuraMax) * float64(entry.DuraMax))
+			price = math.Max(2, math.Round(price-price/2.0/float64(entry.DuraMax)*float64(entry.DuraMax-entry.Dura)))
+		}
+	}
+	return int(math.Round(price))
 }
 
 func (s *Server) handleGroupMode(conn net.Conn, activeChar *storage.Character, cmd mir176.Command) {
@@ -874,6 +1882,13 @@ func (s *Server) sendEnterWorld(conn net.Conn, login RunLogin) (storage.Characte
 	if normalized, changed := s.world.NormalizeCharacterState(ch); changed {
 		ch = normalized
 	}
+	if updated, changed, err := s.world.SyncCharacterHomeFromStartPoint(ch); err == nil {
+		if changed {
+			ch = updated
+		}
+	} else {
+		s.log.Info("sync character home failed", "error", err)
+	}
 	return ch, true
 }
 
@@ -884,6 +1899,7 @@ func (s *Server) sendEnterWorldState(conn net.Conn, ch storage.Character) {
 		client.softVersionDate = versionDate
 		client.visibleMonsters = map[string]world.Monster{}
 		client.visibleDrops = map[string]world.GroundDrop{}
+		client.visibleNPCs = map[string]npc.Entity{}
 	}
 	s.clientMu.Unlock()
 	actorID := world.CharacterActorID(ch)
@@ -893,7 +1909,6 @@ func (s *Server) sendEnterWorldState(conn net.Conn, ch storage.Character) {
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMChangeLight, Recog: actorID, Param: uint16(light), Tag: 500}, nil)
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMLogon, Recog: actorID, Param: uint16(ch.X), Tag: uint16(ch.Y), Series: makeWord(byte(ch.Dir), byte(light))}, EncodeBuffer(LogonBody(feature, s.world.CharacterStatus(ch), ch.AllowGroup, s.world.CharacterFeatureEx(ch))))
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMFeatureChanged, Recog: actorID, Param: uint16(feature), Tag: uint16(uint32(feature) >> 16), Series: uint16(s.world.CharacterFeatureEx(ch))}, nil)
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMAttackMode, Recog: int32(s.world.CharacterAttackMode(ch))}, nil)
 	if versionDate != 0 {
 		s.sendCommand(conn, ServerConfigCommand(), EncodeBuffer(ServerConfigBody()))
 	}
@@ -912,6 +1927,7 @@ func (s *Server) sendEnterWorldState(conn net.Conn, ch storage.Character) {
 	for _, drop := range drops {
 		s.sendDropShow(conn, drop)
 	}
+	s.sendNPCsAround(conn, ch)
 }
 
 func (s *Server) sendSpaceMoveState(conn net.Conn, ch storage.Character) {
@@ -920,6 +1936,7 @@ func (s *Server) sendSpaceMoveState(conn net.Conn, ch storage.Character) {
 	if client := s.clients[conn]; client != nil {
 		client.visibleMonsters = map[string]world.Monster{}
 		client.visibleDrops = map[string]world.GroundDrop{}
+		client.visibleNPCs = map[string]npc.Entity{}
 	}
 	s.clientMu.Unlock()
 	actorID := world.CharacterActorID(ch)
@@ -934,6 +1951,7 @@ func (s *Server) sendSpaceMoveState(conn net.Conn, ch storage.Character) {
 		s.sendCommand(conn, ServerConfigCommand(), EncodeBuffer(ServerConfigBody()))
 	}
 	s.sendCommand(conn, mir176.Command{Ident: showIdent, Recog: actorID, Param: uint16(ch.X), Tag: uint16(ch.Y), Series: makeWord(byte(ch.Dir), byte(s.world.MapLight(ch.MapID)))}, showBody)
+	s.sendNPCsAround(conn, ch)
 }
 
 // sendHealthSpellChanged sends SM_HEALTHSPELLCHANGED (RM_HEALTHSPELLCHANGED
@@ -1039,6 +2057,23 @@ func (s *Server) broadcastCharacterAppear(clients []*Client, ch storage.Characte
 	}
 }
 
+func (s *Server) sendNPCsAround(conn net.Conn, ch storage.Character) {
+	npcs := s.world.NPCsInMap(ch.MapID)
+	client := s.clientForConn(conn)
+	if client == nil {
+		return
+	}
+	current := map[string]struct{}{}
+	for _, entity := range npcs {
+		if absInt(entity.X-ch.X) > playerViewRange || absInt(entity.Y-ch.Y) > playerViewRange {
+			continue
+		}
+		current[entity.ID] = struct{}{}
+		client.ensureNPCVisible(s, entity)
+	}
+	client.forgetMissingNPCs(s, current)
+}
+
 func (s *Server) applyWorldTick(result world.TickResult) {
 	hitIDs := map[string]struct{}{}
 	for _, hit := range result.CharacterHits {
@@ -1087,6 +2122,23 @@ func (s *Server) applyWorldTick(result world.TickResult) {
 	}
 	s.syncVisibleMonsters()
 	s.syncVisibleDrops()
+	s.syncVisibleNPCs()
+}
+
+func (s *Server) syncVisibleNPCs() {
+	for _, client := range s.allClients() {
+		ch := client.character()
+		npcs := s.world.NPCsInMap(ch.MapID)
+		current := map[string]struct{}{}
+		for _, entity := range npcs {
+			if absInt(entity.X-ch.X) > playerViewRange || absInt(entity.Y-ch.Y) > playerViewRange {
+				continue
+			}
+			current[entity.ID] = struct{}{}
+			client.ensureNPCVisible(s, entity)
+		}
+		client.forgetMissingNPCs(s, current)
+	}
 }
 
 func (s *Server) syncVisibleMonsters() {
@@ -1227,7 +2279,7 @@ func (s *Server) broadcastMonsterDeath(clients []*Client, result world.AttackRes
 
 func (s *Server) registerClient(conn net.Conn, ch storage.Character) *Client {
 	versionDate := ch.SoftVersionDate
-	client := &Client{conn: conn, ch: ch, softVersionDate: versionDate, visibleMonsters: map[string]world.Monster{}}
+	client := &Client{conn: conn, ch: ch, softVersionDate: versionDate, visibleMonsters: map[string]world.Monster{}, visibleDrops: map[string]world.GroundDrop{}, visibleNPCs: map[string]npc.Entity{}}
 	monsters, _ := s.world.SnapshotAround(ch.MapID, ch.X, ch.Y, playerViewRange)
 	for _, mon := range monsters {
 		client.visibleMonsters[mon.ID] = mon
@@ -1236,6 +2288,12 @@ func (s *Server) registerClient(conn net.Conn, ch storage.Character) *Client {
 	s.clients[conn] = client
 	s.clientMu.Unlock()
 	return client
+}
+
+func (s *Server) clientForConn(conn net.Conn) *Client {
+	s.clientMu.Lock()
+	defer s.clientMu.Unlock()
+	return s.clients[conn]
 }
 
 func (s *Server) unregisterClient(conn net.Conn) {
@@ -1395,6 +2453,12 @@ func (s *Server) allClients() []*Client {
 	return clients
 }
 
+func (s *Server) onlineClientCount() int {
+	s.clientMu.Lock()
+	defer s.clientMu.Unlock()
+	return len(s.clients)
+}
+
 func (s *Server) ClientsInMap(mapID string) []*Client {
 	s.clientMu.Lock()
 	defer s.clientMu.Unlock()
@@ -1474,6 +2538,21 @@ func (s *Server) sendHear(conn net.Conn, msg string, fg, bg byte) {
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMHear, Param: makeWord(fg, bg), Series: 1}, EncodeString(msg))
 }
 
+func (s *Server) sendMerchantSay(conn net.Conn, npcName, msg string) {
+	if msg == "" {
+		return
+	}
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMMerchantSay, Series: 1}, EncodeString(npcName+"/"+msg))
+}
+
+func (s *Server) sendMerchantDlgClose(conn net.Conn, merchantID int32) {
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMMerchantDlgClose, Recog: merchantID}, nil)
+}
+
+func (s *Server) sendNPCConversation(conn net.Conn, conversation npc.Conversation) {
+	s.sendMerchantSay(conn, conversation.NPC.Name, conversation.Text)
+}
+
 func (c *Client) writeCommand(s *Server, cmd mir176.Command, text []byte) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -1495,6 +2574,26 @@ func (c *Client) ensureMonsterVisible(s *Server, mon world.Monster) {
 	c.visibleMonsters[mon.ID] = mon
 }
 
+func (c *Client) ensureNPCVisible(s *Server, entity npc.Entity) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.visibleNPCs == nil {
+		c.visibleNPCs = map[string]npc.Entity{}
+	}
+	if _, ok := c.visibleNPCs[entity.ID]; ok {
+		c.visibleNPCs[entity.ID] = entity
+		return
+	}
+	actorID := s.world.NPCActorID(entity.ID)
+	feature := s.world.NPCFeature(entity)
+	body := EncodeBuffer(CharDesc(feature, 0))
+	body = append(body, EncodeString(fmt.Sprintf("%s/%d", entity.Name, 255))...)
+	c.writeCommandLocked(s, mir176.Command{Ident: mir176.SMTurn, Recog: actorID, Param: uint16(entity.X), Tag: uint16(entity.Y), Series: uint16(entity.Dir)}, body)
+	c.writeCommandLocked(s, mir176.Command{Ident: mir176.SMFeatureChanged, Recog: actorID, Param: uint16(feature), Tag: uint16(uint32(feature) >> 16)}, nil)
+	c.writeCommandLocked(s, mir176.Command{Ident: mir176.SMUserName, Recog: actorID, Param: 255}, EncodeString(entity.Name))
+	c.visibleNPCs[entity.ID] = entity
+}
+
 func (c *Client) forgetMonster(monsterID string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -1513,6 +2612,21 @@ func (c *Client) forgetMissingMonsters(s *Server, current map[string]struct{}) {
 		}
 		s.sendCommand(c.conn, MonsterDisappearCommand(mon), nil)
 		delete(c.visibleMonsters, monsterID)
+	}
+}
+
+func (c *Client) forgetMissingNPCs(s *Server, current map[string]struct{}) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.visibleNPCs == nil {
+		return
+	}
+	for npcID, entity := range c.visibleNPCs {
+		if _, ok := current[npcID]; ok {
+			continue
+		}
+		c.writeCommandLocked(s, mir176.Command{Ident: mir176.SMDisappear, Recog: s.world.NPCActorID(entity.ID)}, nil)
+		delete(c.visibleNPCs, npcID)
 	}
 }
 
@@ -1865,7 +2979,7 @@ func CharacterDeathCommand(ch storage.Character) mir176.Command {
 
 func MonsterTurnBody(mon world.Monster) []byte {
 	body := EncodeBuffer(CharDesc(world.MonsterFeature(mon), 0))
-	body = append(body, EncodeString(mon.Name+"/0")...)
+	body = append(body, EncodeString(mon.Name+"/255")...)
 	return body
 }
 
@@ -2129,8 +3243,7 @@ func (s *Server) handleGame(ctx context.Context, conn net.Conn) {
 				_, _ = fmt.Fprintln(conn, "ERR usage: create name class")
 				continue
 			}
-			mapID, x, y := s.world.DefaultSpawn()
-			created, err := s.world.CreateCharacter(account, parts[1], parts[2], mapID, x, y)
+			created, err := s.world.CreateCharacterAtRandomStartPoint(account, parts[1], parts[2])
 			if err != nil {
 				_, _ = fmt.Fprintln(conn, "ERR", err)
 				continue

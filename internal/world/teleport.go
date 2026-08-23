@@ -32,6 +32,7 @@ func (w *World) teleportLocked(ch storage.Character, mapID string, x, y int) (st
 	if err != nil {
 		return ch, err
 	}
+	w.syncCharacterHomeFromStartPointLocked(&next)
 	return next, w.store.SaveCharacter(next)
 }
 
@@ -44,6 +45,7 @@ func (w *World) teleportRandomInMapLocked(ch storage.Character, mapID string) (s
 	if err != nil {
 		return ch, err
 	}
+	w.syncCharacterHomeFromStartPointLocked(&next)
 	return next, w.store.SaveCharacter(next)
 }
 
@@ -61,9 +63,6 @@ func (w *World) homeTeleportCharacterLocked(ch storage.Character) (storage.Chara
 		mapID = ch.MapID
 	}
 	x, y := ch.HomeX, ch.HomeY
-	if mapID == "" {
-		mapID, x, y = w.DefaultSpawn()
-	}
 	mp, ok := w.data.Maps[mapID]
 	if !ok {
 		return ch, fmt.Errorf("map %s not found", mapID)
@@ -77,7 +76,7 @@ func (w *World) homeTeleportRandomCharacterLocked(ch storage.Character) (storage
 		mapID = ch.MapID
 	}
 	if mapID == "" {
-		mapID, _, _ = w.DefaultSpawn()
+		return ch, fmt.Errorf("character has no home map")
 	}
 	mp, ok := w.data.Maps[mapID]
 	if !ok {

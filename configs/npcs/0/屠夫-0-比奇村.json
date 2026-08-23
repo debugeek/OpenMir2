@@ -1,0 +1,34 @@
+{
+  "id": "屠夫-0-比奇村",
+  "name": "屠夫",
+  "kind": "merchant",
+  "map_id": "0",
+  "x": 293,
+  "y": 603,
+  "dir": 0,
+  "appr": 11,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "sell": true
+    }
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "您来这里卖肉吗？\\n<卖/@sell>肉\\n<离 开/@exit>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "高价买入品质好的肉。\\n低价买入粘上土或被火烧的肉.\\n<继续/@main>"
+        }
+      ]
+    }
+  }
+}

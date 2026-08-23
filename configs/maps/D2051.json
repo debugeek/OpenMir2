@@ -3,8 +3,6 @@
   "name": "尸魔洞一层",
   "width": 140,
   "height": 203,
-  "spawn_x": 88,
-  "spawn_y": 105,
   "blocked": [],
   "connections": [
     {

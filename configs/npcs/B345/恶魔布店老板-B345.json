@@ -1,0 +1,70 @@
+{
+  "id": "恶魔布店老板-B345",
+  "name": "恶魔布店老板",
+  "kind": "merchant",
+  "map_id": "B345",
+  "x": 12,
+  "y": 10,
+  "dir": 0,
+  "appr": 10,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true,
+      "repair": true
+    },
+    "stock": [
+      { "item_id": "轻型盔甲(男)", "count": 4, "refill_minutes": 10 },
+      { "item_id": "轻型盔甲(女)", "count": 4, "refill_minutes": 10 },
+      { "item_id": "重盔甲(男)", "count": 4, "refill_minutes": 10 },
+      { "item_id": "重盔甲(女)", "count": 4, "refill_minutes": 10 },
+      { "item_id": "魔法长袍(男)", "count": 4, "refill_minutes": 10 },
+      { "item_id": "魔法长袍(女)", "count": 4, "refill_minutes": 10 },
+      { "item_id": "灵魂战衣(男)", "count": 4, "refill_minutes": 10 },
+      { "item_id": "灵魂战衣(女)", "count": 4, "refill_minutes": 10 }
+    ]
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "虽然我穿的破,但我仍旧是个好裁缝,\\n只是不太喜欢洗衣服而已.\\n你是来买衣服呢,还是来补衣服?\\n<买/@buy>  衣服\\n<卖/@sell>  衣服\\n<修补/@repair> 衣服\\n<特殊修理/@s_repair>\\n<取消/@exit>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "你想买什么样的衣服？\\n<返回/@main>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "把你要卖的衣服给我看看，我会给你个估价。\\n我们也经营头盔和帽子，所以如果你不用,\\n可以在这里卖掉它。\\n<返回/@main>"
+        }
+      ]
+    },
+    "@repair": {
+      "name": "@repair",
+      "procedures": [
+        {
+          "say": "这里修补衣服，头盔和帽子\\n<返回/@main>"
+        }
+      ]
+    },
+    "~@repair": {
+      "name": "~@repair",
+      "procedures": [
+        {
+          "say": "这个看上去已经修好了\\n<返回/@main>"
+        }
+      ]
+    }
+  }
+}

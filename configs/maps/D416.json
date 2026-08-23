@@ -3,8 +3,6 @@
   "name": "桥",
   "width": 110,
   "height": 75,
-  "spawn_x": 50,
-  "spawn_y": 50,
   "blocked": [],
   "connections": [
     {

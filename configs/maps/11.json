@@ -3,8 +3,12 @@
   "name": "白日门",
   "width": 373,
   "height": 502,
-  "spawn_x": 45,
-  "spawn_y": 482,
+  "start_points": [
+    {
+      "x": 178,
+      "y": 326
+    }
+  ],
   "blocked": [],
   "connections": [
     {

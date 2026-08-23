@@ -1,0 +1,75 @@
+{
+  "id": "戒指店-0105",
+  "name": "戒指店老板",
+  "kind": "merchant",
+  "map_id": "0105",
+  "x": 18,
+  "y": 6,
+  "dir": 0,
+  "appr": 4,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true,
+      "repair": true
+    },
+    "stock": [
+      { "item_id": "古铜戒指", "count": 3, "refill_minutes": 10 },
+      { "item_id": "六角戒指", "count": 3, "refill_minutes": 10 },
+      { "item_id": "玻璃戒指", "count": 3, "refill_minutes": 10 },
+      { "item_id": "牛角戒指", "count": 3, "refill_minutes": 10 },
+      { "item_id": "蓝色水晶戒指", "count": 3, "refill_minutes": 10 },
+      { "item_id": "生铁戒指", "count": 3, "refill_minutes": 10 },
+      { "item_id": "金戒指", "count": 3, "refill_minutes": 10 },
+      { "item_id": "魅力戒指", "count": 3, "refill_minutes": 10 },
+      { "item_id": "道德戒指", "count": 3, "refill_minutes": 10 },
+      { "item_id": "黑色水晶戒指", "count": 3, "refill_minutes": 10 },
+      { "item_id": "蛇眼戒指", "count": 3, "refill_minutes": 10 },
+      { "item_id": "珍珠戒指", "count": 3, "refill_minutes": 10 },
+      { "item_id": "骷髅戒指", "count": 3, "refill_minutes": 10 }
+    ]
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "欢迎光临，有什么事情吗？\\n<买/@buy>戒指\\n<卖/@sell>戒指\\n<修理/@repair>戒指\\n<特殊修理/@s_repair>\\n<关闭/@exit>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "要买戒指吗？\\n<返 回/@main>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "要卖戒指吗？\\n<返 回/@main>"
+        }
+      ]
+    },
+    "@repair": {
+      "name": "@repair",
+      "procedures": [
+        {
+          "say": "要修理戒指吗？\\n<返 回/@main>"
+        }
+      ]
+    },
+    "~@repair": {
+      "name": "~@repair",
+      "procedures": [
+        {
+          "say": "修理得还算不错。\\n<返 回/@main>"
+        }
+      ]
+    }
+  }
+}

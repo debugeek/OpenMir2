@@ -3,8 +3,6 @@
   "name": "纵横道",
   "width": 306,
   "height": 302,
-  "spawn_x": 155,
-  "spawn_y": 231,
   "blocked": [],
   "connections": [
     {

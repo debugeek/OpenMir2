@@ -3,8 +3,6 @@
   "name": "秘密通道",
   "width": 193,
   "height": 156,
-  "spawn_x": 100,
-  "spawn_y": 100,
   "blocked": [],
   "connections": [
     {

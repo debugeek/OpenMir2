@@ -3,8 +3,6 @@
   "name": "幻境四层",
   "width": 213,
   "height": 188,
-  "spawn_x": 100,
-  "spawn_y": 100,
   "blocked": [],
   "connections": [
     {

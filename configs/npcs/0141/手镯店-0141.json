@@ -1,0 +1,68 @@
+{
+  "id": "手镯店-0141",
+  "name": "手镯店老板",
+  "kind": "merchant",
+  "map_id": "0141",
+  "x": 16,
+  "y": 16,
+  "dir": 0,
+  "appr": 5,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true,
+      "repair": true
+    },
+    "stock": [
+      { "item_id": "小手镯", "count": 10, "refill_minutes": 10 },
+      { "item_id": "银手镯", "count": 10, "refill_minutes": 10 },
+      { "item_id": "铁手镯", "count": 10, "refill_minutes": 10 },
+      { "item_id": "钢手镯", "count": 10, "refill_minutes": 10 },
+      { "item_id": "皮制手套", "count": 10, "refill_minutes": 10 },
+      { "item_id": "大手镯", "count": 10, "refill_minutes": 10 }
+    ]
+  },
+  "labels": {
+    "@手镯店": {
+      "name": "@手镯店",
+      "procedures": [
+        {
+          "say": "请问我可以帮你什么吗?\\n<购买/@buy> 手镯\\n<出售/@sell> 手镯\\n<修理/@repair> 手镯\\n<离 开/@exit>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "请选择你要购买的物品.\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "您出售哪种手镯?\\n我们也回收手套.\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@repair": {
+      "name": "@repair",
+      "procedures": [
+        {
+          "say": "你可以修理各种手镯,手套.\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "~@repair": {
+      "name": "~@repair",
+      "procedures": [
+        {
+          "say": "看上去它是好的.\\n<返 回/@Main>"
+        }
+      ]
+    }
+  }
+}

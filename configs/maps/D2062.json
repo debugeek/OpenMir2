@@ -3,8 +3,6 @@
   "name": "骨魔洞二层",
   "width": 157,
   "height": 208,
-  "spawn_x": 100,
-  "spawn_y": 90,
   "blocked": [],
   "connections": [
     {

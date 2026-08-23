@@ -1,0 +1,116 @@
+{
+  "id": "沙城总管-0150",
+  "name": "沙城总管",
+  "kind": "special",
+  "map_id": "0150",
+  "x": 6,
+  "y": 16,
+  "dir": 0,
+  "appr": 8,
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "沙巴克是在 <$OWNERGUILD> 的管理下。并且受约束于 <$LORD>\\n城堡的总黄金是: <$CASTLEGOLD>\\n今天的收入是: <$TODAYINCOME>\\n<收回现金/@@withdrawal>  <贮藏现金/@@receipts>\\n<控制城门/@treatdoor>  <修理城堡/@repaircastle>\\n<聘用防御护卫/@guardcmd> <护卫防御方式/@commandorder>"
+        }
+      ]
+    },
+    "@treatdoor": {
+      "name": "@treatdoor",
+      "procedures": [
+        {
+          "say": "城堡的门现在是 <$CASTLEDOORSTATE> 的。\\n<关闭城门/@closemaindoor>\\n<打开城门/@openmaindoor>\\n<返回/@main>"
+        }
+      ]
+    },
+    "@repaircastle": {
+      "name": "@repaircastle",
+      "procedures": [
+        {
+          "say": "你想要修复什么?\\n<修复城门/@repairdoor>\\n<修复皇宫/@repairwalls>\\n<返回/@main>"
+        }
+      ]
+    },
+    "@guardcmd": {
+      "name": "@guardcmd",
+      "procedures": [
+        {
+          "say": "你想你要聘用守卫吗?\\n<聘用流动护卫/@hireguards>\\n<聘用固定弓箭手/@hirearchers>\\n<返回/@main>"
+        }
+      ]
+    },
+    "@openmaindoor": {
+      "name": "@openmaindoor",
+      "procedures": [
+        {
+          "say": "城门已打开.\\n<返回/@treatdoor>"
+        }
+      ]
+    },
+    "@closemaindoor": {
+      "name": "@closemaindoor",
+      "procedures": [
+        {
+          "say": "城门已关闭.\\n<返回/@treatdoor>"
+        }
+      ]
+    },
+    "@repairdoor": {
+      "name": "@repairdoor",
+      "procedures": [
+        {
+          "say": "将要把 <$REPAIRDOORGOLD> 现金用于修理城门!\\n<马上修复城门/@repairdoornow>\\n<返回/@repaircastle>"
+        }
+      ]
+    },
+    "@repairwalls": {
+      "name": "@repairwalls",
+      "procedures": [
+        {
+          "say": "将要把 <$REPAIRWALLGOLD> 现金用于修理皇宫城墙!\\n<修复城墙一/@repairwallnow1>\\n<修复城墙二/@repairwallnow2>\\n<修复城墙三/@repairwallnow3>\\n<返回/@repaircastle>"
+        }
+      ]
+    },
+    "@hireguards": {
+      "name": "@hireguards",
+      "procedures": [
+        {
+          "say": "你想聘用流动护卫吗?\\n你要用 <$GUARDFEE> 现金来支付他们的工作费用。\\n<一号/@hireguardnow1> <二号/@hireguardnow2>\\n<三号/@hireguardnow3> <四号/@hireguardnow4>\\n<返回/@guardcmd>"
+        }
+      ]
+    },
+    "@hirearchers": {
+      "name": "@hirearchers",
+      "procedures": [
+        {
+          "say": "弓箭守卫们帮助你防守城堡，他们来去是自由的。\\n你应该付一些租金给他们，他们每个要 <$ARCHERFEE> 现金。\\n<一号弓箭手/@hirearchernow1> <二号弓箭手/@hirearchernow2> <三号弓箭手/@hirearchernow3>\\n<四号弓箭手/@hirearchernow4> <五号弓箭手/@hirearchernow5> <六号弓箭手/@hirearchernow6>\\n<七号弓箭手/@hirearchernow7> <八号弓箭手/@hirearchernow8>\\n<九号弓箭手/@hirearchernow9> <十号弓箭手/@hirearchernow10>\\n<十一号弓箭手/@hirearchernow11> <十二号弓箭手/@hirearchernow12>\\n<返回/@main>"
+        }
+      ]
+    },
+    "@commandorder": {
+      "name": "@commandorder",
+      "procedures": [
+        {
+          "say": "守卫们正在进行沙巴克的防御工作,你想改变他们?\\n<正常防守/@guardrule_normalnow>\\n<进攻PK者/@guardrule_pkattack>\\n<返回/@guardcmd>"
+        }
+      ]
+    },
+    "@guardrule_normalnow": {
+      "name": "@guardrule_normalnow",
+      "procedures": [
+        {
+          "say": "防守方式已经更改，守卫们已经目前处于正常防御状态.\\n<返回/@guardcmd>"
+        }
+      ]
+    },
+    "@guardrule_pkattack": {
+      "name": "@guardrule_pkattack",
+      "procedures": [
+        {
+          "say": "防守方式已经更改，守卫们已经目前处于对来犯者进攻状态.\\n<返回/@guardcmd>"
+        }
+      ]
+    }
+  }
+}

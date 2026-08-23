@@ -3,8 +3,6 @@
   "name": "兽人古墓一层",
   "width": 401,
   "height": 386,
-  "spawn_x": 200,
-  "spawn_y": 200,
   "blocked": [],
   "connections": [
     {

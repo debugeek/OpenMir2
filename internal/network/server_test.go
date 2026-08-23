@@ -14,6 +14,7 @@ import (
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"openmir2/internal/config"
 	"openmir2/internal/data"
+	"openmir2/internal/npc"
 	"openmir2/internal/protocol/mir176"
 	"openmir2/internal/storage"
 	"openmir2/internal/world"
@@ -112,6 +113,7 @@ func newTestServer(t *testing.T) *Server {
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
+	addTestGuideNPC(&bundle)
 	mp, ok := bundle.Maps[testMapID]
 	if !ok {
 		t.Fatalf("map %s missing from configs", testMapID)
@@ -119,8 +121,8 @@ func newTestServer(t *testing.T) *Server {
 	bundle.Spawns = []data.StdSpawn{{
 		MapID:          testMapID,
 		MonsterID:      testMonsterID,
-		X:              mp.SpawnX + 2,
-		Y:              mp.SpawnY,
+		X:              mp.StartPoints[0].X + 2,
+		Y:              mp.StartPoints[0].Y,
 		Count:          1,
 		RespawnSeconds: 10,
 	}}
@@ -133,6 +135,130 @@ func newTestServer(t *testing.T) *Server {
 	s := New("test", nil, store, w, log)
 	s.hitImpactDelay = 0
 	return s
+}
+
+func addTestGuideNPC(bundle *data.StdBundle) {
+	if bundle.NPCs.Entities == nil {
+		bundle.NPCs.Entities = map[string]npc.Entity{}
+	}
+	if bundle.NPCs.Scripts == nil {
+		bundle.NPCs.Scripts = map[string]npc.Script{}
+	}
+	bundle.NPCs.Entities["guide"] = npc.Entity{
+		ID:       "guide",
+		Name:     "Guide",
+		Kind:     npc.KindMerchant,
+		MapID:    testMapID,
+		X:        666,
+		Y:        87,
+		Dir:      2,
+		ScriptID: "guide_script",
+		Merchant: npc.MerchantProfile{
+			PriceRate: 100,
+			Capabilities: npc.MerchantCapabilities{
+				Buy:     true,
+				Sell:    true,
+				Storage: true,
+				GetBack: true,
+				Repair:  true,
+			},
+			Stock: []npc.MerchantStockItem{{ItemID: testHPItemID, Count: 3}},
+		},
+	}
+	bundle.NPCs.Scripts["guide_script"] = npc.Script{
+		ID: "guide_script",
+		Labels: map[string]npc.Label{
+			"@main": {
+				Name: "@main",
+				Procedures: []npc.Procedure{
+					{Say: "你好，这是 NPC 标准库测试。\\ \\<继续/@info>"},
+				},
+			},
+			"@info": {
+				Name: "@info",
+				Procedures: []npc.Procedure{
+					{Say: "你已经点到 NPC 了。\\ \\<返回/@main>"},
+				},
+			},
+		},
+	}
+}
+
+func testGuideNPC() npc.Entity {
+	return npc.Entity{
+		ID:       "guide",
+		Name:     "Guide",
+		Kind:     npc.KindMerchant,
+		MapID:    testMapID,
+		X:        666,
+		Y:        87,
+		Dir:      2,
+		ScriptID: "guide_script",
+		Merchant: npc.MerchantProfile{
+			PriceRate: 100,
+			Capabilities: npc.MerchantCapabilities{
+				Buy:     true,
+				Sell:    true,
+				Storage: true,
+				GetBack: true,
+				Repair:  true,
+			},
+			Stock: []npc.MerchantStockItem{{ItemID: testHPItemID, Count: 3}},
+		},
+	}
+}
+
+func testMakeDrugNPC() npc.Entity {
+	entity := testGuideNPC()
+	entity.ID = "maker"
+	entity.Name = "Maker"
+	entity.ScriptID = "makedrug_script"
+	entity.Merchant.Stock = []npc.MerchantStockItem{{ItemID: "灰色药粉(少量)", Count: 1}}
+	return entity
+}
+
+func addTestMakeDrugNPC(bundle *data.StdBundle) {
+	if bundle.NPCs.Entities == nil {
+		bundle.NPCs.Entities = map[string]npc.Entity{}
+	}
+	if bundle.NPCs.Scripts == nil {
+		bundle.NPCs.Scripts = map[string]npc.Script{}
+	}
+	bundle.NPCs.Entities["maker"] = testMakeDrugNPC()
+	bundle.NPCs.Scripts["makedrug_script"] = npc.Script{
+		ID: "makedrug_script",
+		Labels: map[string]npc.Label{
+			"@main": {
+				Name: "@main",
+				Procedures: []npc.Procedure{
+					{Say: "你是来炼什么药？\\ \\<炼/@makedrug>药\\ \\<关 闭/@exit>"},
+				},
+			},
+		},
+	}
+}
+
+func newTestServerWithMakeDrugNPC(t *testing.T) *Server {
+	t.Helper()
+	bundle, err := data.Load(testConfigsDir)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	addTestGuideNPC(&bundle)
+	addTestMakeDrugNPC(&bundle)
+	mp, ok := bundle.Maps[testMapID]
+	if !ok {
+		t.Fatalf("map %s missing from configs", testMapID)
+	}
+	bundle.Spawns = []data.StdSpawn{{
+		MapID:          testMapID,
+		MonsterID:      testMonsterID,
+		X:              mp.StartPoints[0].X + 2,
+		Y:              mp.StartPoints[0].Y,
+		Count:          1,
+		RespawnSeconds: 10,
+	}}
+	return newTestServerWithBundle(t, bundle, config.DefaultGameplay())
 }
 
 func newTestServerWithBundle(t *testing.T, bundle data.StdBundle, gameplay config.Gameplay) *Server {
@@ -194,8 +320,8 @@ func newGuaranteedDropServer(t *testing.T) (*Server, storage.Character, net.Conn
 	bundle.Spawns = []data.StdSpawn{{
 		MapID:          testMapID,
 		MonsterID:      dropTableID,
-		X:              mp.SpawnX + 2,
-		Y:              mp.SpawnY,
+		X:              mp.StartPoints[0].X + 2,
+		Y:              mp.StartPoints[0].Y,
 		Count:          1,
 		RespawnSeconds: 10,
 	}}
@@ -733,6 +859,1052 @@ func TestHandleSaySendsHearMessage(t *testing.T) {
 	}
 }
 
+func TestHandleClickNPCSendsMerchantSay(t *testing.T) {
+	s := newTestServer(t)
+	entity := testGuideNPC()
+	mapID, x, y := entity.MapID, entity.X, entity.Y
+	ch, err := s.world.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	activeClient := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleClickNPC(server, &ch, activeClient, mir176.Command{Ident: mir176.CMClickNPC, Recog: s.world.NPCActorID("guide")})
+	}()
+
+	cmd, body, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() error = %v", err)
+	}
+	<-done
+	if cmd.Ident != mir176.SMMerchantSay {
+		t.Fatalf("ident = %d, want SMMerchantSay (%d)", cmd.Ident, mir176.SMMerchantSay)
+	}
+	text, err := mir176.DecodePlain6Payload(body)
+	if err != nil {
+		t.Fatalf("DecodePlain6Payload() error = %v", err)
+	}
+	if got := DecodeString(text); got != "Guide/你好，这是 NPC 标准库测试。\\ \\<继续/@info>" {
+		t.Fatalf("message = %q, want guide main dialogue", got)
+	}
+}
+
+func TestHandleMerchantDlgSelectContinuesNPCScript(t *testing.T) {
+	s := newTestServer(t)
+	entity := testGuideNPC()
+	mapID, x, y := entity.MapID, entity.X, entity.Y
+	ch, err := s.world.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	activeClient := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	clickDone := make(chan struct{})
+	go func() {
+		defer close(clickDone)
+		s.handleClickNPC(server, &ch, activeClient, mir176.Command{Ident: mir176.CMClickNPC, Recog: s.world.NPCActorID("guide")})
+	}()
+	if _, _, err := decodeMessageLikeClient(readFrame(t, client)); err != nil {
+		t.Fatalf("decode initial NPC frame error = %v", err)
+	}
+	<-clickDone
+
+	selectDone := make(chan struct{})
+	go func() {
+		defer close(selectDone)
+		s.handleMerchantDlgSelect(server, &ch, activeClient, mir176.Command{Ident: mir176.CMMerchantDlgSelect, Recog: s.world.NPCActorID("guide")}, WireString(t, "info"))
+	}()
+	cmd, body, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() error = %v", err)
+	}
+	<-selectDone
+	if cmd.Ident != mir176.SMMerchantSay {
+		t.Fatalf("ident = %d, want SMMerchantSay (%d)", cmd.Ident, mir176.SMMerchantSay)
+	}
+	text, err := mir176.DecodePlain6Payload(body)
+	if err != nil {
+		t.Fatalf("DecodePlain6Payload() error = %v", err)
+	}
+	if got := DecodeString(text); got != "Guide/你已经点到 NPC 了。\\ \\<返回/@main>" {
+		t.Fatalf("message = %q, want info dialogue", got)
+	}
+}
+
+func TestHandleMerchantDlgSelectOpensBuyList(t *testing.T) {
+	s := newTestServer(t)
+	entity := testGuideNPC()
+	mapID, x, y := entity.MapID, entity.X, entity.Y
+	ch, err := s.world.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	activeClient := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleMerchantDlgSelect(server, &ch, activeClient, mir176.Command{Ident: mir176.CMMerchantDlgSelect, Recog: s.world.NPCActorID("guide")}, WireString(t, "@buy"))
+	}()
+	cmd, body, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() error = %v", err)
+	}
+	<-done
+	if cmd.Ident != mir176.SMSendGoodsList {
+		t.Fatalf("ident = %d, want SMSendGoodsList (%d)", cmd.Ident, mir176.SMSendGoodsList)
+	}
+	if len(body) == 0 {
+		t.Fatal("expected buy list body")
+	}
+}
+
+func TestHandleMerchantDlgSelectBackReturnsToMain(t *testing.T) {
+	s := newTestServer(t)
+	entity := testGuideNPC()
+	mapID, x, y := entity.MapID, entity.X, entity.Y
+	ch, err := s.world.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	activeClient := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	clickDone := make(chan struct{})
+	go func() {
+		defer close(clickDone)
+		s.handleClickNPC(server, &ch, activeClient, mir176.Command{Ident: mir176.CMClickNPC, Recog: s.world.NPCActorID("guide")})
+	}()
+	if _, _, err := decodeMessageLikeClient(readFrame(t, client)); err != nil {
+		t.Fatalf("decode initial NPC frame error = %v", err)
+	}
+	<-clickDone
+
+	buyDone := make(chan struct{})
+	go func() {
+		defer close(buyDone)
+		s.handleMerchantDlgSelect(server, &ch, activeClient, mir176.Command{Ident: mir176.CMMerchantDlgSelect, Recog: s.world.NPCActorID("guide")}, WireString(t, "@buy"))
+	}()
+	if _, _, err := decodeMessageLikeClient(readFrame(t, client)); err != nil {
+		t.Fatalf("decode buy list error = %v", err)
+	}
+	<-buyDone
+
+	backDone := make(chan struct{})
+	go func() {
+		defer close(backDone)
+		s.handleMerchantDlgSelect(server, &ch, activeClient, mir176.Command{Ident: mir176.CMMerchantDlgSelect, Recog: s.world.NPCActorID("guide")}, WireString(t, "@back"))
+	}()
+	cmd, body, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode back frame error = %v", err)
+	}
+	<-backDone
+	if cmd.Ident != mir176.SMMerchantSay {
+		t.Fatalf("ident = %d, want SMMerchantSay (%d)", cmd.Ident, mir176.SMMerchantSay)
+	}
+	text, err := mir176.DecodePlain6Payload(body)
+	if err != nil {
+		t.Fatalf("DecodePlain6Payload() error = %v", err)
+	}
+	if got := DecodeString(text); got != "Guide/你好，这是 NPC 标准库测试。\\ \\<继续/@info>" {
+		t.Fatalf("back message = %q, want main dialogue", got)
+	}
+}
+
+func TestHandleMerchantDlgSelectBuildGuildFlow(t *testing.T) {
+	s := newTestServer(t)
+	entity := testGuideNPC()
+	mapID, x, y := entity.MapID, entity.X, entity.Y
+	ch, err := s.world.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.Gold = 1000000
+	ch.BagItems = append(ch.BagItems, storage.UserItem{ItemID: "沃玛号角", MakeIndex: 1001})
+
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	activeClient := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	firstDone := make(chan struct{})
+	go func() {
+		defer close(firstDone)
+		s.handleMerchantDlgSelect(server, &ch, activeClient, mir176.Command{Ident: mir176.CMMerchantDlgSelect, Recog: s.world.NPCActorID("guide")}, WireString(t, "@buildguildnow"))
+	}()
+	cmd, body, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() error = %v", err)
+	}
+	if cmd.Ident != mir176.SMMerchantSay {
+		t.Fatalf("ident = %d, want SMMerchantSay (%d)", cmd.Ident, mir176.SMMerchantSay)
+	}
+	text, err := mir176.DecodePlain6Payload(body)
+	if err != nil {
+		t.Fatalf("DecodePlain6Payload() error = %v", err)
+	}
+	if got := DecodeString(text); got != "Guide/请填写行会名称。\n<返回/@main>" {
+		t.Fatalf("prompt = %q, want build guild prompt", got)
+	}
+
+	secondDone := make(chan struct{})
+	go func() {
+		defer close(secondDone)
+		s.handleMerchantDlgSelect(server, &ch, activeClient, mir176.Command{Ident: mir176.CMMerchantDlgSelect, Recog: s.world.NPCActorID("guide")}, WireString(t, "天龙会"))
+	}()
+	cmd, body, err = decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() error = %v", err)
+	}
+	if cmd.Ident != mir176.SMDelItems {
+		t.Fatalf("first follow-up ident = %d, want SMDelItems (%d)", cmd.Ident, mir176.SMDelItems)
+	}
+	cmd, _, err = decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() gold change error = %v", err)
+	}
+	if cmd.Ident != mir176.SMGoldChanged {
+		t.Fatalf("second follow-up ident = %d, want SMGoldChanged (%d)", cmd.Ident, mir176.SMGoldChanged)
+	}
+	cmd, body, err = decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() final say error = %v", err)
+	}
+	<-secondDone
+	<-firstDone
+	if cmd.Ident != mir176.SMMerchantSay {
+		t.Fatalf("third follow-up ident = %d, want SMMerchantSay (%d)", cmd.Ident, mir176.SMMerchantSay)
+	}
+	text, err = mir176.DecodePlain6Payload(body)
+	if err != nil {
+		t.Fatalf("DecodePlain6Payload() error = %v", err)
+	}
+	if got := DecodeString(text); got != "Guide/行会创建申请已提交: 天龙会\n<返回/@main>" {
+		t.Fatalf("result = %q, want build guild success message", got)
+	}
+	if got := ch.Gold; got != 0 {
+		t.Fatalf("gold = %d, want 0 after build guild", got)
+	}
+	if bagHasItemID(ch, "沃玛号角") {
+		t.Fatal("expected 沃玛号角 to be consumed")
+	}
+}
+
+func TestHandleUserGetDetailItemReturnsEncodedItemRows(t *testing.T) {
+	s := newTestServer(t)
+	entity := testGuideNPC()
+	mapID, x, y := entity.MapID, entity.X, entity.Y
+	ch, err := s.world.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	activeClient := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleUserGetDetailItem(server, &ch, activeClient, mir176.Command{
+			Ident: mir176.CMUserGetDetailItem,
+			Recog: s.world.NPCActorID("guide"),
+			Param: 5,
+		}, WireString(t, testHPItemID))
+	}()
+	cmd, body, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() error = %v", err)
+	}
+	<-done
+	if cmd.Ident != mir176.SMSendDetailGoodsList {
+		t.Fatalf("ident = %d, want SMSendDetailGoodsList (%d)", cmd.Ident, mir176.SMSendDetailGoodsList)
+	}
+	if cmd.Recog != s.world.NPCActorID("guide") {
+		t.Fatalf("merchant id = %d, want %d", cmd.Recog, s.world.NPCActorID("guide"))
+	}
+	if int(cmd.Param) == 0 {
+		t.Fatal("expected non-zero detail item count")
+	}
+	if cmd.Tag != 0 {
+		t.Fatalf("page = %d, want 0", cmd.Tag)
+	}
+	if cmd.Series != 0 {
+		t.Fatalf("series = %d, want 0", cmd.Series)
+	}
+	parts := bytes.Split(body, []byte{'/'})
+	if len(parts) == 0 || len(parts[0]) == 0 {
+		t.Fatal("expected encoded item row body")
+	}
+	raw, err := mir176.DecodePlain6Payload(parts[0])
+	if err != nil {
+		t.Fatalf("DecodePlain6Payload() error = %v", err)
+	}
+	nameLen := int(raw[0])
+	if got := DecodeString(raw[1 : 1+nameLen]); got != testHPItemID {
+		t.Fatalf("detail row name = %q, want %q", got, testHPItemID)
+	}
+}
+
+func TestHandleMerchantQuerySellPriceReturnsPrice(t *testing.T) {
+	s := newTestServer(t)
+	entity := testGuideNPC()
+	mapID, x, y := entity.MapID, entity.X, entity.Y
+	ch, err := s.world.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.BagItems = []storage.UserItem{{ItemID: testHPItemID, MakeIndex: 77}}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	activeClient := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleMerchantQuerySellPrice(server, &ch, activeClient, mir176.Command{
+			Ident: mir176.CMMerchantQuerySellPrice,
+			Recog: s.world.NPCActorID("guide"),
+			Param: uint16(77),
+		}, WireString(t, testHPItemID))
+	}()
+	cmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() error = %v", err)
+	}
+	<-done
+	if cmd.Ident != mir176.SMSendBuyPrice {
+		t.Fatalf("ident = %d, want SMSendBuyPrice (%d)", cmd.Ident, mir176.SMSendBuyPrice)
+	}
+	item, _ := s.world.Item(testHPItemID)
+	want := merchantSellPrice(item, ch.BagItems[0], entity.Merchant.PriceRate)
+	if int(cmd.Recog) != want {
+		t.Fatalf("price = %d, want %d", cmd.Recog, want)
+	}
+}
+
+func TestHandleUserBuyItemAddsItemImmediately(t *testing.T) {
+	s := newTestServer(t)
+	entity := testGuideNPC()
+	mapID, x, y := entity.MapID, entity.X, entity.Y
+	ch, err := s.world.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.Gold = 100000
+	before := len(ch.BagItems)
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	activeClient := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleUserBuyItem(server, &ch, activeClient, mir176.Command{
+			Ident: mir176.CMUserBuyItem,
+			Recog: s.world.NPCActorID("guide"),
+		}, WireString(t, testHPItemID))
+	}()
+
+	cmd1, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() #1 error = %v", err)
+	}
+	cmd2, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() #2 error = %v", err)
+	}
+	cmd3, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() #3 error = %v", err)
+	}
+	<-done
+	if cmd1.Ident != mir176.SMBuyItemSuccess {
+		t.Fatalf("first ident = %d, want SMBuyItemSuccess (%d)", cmd1.Ident, mir176.SMBuyItemSuccess)
+	}
+	if cmd2.Ident != mir176.SMAddItem {
+		t.Fatalf("second ident = %d, want SMAddItem (%d)", cmd2.Ident, mir176.SMAddItem)
+	}
+	if cmd3.Ident != mir176.SMGoldChanged {
+		t.Fatalf("third ident = %d, want SMGoldChanged (%d)", cmd3.Ident, mir176.SMGoldChanged)
+	}
+	if len(ch.BagItems) != before+1 {
+		t.Fatalf("bag len = %d, want %d", len(ch.BagItems), before+1)
+	}
+	found := false
+	for _, entry := range ch.BagItems {
+		if entry.ItemID == testHPItemID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("bag = %+v, want %s to appear immediately", ch.BagItems, testHPItemID)
+	}
+	stocks := s.world.MerchantStock("guide")
+	if len(stocks) != 1 || stocks[0].Count != 2 {
+		t.Fatalf("merchant stocks = %+v, want one item with count 2", stocks)
+	}
+}
+
+func TestHandleUserBuyItemFailsWhenBagIsFull(t *testing.T) {
+	s := newTestServer(t)
+	entity := testGuideNPC()
+	mapID, x, y := entity.MapID, entity.X, entity.Y
+	ch, err := s.world.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.Gold = 100000
+	fullBag := make([]storage.UserItem, 46)
+	for i := range fullBag {
+		fullBag[i] = storage.UserItem{ItemID: testWeaponID, MakeIndex: int32(i + 1)}
+	}
+	ch.BagItems = fullBag
+	beforeGold := ch.Gold
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	activeClient := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleUserBuyItem(server, &ch, activeClient, mir176.Command{
+			Ident: mir176.CMUserBuyItem,
+			Recog: s.world.NPCActorID("guide"),
+		}, WireString(t, testHPItemID))
+	}()
+
+	cmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() error = %v", err)
+	}
+	<-done
+	if cmd.Ident != mir176.SMBuyItemFail {
+		t.Fatalf("ident = %d, want SMBuyItemFail (%d)", cmd.Ident, mir176.SMBuyItemFail)
+	}
+	if len(ch.BagItems) != len(fullBag) {
+		t.Fatalf("bag len = %d, want %d", len(ch.BagItems), len(fullBag))
+	}
+	if ch.Gold != beforeGold {
+		t.Fatalf("gold = %d, want %d", ch.Gold, beforeGold)
+	}
+}
+
+func TestHandleUserSellItemAddsMerchantStock(t *testing.T) {
+	s := newTestServer(t)
+	entity := testGuideNPC()
+	mapID, x, y := entity.MapID, entity.X, entity.Y
+	ch, err := s.world.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.Gold = 100000
+	ch.BagItems = []storage.UserItem{{ItemID: testHPItemID, MakeIndex: 77}}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	activeClient := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleUserSellItem(server, &ch, activeClient, mir176.Command{
+			Ident: mir176.CMUserSellItem,
+			Recog: s.world.NPCActorID("guide"),
+			Param: uint16(77),
+		}, WireString(t, testHPItemID))
+	}()
+
+	cmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() error = %v", err)
+	}
+	goldCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() gold error = %v", err)
+	}
+	<-done
+	if cmd.Ident != mir176.SMUserSellItemOK {
+		t.Fatalf("ident = %d, want SMUserSellItemOK (%d)", cmd.Ident, mir176.SMUserSellItemOK)
+	}
+	if goldCmd.Ident != mir176.SMGoldChanged {
+		t.Fatalf("gold ident = %d, want SMGoldChanged (%d)", goldCmd.Ident, mir176.SMGoldChanged)
+	}
+	stocks := s.world.MerchantStock("guide")
+	if len(stocks) != 1 || stocks[0].Count != 4 {
+		t.Fatalf("merchant stocks = %+v, want one item with count 4", stocks)
+	}
+}
+
+func TestHandleMerchantDlgSelectOpensStorageWindow(t *testing.T) {
+	s := newTestServer(t)
+	entity := testGuideNPC()
+	mapID, x, y := entity.MapID, entity.X, entity.Y
+	ch, err := s.world.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	activeClient := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleMerchantDlgSelect(server, &ch, activeClient, mir176.Command{Ident: mir176.CMMerchantDlgSelect, Recog: s.world.NPCActorID("guide")}, WireString(t, "@storage"))
+	}()
+
+	cmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() error = %v", err)
+	}
+	<-done
+	if cmd.Ident != mir176.SMSendUserStorageItem {
+		t.Fatalf("ident = %d, want SMSendUserStorageItem (%d)", cmd.Ident, mir176.SMSendUserStorageItem)
+	}
+	if cmd.Recog != 0 {
+		t.Fatalf("recog = %d, want 0", cmd.Recog)
+	}
+	if cmd.Param != uint16(s.world.NPCActorID("guide")) {
+		t.Fatalf("merchant id = %d, want %d", cmd.Param, s.world.NPCActorID("guide"))
+	}
+}
+
+func TestHandleMerchantDlgSelectOpensGetBackList(t *testing.T) {
+	s := newTestServer(t)
+	entity := testGuideNPC()
+	mapID, x, y := entity.MapID, entity.X, entity.Y
+	ch, err := s.world.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.StorageItems = []storage.UserItem{{ItemID: testHPItemID, MakeIndex: 77}}
+	if err := s.store.SaveCharacter(ch); err != nil {
+		t.Fatalf("SaveCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	activeClient := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleMerchantDlgSelect(server, &ch, activeClient, mir176.Command{Ident: mir176.CMMerchantDlgSelect, Recog: s.world.NPCActorID("guide")}, WireString(t, "@getback"))
+	}()
+
+	cmd1, body, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() #1 error = %v", err)
+	}
+	<-done
+	if cmd1.Ident != mir176.SMSaveItemList {
+		t.Fatalf("ident = %d, want SMSaveItemList (%d)", cmd1.Ident, mir176.SMSaveItemList)
+	}
+	if cmd1.Recog != s.world.NPCActorID("guide") {
+		t.Fatalf("recog = %d, want %d", cmd1.Recog, s.world.NPCActorID("guide"))
+	}
+	if cmd1.Series != 1 {
+		t.Fatalf("series = %d, want 1", cmd1.Series)
+	}
+	if len(body) == 0 {
+		t.Fatal("expected storage item list body")
+	}
+}
+
+func TestHandleMerchantDlgSelectOpensWarehouseBindMenu(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := s.world.DefaultSpawn()
+	ch, err := s.world.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	activeClient := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleMerchantDlgSelect(server, &ch, activeClient, mir176.Command{Ident: mir176.CMMerchantDlgSelect, Recog: s.world.NPCActorID("仓库-0")}, WireString(t, "@mbind"))
+	}()
+
+	cmd, body, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() error = %v", err)
+	}
+	<-done
+	if cmd.Ident != mir176.SMMerchantSay {
+		t.Fatalf("ident = %d, want SMMerchantSay (%d)", cmd.Ident, mir176.SMMerchantSay)
+	}
+	text, err := mir176.DecodePlain6Payload(body)
+	if err != nil {
+		t.Fatalf("DecodePlain6Payload() error = %v", err)
+	}
+	got := DecodeString(text)
+	if !strings.Contains(got, "用金币<交换/@changeGold>金条") {
+		t.Fatalf("message = %q, want warehouse bind menu", got)
+	}
+}
+
+func TestHandleMerchantDlgSelectOpensMakeDrugList(t *testing.T) {
+	s := newTestServerWithMakeDrugNPC(t)
+	entity := testMakeDrugNPC()
+	mapID, x, y := entity.MapID, entity.X, entity.Y
+	ch, err := s.world.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	activeClient := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleMerchantDlgSelect(server, &ch, activeClient, mir176.Command{Ident: mir176.CMMerchantDlgSelect, Recog: s.world.NPCActorID("maker")}, WireString(t, "@makedrug"))
+	}()
+
+	cmd, body, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() error = %v", err)
+	}
+	<-done
+	if cmd.Ident != mir176.SMSendUserMakeDrugItemList {
+		t.Fatalf("ident = %d, want SMSendUserMakeDrugItemList (%d)", cmd.Ident, mir176.SMSendUserMakeDrugItemList)
+	}
+	if cmd.Param != uint16(s.world.NPCActorID("maker")) {
+		t.Fatalf("merchant id = %d, want %d", cmd.Param, s.world.NPCActorID("maker"))
+	}
+	if len(body) == 0 {
+		t.Fatal("expected make drug list body")
+	}
+}
+
+func TestHandleMerchantDlgSelectExchangesGoldToGoldBar(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := s.world.DefaultSpawn()
+	ch, err := s.world.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.Gold = 1002000
+	ch.BagItems = nil
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	activeClient := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleMerchantDlgSelect(server, &ch, activeClient, mir176.Command{Ident: mir176.CMMerchantDlgSelect, Recog: s.world.NPCActorID("仓库-0")}, WireString(t, "@changeGold_1"))
+	}()
+
+	cmd1, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() #1 error = %v", err)
+	}
+	cmd2, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() #2 error = %v", err)
+	}
+	cmd3, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() #3 error = %v", err)
+	}
+	cmd4, body, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() #4 error = %v", err)
+	}
+	<-done
+	if cmd1.Ident != mir176.SMAddItem {
+		t.Fatalf("first ident = %d, want SMAddItem (%d)", cmd1.Ident, mir176.SMAddItem)
+	}
+	if cmd2.Ident != mir176.SMGoldChanged {
+		t.Fatalf("second ident = %d, want SMGoldChanged (%d)", cmd2.Ident, mir176.SMGoldChanged)
+	}
+	if cmd3.Ident != mir176.SMWeightChanged {
+		t.Fatalf("third ident = %d, want SMWeightChanged (%d)", cmd3.Ident, mir176.SMWeightChanged)
+	}
+	if cmd4.Ident != mir176.SMMerchantSay {
+		t.Fatalf("fourth ident = %d, want SMMerchantSay (%d)", cmd4.Ident, mir176.SMMerchantSay)
+	}
+	text, err := mir176.DecodePlain6Payload(body)
+	if err != nil {
+		t.Fatalf("DecodePlain6Payload() error = %v", err)
+	}
+	if got := DecodeString(text); !strings.Contains(got, "金币已经换好金条了") {
+		t.Fatalf("message = %q, want gold exchange success", got)
+	}
+	if ch.Gold != 0 {
+		t.Fatalf("gold = %d, want 0", ch.Gold)
+	}
+	if len(ch.BagItems) != 1 || ch.BagItems[0].ItemID != "金条" {
+		t.Fatalf("bag = %+v, want one 金条", ch.BagItems)
+	}
+}
+
+func TestHandleMerchantDlgSelectBundlesScrolls(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := s.world.DefaultSpawn()
+	ch, err := s.world.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.Gold = 100
+	ch.BagItems = []storage.UserItem{
+		{ItemID: "回城卷", MakeIndex: 1},
+		{ItemID: "回城卷", MakeIndex: 2},
+		{ItemID: "回城卷", MakeIndex: 3},
+		{ItemID: "回城卷", MakeIndex: 4},
+		{ItemID: "回城卷", MakeIndex: 5},
+		{ItemID: "回城卷", MakeIndex: 6},
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	activeClient := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleMerchantDlgSelect(server, &ch, activeClient, mir176.Command{Ident: mir176.CMMerchantDlgSelect, Recog: s.world.NPCActorID("仓库-0")}, WireString(t, "@zum_bind3"))
+	}()
+
+	cmd1, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() #1 error = %v", err)
+	}
+	cmd2, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() #2 error = %v", err)
+	}
+	cmd3, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() #3 error = %v", err)
+	}
+	cmd4, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() #4 error = %v", err)
+	}
+	cmd5, body, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() #5 error = %v", err)
+	}
+	<-done
+	if cmd1.Ident != mir176.SMDelItems {
+		t.Fatalf("first ident = %d, want SMDelItems (%d)", cmd1.Ident, mir176.SMDelItems)
+	}
+	if cmd2.Ident != mir176.SMAddItem {
+		t.Fatalf("second ident = %d, want SMAddItem (%d)", cmd2.Ident, mir176.SMAddItem)
+	}
+	if cmd3.Ident != mir176.SMGoldChanged {
+		t.Fatalf("third ident = %d, want SMGoldChanged (%d)", cmd3.Ident, mir176.SMGoldChanged)
+	}
+	if cmd4.Ident != mir176.SMWeightChanged {
+		t.Fatalf("fourth ident = %d, want SMWeightChanged (%d)", cmd4.Ident, mir176.SMWeightChanged)
+	}
+	if cmd5.Ident != mir176.SMMerchantSay {
+		t.Fatalf("fifth ident = %d, want SMMerchantSay (%d)", cmd5.Ident, mir176.SMMerchantSay)
+	}
+	text, err := mir176.DecodePlain6Payload(body)
+	if err != nil {
+		t.Fatalf("DecodePlain6Payload() error = %v", err)
+	}
+	if got := DecodeString(text); !strings.Contains(got, "已经捆好了") {
+		t.Fatalf("message = %q, want bundle success", got)
+	}
+	if ch.Gold != 0 {
+		t.Fatalf("gold = %d, want 0", ch.Gold)
+	}
+	if len(ch.BagItems) != 1 || ch.BagItems[0].ItemID != "回城卷包" {
+		t.Fatalf("bag = %+v, want one 回城卷包", ch.BagItems)
+	}
+}
+
+func TestHandleMerchantDlgSelectTeleportsFromTeleporterNpc(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := s.world.DefaultSpawn()
+	ch, err := s.world.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.Gold = 5000
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	activeClient := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleMerchantDlgSelect(server, &ch, activeClient, mir176.Command{Ident: mir176.CMMerchantDlgSelect, Recog: s.world.NPCActorID("传送员-0")}, WireString(t, "@JIANAN"))
+	}()
+
+	for {
+		cmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+		if err != nil {
+			t.Fatalf("decodeMessageLikeClient() error = %v", err)
+		}
+		if cmd.Ident == mir176.SMMerchantDlgClose {
+			break
+		}
+	}
+	<-done
+	if ch.MapID != "0" || ch.X != 333 || ch.Y != 268 {
+		t.Fatalf("character position = %s %d %d, want 0 333 268", ch.MapID, ch.X, ch.Y)
+	}
+	if ch.Gold != 3000 {
+		t.Fatalf("gold = %d, want 3000", ch.Gold)
+	}
+}
+
+func TestTeleporterTimeMessageUsesGreetingByHour(t *testing.T) {
+	got := teleporterTimeMessage(time.Date(2026, time.August, 23, 7, 5, 0, 0, time.Local), "Tester")
+	if !strings.Contains(got, "Tester 早上好！") {
+		t.Fatalf("message = %q, want morning greeting", got)
+	}
+	if !strings.Contains(got, "<星期天>") {
+		t.Fatalf("message = %q, want weekday", got)
+	}
+	if !strings.Contains(got, "07:05") {
+		t.Fatalf("message = %q, want zero-padded time", got)
+	}
+}
+
+func TestHandleUserMakeDrugItemConsumesMaterialsAndAddsItem(t *testing.T) {
+	s := newTestServerWithMakeDrugNPC(t)
+	entity := testMakeDrugNPC()
+	mapID, x, y := entity.MapID, entity.X, entity.Y
+	ch, err := s.world.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.Gold = 1000
+	ch.BagItems = []storage.UserItem{
+		{ItemID: "食人树叶", MakeIndex: 1},
+		{ItemID: "食人树叶", MakeIndex: 2},
+		{ItemID: "食人树叶", MakeIndex: 3},
+		{ItemID: "食人树叶", MakeIndex: 4},
+		{ItemID: "毒蜘蛛牙齿", MakeIndex: 5},
+		{ItemID: "毒蜘蛛牙齿", MakeIndex: 6},
+		{ItemID: "食人树果实", MakeIndex: 7},
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	activeClient := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleUserMakeDrugItem(server, &ch, activeClient, mir176.Command{
+			Ident: mir176.CMUserMakeDrugItem,
+			Recog: s.world.NPCActorID("maker"),
+		}, WireString(t, "灰色药粉(少量)"))
+	}()
+
+	delCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() del error = %v", err)
+	}
+	addCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() add error = %v", err)
+	}
+	okCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() ok error = %v", err)
+	}
+	<-done
+	if delCmd.Ident != mir176.SMDelItems {
+		t.Fatalf("del ident = %d, want %d", delCmd.Ident, mir176.SMDelItems)
+	}
+	if addCmd.Ident != mir176.SMAddItem {
+		t.Fatalf("add ident = %d, want SMAddItem (%d)", addCmd.Ident, mir176.SMAddItem)
+	}
+	if okCmd.Ident != mir176.SMMakeDrugSuccess {
+		t.Fatalf("ok ident = %d, want SMMakeDrugSuccess (%d)", okCmd.Ident, mir176.SMMakeDrugSuccess)
+	}
+	if got := len(ch.BagItems); got != 1 {
+		t.Fatalf("bag items = %d, want 1", got)
+	}
+	found := false
+	for _, entry := range ch.BagItems {
+		if entry.ItemID == "灰色药粉(少量)" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected crafted item in bag")
+	}
+}
+
+func TestHandleUserStorageItemReturnsStorageOK(t *testing.T) {
+	s := newTestServer(t)
+	entity := testGuideNPC()
+	mapID, x, y := entity.MapID, entity.X, entity.Y
+	ch, err := s.world.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.BagItems = []storage.UserItem{{ItemID: testHPItemID, MakeIndex: 77}}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	activeClient := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleUserStorageItem(server, &ch, activeClient, mir176.Command{Ident: mir176.CMUserStorageItem, Recog: s.world.NPCActorID("guide"), Param: uint16(77)}, WireString(t, testHPItemID))
+	}()
+	cmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() error = %v", err)
+	}
+	weightCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() weight error = %v", err)
+	}
+	<-done
+	if cmd.Ident != mir176.SMStorageOK {
+		t.Fatalf("ident = %d, want SMStorageOK (%d)", cmd.Ident, mir176.SMStorageOK)
+	}
+	if weightCmd.Ident != mir176.SMWeightChanged {
+		t.Fatalf("weight ident = %d, want SMWeightChanged (%d)", weightCmd.Ident, mir176.SMWeightChanged)
+	}
+	if got := len(ch.StorageItems); got != 1 {
+		t.Fatalf("storage items = %d, want 1", got)
+	}
+}
+
+func TestHandleUserTakeBackStorageItemReturnsTakeBackOK(t *testing.T) {
+	s := newTestServer(t)
+	entity := testGuideNPC()
+	mapID, x, y := entity.MapID, entity.X, entity.Y
+	ch, err := s.world.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.StorageItems = []storage.UserItem{{ItemID: testHPItemID, MakeIndex: 77}}
+	beforeBag := len(ch.BagItems)
+	beforeStorage := len(ch.StorageItems)
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	activeClient := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleUserTakeBackStorageItem(server, &ch, activeClient, mir176.Command{Ident: mir176.CMUserTakeBackStorageItem, Recog: s.world.NPCActorID("guide"), Param: uint16(77)}, WireString(t, testHPItemID))
+	}()
+	cmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() error = %v", err)
+	}
+	addCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() add error = %v", err)
+	}
+	weightCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() weight error = %v", err)
+	}
+	<-done
+	if cmd.Ident != mir176.SMTakeBackStorageItemOK {
+		t.Fatalf("ident = %d, want SMTakeBackStorageItemOK (%d)", cmd.Ident, mir176.SMTakeBackStorageItemOK)
+	}
+	if addCmd.Ident != mir176.SMAddItem {
+		t.Fatalf("add ident = %d, want SMAddItem (%d)", addCmd.Ident, mir176.SMAddItem)
+	}
+	if weightCmd.Ident != mir176.SMWeightChanged {
+		t.Fatalf("weight ident = %d, want SMWeightChanged (%d)", weightCmd.Ident, mir176.SMWeightChanged)
+	}
+	if got := len(ch.BagItems); got != beforeBag+1 {
+		t.Fatalf("bag items = %d, want %d", got, beforeBag+1)
+	}
+	if got := len(ch.StorageItems); got != beforeStorage-1 {
+		t.Fatalf("storage items = %d, want %d", got, beforeStorage-1)
+	}
+}
+
+func TestSendNPCConversationKeepsMultilineTextInOneMessage(t *testing.T) {
+	s := newTestServer(t)
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.sendNPCConversation(server, npc.Conversation{
+			NPC:  npc.Entity{Name: "Guide"},
+			Text: "第一行\\第二行",
+		})
+	}()
+
+	cmd, body, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() error = %v", err)
+	}
+	<-done
+	if cmd.Ident != mir176.SMMerchantSay {
+		t.Fatalf("ident = %d, want SMMerchantSay (%d)", cmd.Ident, mir176.SMMerchantSay)
+	}
+	text, err := mir176.DecodePlain6Payload(body)
+	if err != nil {
+		t.Fatalf("DecodePlain6Payload() error = %v", err)
+	}
+	if got := DecodeString(text); got != "Guide/第一行\\第二行" {
+		t.Fatalf("message = %q, want multiline dialogue", got)
+	}
+}
+
 func TestHandleSayBroadcastsToPlayersOnSameMap(t *testing.T) {
 	s := newTestServer(t)
 	mapID, x, y := s.world.DefaultSpawn()
@@ -906,7 +2078,7 @@ func TestHandleMobCommandDecodesGBKMonsterName(t *testing.T) {
 	if turnCmd.Ident != mir176.SMTurn || int(turnCmd.Param) != x+1 || int(turnCmd.Tag) != y || turnCmd.Series != 4 {
 		t.Fatalf("monster turn = %+v, want SM_TURN at (%d,%d) dir 4", turnCmd, x+1, y)
 	}
-	assertMonsterTurnBody(t, turnBody, "白野猪/0", int32(19|112<<16))
+	assertMonsterTurnBody(t, turnBody, "白野猪/255", int32(19|112<<16))
 
 	featureCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
@@ -1030,7 +2202,7 @@ func TestSendEnterWorldSendsNearbyMonsters(t *testing.T) {
 			if cmd.Series != 4 {
 				t.Fatalf("nearby monster SM_TURN series = %d, want 4", cmd.Series)
 			}
-			assertMonsterTurnBody(t, body, "鹿/0", int32(11|161<<16))
+			assertMonsterTurnBody(t, body, "鹿/255", int32(11|161<<16))
 			found = true
 		}
 	}
@@ -1386,22 +2558,12 @@ func TestSendEnterWorldStateCarriesGoldInAbility(t *testing.T) {
 	if featureCmd.Series != 0 {
 		t.Fatalf("SM_FEATURECHANGED Series = %d, want 0", featureCmd.Series)
 	}
-	attackModeCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
-	if err != nil {
-		t.Fatalf("decode SM_ATTACKMODE frame error = %v", err)
-	}
-	if attackModeCmd.Ident != mir176.SMAttackMode {
-		t.Fatalf("fifth frame ident = %d, want SM_ATTACKMODE (%d)", attackModeCmd.Ident, mir176.SMAttackMode)
-	}
-	if attackModeCmd.Recog != int32(ch.AttackMode) {
-		t.Fatalf("SM_ATTACKMODE Recog = %d, want %d", attackModeCmd.Recog, ch.AttackMode)
-	}
 	serverConfigCmd, serverConfigBody, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
 		t.Fatalf("decode SM_SERVERCONFIG frame error = %v", err)
 	}
 	if serverConfigCmd.Ident != mir176.SMServerConfig {
-		t.Fatalf("sixth frame ident = %d, want SM_SERVERCONFIG (%d)", serverConfigCmd.Ident, mir176.SMServerConfig)
+		t.Fatalf("fifth frame ident = %d, want SM_SERVERCONFIG (%d)", serverConfigCmd.Ident, mir176.SMServerConfig)
 	}
 	if serverConfigCmd.Param != 0 {
 		t.Fatalf("SM_SERVERCONFIG Param = %d, want 0", serverConfigCmd.Param)
@@ -1433,8 +2595,8 @@ func TestSendEnterWorldStateCarriesGoldInAbility(t *testing.T) {
 	if got := DecodeString(userNameDecoded); got != ch.Name {
 		t.Fatalf("SM_USERNAME body = %q, want %q", got, ch.Name)
 	}
-	if userNameCmd.Param != 0 {
-		t.Fatalf("SM_USERNAME Param = %d, want name color 0", userNameCmd.Param)
+	if userNameCmd.Param != 255 {
+		t.Fatalf("SM_USERNAME Param = %d, want name color 255", userNameCmd.Param)
 	}
 	areaStateCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
@@ -1887,8 +3049,8 @@ func TestHandleQueryUserNameRepliesWithNameOrGhost(t *testing.T) {
 		if cmd.Ident != mir176.SMUserName {
 			t.Fatalf("reply ident = %d, want SM_USERNAME (%d)", cmd.Ident, mir176.SMUserName)
 		}
-		if cmd.Recog != world.CharacterActorID(ch) || cmd.Param != 0 {
-			t.Fatalf("reply header = %+v, want recog=%d param=0", cmd, world.CharacterActorID(ch))
+		if cmd.Recog != world.CharacterActorID(ch) || cmd.Param != 255 {
+			t.Fatalf("reply header = %+v, want recog=%d param=255", cmd, world.CharacterActorID(ch))
 		}
 		decoded, err := mir176.DecodePlain6Payload(body)
 		if err != nil {
@@ -1962,8 +3124,8 @@ func TestHandleQueryUserStateRepliesWithState(t *testing.T) {
 	if got := DecodeString(decoded[5 : 5+nameLen]); got != ch.Name {
 		t.Fatalf("user name = %q, want %q", got, ch.Name)
 	}
-	if got := binary.LittleEndian.Uint32(decoded[20:24]); got != 0 {
-		t.Fatalf("name color = %d, want 0", got)
+	if got := binary.LittleEndian.Uint32(decoded[20:24]); got != 255 {
+		t.Fatalf("name color = %d, want 255", got)
 	}
 	itemBodyLen := len(ClientItemBody(data.StdItem{}, [14]byte{}, 0, 0, 0))
 	weaponSlotOffset := 60 + itemBodyLen*world.SlotWeapon
@@ -2348,8 +3510,7 @@ func TestHandleEatItemConsumesPotionAndRefreshesHealth(t *testing.T) {
 
 func TestApplyWorldTickSendsHealthRefreshForQueuedRecovery(t *testing.T) {
 	s := newTestServer(t)
-	mapID, x, y := s.world.DefaultSpawn()
-	ch, err := s.world.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	ch, err := s.world.CreateCharacter("test", "tester", "warrior", "D12", 0, 0)
 	if err != nil {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}

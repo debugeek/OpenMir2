@@ -1,0 +1,73 @@
+{
+  "id": "铁匠-2",
+  "name": "铁匠",
+  "kind": "merchant",
+  "map_id": "2",
+  "x": 518,
+  "y": 492,
+  "dir": 0,
+  "appr": 0,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true,
+      "repair": true
+    },
+    "stock": [
+      { "item_id": "鹤嘴锄", "count": 3, "refill_minutes": 10 },
+      { "item_id": "凌风", "count": 3, "refill_minutes": 10 },
+      { "item_id": "破魂", "count": 3, "refill_minutes": 10 },
+      { "item_id": "斩马刀", "count": 3, "refill_minutes": 10 },
+      { "item_id": "八荒", "count": 3, "refill_minutes": 10 },
+      { "item_id": "半月", "count": 3, "refill_minutes": 10 },
+      { "item_id": "偃月", "count": 3, "refill_minutes": 10 },
+      { "item_id": "降魔", "count": 3, "refill_minutes": 10 },
+      { "item_id": "海魂", "count": 3, "refill_minutes": 10 },
+      { "item_id": "凝霜", "count": 3, "refill_minutes": 10 },
+      { "item_id": "修罗", "count": 3, "refill_minutes": 10 }
+    ]
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "欢迎. 谢谢光临.\\n<买/@buy>  武器\\n<卖/@sell>  武器\\n<修理/@repair> 武器\\n<特殊修理/@s_repair>\\n<离 开/@exit>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "挑选你想买的武器.\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "放下你要卖的武器.\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@repair": {
+      "name": "@repair",
+      "procedures": [
+        {
+          "say": "你想修理武器吗?\\n放下你需要修理的武器.\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "~@repair": {
+      "name": "~@repair",
+      "procedures": [
+        {
+          "say": "它修理好了, 再见.\\n<返 回/@Main>"
+        }
+      ]
+    }
+  }
+}

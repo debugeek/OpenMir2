@@ -3,8 +3,6 @@
   "name": "抉择之地",
   "width": 237,
   "height": 170,
-  "spawn_x": 150,
-  "spawn_y": 150,
   "blocked": [],
   "connections": [
     {

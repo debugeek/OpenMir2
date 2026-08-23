@@ -3,8 +3,6 @@
   "name": "沃玛寺庙一层",
   "width": 359,
   "height": 376,
-  "spawn_x": 250,
-  "spawn_y": 250,
   "blocked": [],
   "connections": [
     {

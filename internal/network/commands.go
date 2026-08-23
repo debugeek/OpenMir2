@@ -19,7 +19,9 @@ func (s *Server) handleUserCommandResult(conn net.Conn, activeChar *storage.Char
 	if result.Message != "" {
 		s.sendHear(conn, result.Message, 0x00, 0xFF)
 	}
-	*activeChar = result.Character
+	if result.Character.ID != "" {
+		*activeChar = result.Character
+	}
 	world.ApplyUserCommandSync(itemUseSyncAdapter{s: s, conn: conn}, result)
 	if len(result.Monsters) == 0 {
 		return

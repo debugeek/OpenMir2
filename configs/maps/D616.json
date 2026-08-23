@@ -3,8 +3,6 @@
   "name": "幽名圣域",
   "width": 106,
   "height": 105,
-  "spawn_x": 20,
-  "spawn_y": 21,
   "blocked": [],
   "connections": [
     {

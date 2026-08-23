@@ -3,8 +3,6 @@
   "name": "沃玛森林",
   "width": 588,
   "height": 579,
-  "spawn_x": 51,
-  "spawn_y": 165,
   "blocked": [],
   "connections": [
     {

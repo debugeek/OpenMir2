@@ -1,0 +1,42 @@
+{
+  "id": "屠夫-0",
+  "name": "屠夫",
+  "kind": "merchant",
+  "map_id": "0",
+  "x": 313,
+  "y": 271,
+  "dir": 0,
+  "appr": 4,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "sell": true
+    }
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "最近我这里可以卖肉。\\n我会出高价钱购买!\\n<卖/@sell>\\n<询问/@meathelp>\\n<离开/@exit>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "<肉>在鸡，鹿身上暴!\\n其他的就是相关怪物身上暴!\\n<继续/@main>"
+        }
+      ]
+    },
+    "@meathelp": {
+      "name": "@meathelp",
+      "procedures": [
+        {
+          "say": "肉可以从鸡、鹿、羊身上割的，先打这些怪物，小心碰到\\n被比自己厉害的怪物打死，打死怪物之后，按alt键，把鼠标\\n放在怪物尸体上，您就会看到自己割肉的样子。过一会儿，\\n您的包里就会放着一个大肉块。对了，差一点忘了告诉你，\\n企图逃跑的怪物品质更好。用魔法打的怪物，其品质会变成0，\\n这一点千万记住。\\n<继续/@main>"
+        }
+      ]
+    }
+  }
+}

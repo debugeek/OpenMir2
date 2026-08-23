@@ -3,8 +3,6 @@
   "name": "牛魔寺庙三层",
   "width": 391,
   "height": 397,
-  "spawn_x": 205,
-  "spawn_y": 210,
   "blocked": [],
   "connections": [
     {

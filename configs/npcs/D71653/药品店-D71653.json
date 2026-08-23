@@ -1,0 +1,39 @@
+{
+  "id": "药品店-D71653",
+  "name": "药品店老板",
+  "kind": "merchant",
+  "map_id": "D71653",
+  "x": 23,
+  "y": 27,
+  "dir": 0,
+  "appr": 3,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true
+    },
+    "stock": [
+      { "item_id": "超级金创药", "count": 200, "refill_minutes": 10 },
+      { "item_id": "超级魔法药", "count": 200, "refill_minutes": 10 },
+      { "item_id": "强效太阳水", "count": 200, "refill_minutes": 10 }
+    ]
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "你也和来这里的其他人一样追寻海市蜃楼。\\n嗞嗞.. 向目标前进也是件好事，\\n但是记住，命只有一条。\\n来，我延长你一点生命，需要什么吗？\\n<买/@buy>药\\n<关 闭/@exit>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "挑好了你所需要的东西吗？\\n<返 回/@Main>"
+        }
+      ]
+    }
+  }
+}

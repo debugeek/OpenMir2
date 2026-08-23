@@ -110,8 +110,7 @@ func (s *Server) handlePlain6SelectCommand(conn net.Conn, cmd mir176.Command, te
 		hair, _ := strconv.Atoi(parts[2])
 		class := world.Plain6ClassName(parts[3])
 		sex, _ := strconv.Atoi(parts[4])
-		mapID, x, y := s.world.DefaultSpawn()
-		if _, err := s.world.CreateCharacterWithAppearance(account, name, class, hair, sex, mapID, x, y); err != nil {
+		if _, err := s.world.CreateCharacterWithAppearanceAtRandomStartPoint(account, name, class, hair, sex); err != nil {
 			s.log.Info("plain6 create character failed", "error", err)
 			s.sendPlain6Command(conn, mir176.Command{Ident: mir176.SMNewCharacterFail}, nil)
 			return true
@@ -196,6 +195,13 @@ func splitPlainText(text []byte, sep string) (string, string) {
 		return string(text), ""
 	}
 	return left, right
+}
+
+func absInt(v int) int {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 func loginCredentials(text []byte) (string, string) {

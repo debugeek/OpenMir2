@@ -3,8 +3,6 @@
   "name": "同心小径",
   "width": 308,
   "height": 304,
-  "spawn_x": 30,
-  "spawn_y": 40,
   "blocked": [],
   "connections": [
     {

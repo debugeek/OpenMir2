@@ -3,8 +3,6 @@
   "name": "幻境七层",
   "width": 181,
   "height": 192,
-  "spawn_x": 100,
-  "spawn_y": 100,
   "blocked": [],
   "connections": [
     {

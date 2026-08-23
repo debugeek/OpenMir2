@@ -3,8 +3,12 @@
   "name": "毒蛇山谷",
   "width": 584,
   "height": 589,
-  "spawn_x": 417,
-  "spawn_y": 558,
+  "start_points": [
+    {
+      "x": 503,
+      "y": 483
+    }
+  ],
   "blocked": [],
   "connections": [
     {

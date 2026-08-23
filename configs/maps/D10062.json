@@ -3,8 +3,6 @@
   "name": "赤月魔穴",
   "width": 50,
   "height": 50,
-  "spawn_x": 30,
-  "spawn_y": 30,
   "blocked": [],
   "connections": [
     {

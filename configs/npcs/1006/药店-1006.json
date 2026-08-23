@@ -1,0 +1,58 @@
+{
+  "id": "药店-1006",
+  "name": "药店老板",
+  "kind": "merchant",
+  "map_id": "1006",
+  "x": 9,
+  "y": 10,
+  "dir": 0,
+  "appr": 22,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true
+    },
+    "stock": [
+      { "item_id": "金创药(小量)", "count": 100, "refill_minutes": 3 },
+      { "item_id": "魔法药(小量)", "count": 100, "refill_minutes": 3 },
+      { "item_id": "金创药(中量)", "count": 100, "refill_minutes": 3 },
+      { "item_id": "魔法药(中量)", "count": 100, "refill_minutes": 3 },
+      { "item_id": "强效金创药", "count": 500, "refill_minutes": 3 },
+      { "item_id": "强效魔法药", "count": 500, "refill_minutes": 3 },
+      { "item_id": "金创药(小)包", "count": 100, "refill_minutes": 3 },
+      { "item_id": "魔法药(小)包", "count": 100, "refill_minutes": 3 },
+      { "item_id": "金创药(中)包", "count": 300, "refill_minutes": 3 },
+      { "item_id": "魔法药(中)包", "count": 300, "refill_minutes": 3 },
+      { "item_id": "超级金创药", "count": 600, "refill_minutes": 3 },
+      { "item_id": "超级魔法药", "count": 600, "refill_minutes": 3 },
+      { "item_id": "太阳水", "count": 500, "refill_minutes": 3 }
+    ]
+  },
+  "labels": {
+    "@药店": {
+      "name": "@药店",
+      "procedures": [
+        {
+          "say": "请问你需要点什么吗？\\n<买/@buy> 药品\\n<卖/@sell> 药品\\n<离 开/@exit>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "需要什么物品呢？\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "让我看看你要卖什么东西.\\n<返 回/@Main>"
+        }
+      ]
+    }
+  }
+}

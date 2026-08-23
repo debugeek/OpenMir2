@@ -3,8 +3,6 @@
   "name": "紫水晶屋",
   "width": 52,
   "height": 53,
-  "spawn_x": 0,
-  "spawn_y": 0,
   "blocked": [],
   "connections": [
     {

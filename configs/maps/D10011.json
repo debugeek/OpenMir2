@@ -3,8 +3,6 @@
   "name": "赤月峡谷北入口",
   "width": 290,
   "height": 405,
-  "spawn_x": 200,
-  "spawn_y": 200,
   "blocked": [],
   "connections": [
     {

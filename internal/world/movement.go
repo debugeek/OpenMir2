@@ -103,6 +103,7 @@ func (w *World) stepLocked(ch storage.Character, x, y, maxDist int) (storage.Cha
 	}
 	ch.X = x
 	ch.Y = y
+	w.syncCharacterHomeFromStartPointLocked(&ch)
 	return ch, w.store.SaveCharacter(ch)
 }
 
@@ -134,6 +135,7 @@ func (w *World) directionalStepLocked(ch storage.Character, x, y, dir, steps int
 	}
 	ch.X = destX
 	ch.Y = destY
+	w.syncCharacterHomeFromStartPointLocked(&ch)
 	return ch, w.store.SaveCharacter(ch)
 }
 

@@ -3,8 +3,6 @@
   "name": "黑暗地带",
   "width": 304,
   "height": 253,
-  "spawn_x": 70,
-  "spawn_y": 76,
   "blocked": [],
   "connections": [
     {

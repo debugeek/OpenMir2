@@ -3,8 +3,6 @@
   "name": "兽人古墓三层",
   "width": 311,
   "height": 314,
-  "spawn_x": 200,
-  "spawn_y": 200,
   "blocked": [],
   "connections": [
     {

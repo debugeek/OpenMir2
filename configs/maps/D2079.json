@@ -3,8 +3,6 @@
   "name": "牛魔寺庙大厅",
   "width": 70,
   "height": 70,
-  "spawn_x": 50,
-  "spawn_y": 50,
   "blocked": [],
   "connections": [
     {

@@ -1,0 +1,70 @@
+{
+  "id": "布衣店-0155",
+  "name": "布衣店老板",
+  "kind": "merchant",
+  "map_id": "0155",
+  "x": 13,
+  "y": 7,
+  "dir": 0,
+  "appr": 10,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true,
+      "repair": true
+    },
+    "stock": [
+      { "item_id": "轻型盔甲(男)", "count": 10, "refill_minutes": 10 },
+      { "item_id": "轻型盔甲(女)", "count": 10, "refill_minutes": 10 },
+      { "item_id": "重盔甲(男)", "count": 10, "refill_minutes": 10 },
+      { "item_id": "重盔甲(女)", "count": 10, "refill_minutes": 10 },
+      { "item_id": "魔法长袍(男)", "count": 10, "refill_minutes": 10 },
+      { "item_id": "魔法长袍(女)", "count": 10, "refill_minutes": 10 },
+      { "item_id": "灵魂战衣(男)", "count": 10, "refill_minutes": 10 },
+      { "item_id": "灵魂战衣(女)", "count": 10, "refill_minutes": 10 }
+    ]
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "欢迎，我们有各种各样的衣服。\\n请告诉我你想买哪一种。顺便说一下,\\n对于<$OWNERGUILD>的成员是要打20%的折扣的。\\n因为这个城堡属于 <$OWNERGUILD>。\\n<买/@buy> 衣服\\n<卖/@sell> 衣服\\n<修补/@repair> 衣服\\n<特殊修理/@s_repair>\\n<离 开/@exit>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "你想要什么？这件衣服怎么样？\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "把你要卖的给我看看，我会给你一个估价.\\n头盔或帽子在旁边商店，\\n您可以到那里去看看.\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@repair": {
+      "name": "@repair",
+      "procedures": [
+        {
+          "say": "你的衣服看上去很旧了，在这里修补一下？\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "~@repair": {
+      "name": "~@repair",
+      "procedures": [
+        {
+          "say": "好了，这个看上去已经补好了。\\n<返 回/@Main>"
+        }
+      ]
+    }
+  }
+}

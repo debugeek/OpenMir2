@@ -1,0 +1,34 @@
+{
+  "id": "铁匠铺-0151",
+  "name": "铁匠铺老板",
+  "kind": "merchant",
+  "map_id": "0151",
+  "x": 3,
+  "y": 19,
+  "dir": 0,
+  "appr": 5,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "repair": true
+    }
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "欢迎.. 您想要修理那种武器?...\\n根据这个城堡的主人<$LORD>的命令, \\n我们特别对<$OWNERGUILD>的成员提供20%的折扣\\n<特殊修理/@s_repair>\\n<离 开/@exit>"
+        }
+      ]
+    },
+    "~@repair": {
+      "name": "~@repair",
+      "procedures": [
+        {
+          "say": "看起来完全修好了?  还有要修理的吗?\\n<返 回/@main>"
+        }
+      ]
+    }
+  }
+}

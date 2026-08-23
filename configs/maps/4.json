@@ -3,8 +3,12 @@
   "name": "封魔谷",
   "width": 470,
   "height": 424,
-  "spawn_x": 255,
-  "spawn_y": 230,
+  "start_points": [
+    {
+      "x": 240,
+      "y": 200
+    }
+  ],
   "blocked": [],
   "connections": [
     {

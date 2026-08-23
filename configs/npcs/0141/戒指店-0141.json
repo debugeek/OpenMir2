@@ -1,0 +1,68 @@
+{
+  "id": "戒指店-0141",
+  "name": "戒指店老板",
+  "kind": "merchant",
+  "map_id": "0141",
+  "x": 23,
+  "y": 23,
+  "dir": 0,
+  "appr": 4,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true,
+      "repair": true
+    },
+    "stock": [
+      { "item_id": "古铜戒指", "count": 10, "refill_minutes": 10 },
+      { "item_id": "六角戒指", "count": 10, "refill_minutes": 10 },
+      { "item_id": "玻璃戒指", "count": 10, "refill_minutes": 10 },
+      { "item_id": "牛角戒指", "count": 10, "refill_minutes": 10 },
+      { "item_id": "蓝色水晶戒指", "count": 5, "refill_minutes": 10 },
+      { "item_id": "黑色水晶戒指", "count": 5, "refill_minutes": 10 }
+    ]
+  },
+  "labels": {
+    "@戒指店": {
+      "name": "@戒指店",
+      "procedures": [
+        {
+          "say": "请问我可以帮你什么吗?\\n<购买/@buy> 戒指\\n<出售/@sell> 戒指\\n<修理/@repair> 戒指\\n<离 开/@exit>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "您购买哪种戒指?\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "您出售哪种戒指?\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@repair": {
+      "name": "@repair",
+      "procedures": [
+        {
+          "say": "您要修理戒指?\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "~@repair": {
+      "name": "~@repair",
+      "procedures": [
+        {
+          "say": "看上去它是好的.\\n<返 回/@Main>"
+        }
+      ]
+    }
+  }
+}

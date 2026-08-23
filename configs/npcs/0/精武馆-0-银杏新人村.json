@@ -1,0 +1,88 @@
+{
+  "id": "精武馆-0-银杏新人村",
+  "name": "精武馆老板",
+  "kind": "merchant",
+  "map_id": "0",
+  "x": 649,
+  "y": 602,
+  "dir": 0,
+  "appr": 0,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true,
+      "repair": true
+    },
+    "stock": [
+      { "item_id": "鹤嘴锄", "count": 3, "refill_minutes": 10 },
+      { "item_id": "木剑", "count": 3, "refill_minutes": 10 },
+      { "item_id": "青铜剑", "count": 3, "refill_minutes": 10 },
+      { "item_id": "铁剑", "count": 3, "refill_minutes": 10 },
+      { "item_id": "短剑", "count": 3, "refill_minutes": 10 },
+      { "item_id": "匕首", "count": 3, "refill_minutes": 10 },
+      { "item_id": "乌木剑", "count": 3, "refill_minutes": 10 },
+      { "item_id": "青铜斧", "count": 3, "refill_minutes": 10 },
+      { "item_id": "海魂", "count": 3, "refill_minutes": 10 },
+      { "item_id": "凌风", "count": 3, "refill_minutes": 10 },
+      { "item_id": "破魂", "count": 3, "refill_minutes": 10 },
+      { "item_id": "斩马刀", "count": 3, "refill_minutes": 10 },
+      { "item_id": "八荒", "count": 3, "refill_minutes": 10 },
+      { "item_id": "半月", "count": 3, "refill_minutes": 10 },
+      { "item_id": "偃月", "count": 3, "refill_minutes": 10 },
+      { "item_id": "降魔", "count": 3, "refill_minutes": 10 },
+      { "item_id": "凝霜", "count": 3, "refill_minutes": 10 },
+      { "item_id": "修罗", "count": 3, "refill_minutes": 10 }
+    ]
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "欢迎,感谢你的光临.\\n<买/@buy>  武器\\n<卖/@sell>  武器\\n<修理/@repair> 武器\\n<特殊修理/@s_repair>\\n<询问/@qweapon>武器\\n<离 开/@exit>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "您想买些什么武器?\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "给我您要卖的武器.\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@repair": {
+      "name": "@repair",
+      "procedures": [
+        {
+          "say": "您要修理武器吗?\\n给我您要修理的武器.\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "~@repair": {
+      "name": "~@repair",
+      "procedures": [
+        {
+          "say": "看起来修好了,欢迎下次再来.\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@qweapon": {
+      "name": "@qweapon",
+      "procedures": [
+        {
+          "say": "店里卖的武器其能力值是定值。\\n但是妖魔身上的武器，有时根据不同情况，\\n具有特殊功能。\\n这种武器拿到店里来，会卖好价钱。\\n对了，武器的价格按种类不同，其价格也不同，\\n但是大体上，耐力越高越昂贵\\n<返 回/@Main>"
+        }
+      ]
+    }
+  }
+}

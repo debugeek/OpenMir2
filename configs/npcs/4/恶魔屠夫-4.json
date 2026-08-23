@@ -1,0 +1,34 @@
+{
+  "id": "恶魔屠夫-4",
+  "name": "恶魔屠夫",
+  "kind": "merchant",
+  "map_id": "4",
+  "x": 243,
+  "y": 187,
+  "dir": 0,
+  "appr": 4,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "sell": true
+    }
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "客官,您打猎回来要卖肉吗？\\n快放下吧.哎呀,真是罪过,我最见不得杀生了.\\n<卖/@sell>肉\\n<取消/@exit>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "让我看看你出售的肉的品质吧....\\n<返 回/@Main>"
+        }
+      ]
+    }
+  }
+}

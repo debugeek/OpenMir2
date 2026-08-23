@@ -3,8 +3,6 @@
   "name": "幻境三层",
   "width": 107,
   "height": 101,
-  "spawn_x": 40,
-  "spawn_y": 40,
   "blocked": [],
   "connections": [
     {

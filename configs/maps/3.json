@@ -3,8 +3,12 @@
   "name": "盟重省",
   "width": 900,
   "height": 800,
-  "spawn_x": 325,
-  "spawn_y": 311,
+  "start_points": [
+    {
+      "x": 330,
+      "y": 330
+    }
+  ],
   "blocked": [],
   "connections": [
     {

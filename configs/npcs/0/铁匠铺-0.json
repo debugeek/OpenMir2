@@ -1,0 +1,50 @@
+{
+  "id": "铁匠铺-0",
+  "name": "铁匠铺老板",
+  "kind": "merchant",
+  "map_id": "0",
+  "x": 302,
+  "y": 219,
+  "dir": 0,
+  "appr": 0,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "repair": true
+    }
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "欢迎.. 有什么事情找我?\\n<特殊修理/@s_repair>\\n与卫家店 <说话/@talk>\\n<关 闭/@exit>"
+        }
+      ]
+    },
+    "@repair": {
+      "name": "@repair",
+      "procedures": [
+        {
+          "say": "别看我像喝醉了酒，我会好好给你磨的。\\n全包在我身上。\\n<返 回/@main-1>"
+        }
+      ]
+    },
+    "~@repair": {
+      "name": "~@repair",
+      "procedures": [
+        {
+          "say": "你这个家伙太幸运了，刚好我有材料可以做特种修理。\\n保证让你的东东完好如初，\\n至于价钱嘛，当然是普通的三倍啦！\\n<返 回/@main-1>"
+        }
+      ]
+    },
+    "@talk": {
+      "name": "@talk",
+      "procedures": [
+        {
+          "say": "我负责修理武器！其他的不归我管！\\n<关 闭/@exit>"
+        }
+      ]
+    }
+  }
+}

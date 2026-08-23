@@ -1,0 +1,83 @@
+{
+  "id": "药房-0119",
+  "name": "药房小老板",
+  "kind": "merchant",
+  "map_id": "0119",
+  "x": 14,
+  "y": 14,
+  "dir": 0,
+  "appr": 9,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true
+    },
+    "stock": [
+      { "item_id": "灰色药粉(少量)", "count": 10, "refill_minutes": 5 },
+      { "item_id": "黄色药粉(少量)", "count": 10, "refill_minutes": 5 },
+      { "item_id": "灰色药粉(中量)", "count": 10, "refill_minutes": 5 },
+      { "item_id": "黄色药粉(中量)", "count": 10, "refill_minutes": 5 },
+      { "item_id": "灰色药粉(大量)", "count": 10, "refill_minutes": 5 },
+      { "item_id": "黄色药粉(大量)", "count": 10, "refill_minutes": 5 }
+    ]
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "你是来炼什么药？\\n<炼/@makedrug>药\\n有关毒药<听说明./@helpmakedrug>\\n<关 闭/@exit>"
+        }
+      ]
+    },
+    "@makedrug": {
+      "name": "@makedrug",
+      "procedures": [
+        {
+          "say": "请选择想炼什么药。\\n所需材料应该带来了吧？\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@helpmakedrug": {
+      "name": "@helpmakedrug",
+      "procedures": [
+        {
+          "say": "这里可以炼的药只有两种。\\n<灰色毒粉/@helpdrug1>的功能\\n<黄色毒粉/@helpdrug2>的功能\\n<灰色毒粉/@helpmakedrug1>的原料\\n<黄色毒粉/@helpmakedrug2>的原料\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@helpdrug1": {
+      "name": "@helpdrug1",
+      "procedures": [
+        {
+          "say": "道士可以在使施毒术时，用灰色毒粉，\\n中毒会减掉体力。\\n<返 回/@helpmakedrug>"
+        }
+      ]
+    },
+    "@helpdrug2": {
+      "name": "@helpdrug2",
+      "procedures": [
+        {
+          "say": "道士可以在使施毒术时，用黄色毒粉，\\n中毒会减掉防御能力。\\n<返 回/@helpmakedrug>"
+        }
+      ]
+    },
+    "@helpmakedrug1": {
+      "name": "@helpmakedrug1",
+      "procedures": [
+        {
+          "say": "灰色毒粉的原料有 <食人树的果子/@helpitem_1> 1个， 毒蜘蛛牙齿 2个,\\n食人树叶 4个。\\n<返 回/@helpmakedrug>"
+        }
+      ]
+    },
+    "@helpmakedrug2": {
+      "name": "@helpmakedrug2",
+      "procedures": [
+        {
+          "say": "黄色毒粉的原料有 <蛆卵/@helpitem_2> 1个, 蝎子尾\\n1个, 食人树叶 4个。\\n<返 回/@helpmakedrug>"
+        }
+      ]
+    }
+  }
+}

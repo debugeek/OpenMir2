@@ -3,8 +3,6 @@
   "name": "祖玛寺庙五层",
   "width": 174,
   "height": 192,
-  "spawn_x": 100,
-  "spawn_y": 100,
   "blocked": [],
   "connections": [
     {

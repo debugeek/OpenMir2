@@ -1,0 +1,67 @@
+{
+  "id": "许家店-0119",
+  "name": "许家店",
+  "kind": "merchant",
+  "map_id": "0119",
+  "x": 10,
+  "y": 11,
+  "dir": 0,
+  "appr": 1,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true
+    },
+    "stock": [
+      { "item_id": "金创药(小量)", "count": 50, "refill_minutes": 10 },
+      { "item_id": "魔法药(小量)", "count": 50, "refill_minutes": 10 },
+      { "item_id": "金创药(中量)", "count": 50, "refill_minutes": 10 },
+      { "item_id": "魔法药(中量)", "count": 50, "refill_minutes": 10 },
+      { "item_id": "强效金创药", "count": 50, "refill_minutes": 10 },
+      { "item_id": "强效魔法药", "count": 50, "refill_minutes": 10 },
+      { "item_id": "金创药(小)包", "count": 50, "refill_minutes": 10 },
+      { "item_id": "魔法药(小)包", "count": 50, "refill_minutes": 10 },
+      { "item_id": "金创药(中)包", "count": 50, "refill_minutes": 10 },
+      { "item_id": "魔法药(中)包", "count": 50, "refill_minutes": 10 },
+      { "item_id": "超级金创药", "count": 50, "refill_minutes": 10 },
+      { "item_id": "超级魔法药", "count": 50, "refill_minutes": 10 },
+      { "item_id": "太阳水", "count": 50, "refill_minutes": 10 },
+      { "item_id": "强效太阳水", "count": 50, "refill_minutes": 10 }
+    ]
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "欢迎，你需要买我们为你提供的药品吗?\\n<买/@buy> 药品\\n<卖/@sell> 药品\\n<进行对话/@talkwith>\\n<离 开/@exit>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "你想买点什么药品？\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "给我看看你要卖的东西。\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@talkwith": {
+      "name": "@talkwith",
+      "procedures": [
+        {
+          "say": "对不起，我现在忙，以后再来找我吧。\\n<返 回/@Main>"
+        }
+      ]
+    }
+  }
+}

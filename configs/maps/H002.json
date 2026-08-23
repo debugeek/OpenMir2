@@ -3,8 +3,6 @@
   "name": "幻境二层",
   "width": 384,
   "height": 360,
-  "spawn_x": 251,
-  "spawn_y": 41,
   "blocked": [],
   "connections": [
     {

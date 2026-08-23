@@ -291,21 +291,26 @@ func (w *World) AbilityStats(ch storage.Character) AbilityStats {
 
 func (w *World) combatStatsLocked(ch storage.Character) CombatStats {
 	var stats CombatStats
-	for _, itemID := range w.equippedItemIDsLocked(ch) {
-		item, ok := w.data.Items[itemID]
+	for slot := 0; slot < useSlotCount; slot++ {
+		itemEntry, ok := w.equippedItemLocked(ch, slot)
 		if !ok {
 			continue
 		}
-		stats.AC += item.Stats.AcMin
-		stats.ACMax += item.Stats.AcMax
-		stats.MAC += item.Stats.MacMin
-		stats.MACMax += item.Stats.MacMax
-		stats.DC += item.Stats.DcMin
-		stats.DCMax += item.Stats.DcMax
-		stats.MC += item.Stats.McMin
-		stats.MCMax += item.Stats.McMax
-		stats.SC += item.Stats.ScMin
-		stats.SCMax += item.Stats.ScMax
+		item, ok := w.data.Items[itemEntry.ItemID]
+		if !ok {
+			continue
+		}
+		item = UpgradeClientItemForDisplay(item, itemEntry, false)
+		stats.AC += int(byte(item.Stats.AcMin))
+		stats.ACMax += int(byte(item.Stats.AcMin >> 8))
+		stats.MAC += int(byte(item.Stats.MacMin))
+		stats.MACMax += int(byte(item.Stats.MacMin >> 8))
+		stats.DC += int(byte(item.Stats.DcMin))
+		stats.DCMax += int(byte(item.Stats.DcMin >> 8))
+		stats.MC += int(byte(item.Stats.McMin))
+		stats.MCMax += int(byte(item.Stats.McMin >> 8))
+		stats.SC += int(byte(item.Stats.ScMin))
+		stats.SCMax += int(byte(item.Stats.ScMin >> 8))
 	}
 	return stats
 }

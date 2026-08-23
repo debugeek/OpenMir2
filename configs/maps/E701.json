@@ -3,8 +3,6 @@
   "name": "香石墓穴",
   "width": 109,
   "height": 104,
-  "spawn_x": 50,
-  "spawn_y": 50,
   "blocked": [],
   "connections": [
     {

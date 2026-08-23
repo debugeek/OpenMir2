@@ -3,8 +3,6 @@
   "name": "骨魔洞五层",
   "width": 215,
   "height": 260,
-  "spawn_x": 195,
-  "spawn_y": 240,
   "blocked": [],
   "connections": [
     {

@@ -3,8 +3,20 @@
   "name": "比奇省",
   "width": 696,
   "height": 681,
-  "spawn_x": 665,
-  "spawn_y": 87,
+  "start_points": [
+    {
+      "x": 289,
+      "y": 618
+    },
+    {
+      "x": 650,
+      "y": 631
+    },
+    {
+      "x": 334,
+      "y": 266
+    }
+  ],
   "blocked": [],
   "connections": [
     {

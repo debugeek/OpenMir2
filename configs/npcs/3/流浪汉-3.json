@@ -1,0 +1,61 @@
+{
+  "id": "流浪汉-3",
+  "name": "流浪汉",
+  "kind": "merchant",
+  "map_id": "3",
+  "x": 346,
+  "y": 334,
+  "dir": 0,
+  "appr": 3,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true,
+      "repair": true
+    },
+    "stock": [
+      { "item_id": "随机传送卷", "count": 110, "refill_minutes": 10 },
+      { "item_id": "地牢逃脱卷", "count": 110, "refill_minutes": 10 },
+      { "item_id": "随机传送卷包", "count": 110, "refill_minutes": 10 },
+      { "item_id": "地牢逃脱卷包", "count": 110, "refill_minutes": 10 },
+      { "item_id": "护身符", "count": 110, "refill_minutes": 10 },
+      { "item_id": "护身符(大)", "count": 110, "refill_minutes": 10 },
+      { "item_id": "修复油", "count": 110, "refill_minutes": 10 },
+      { "item_id": "行会回城卷", "count": 110, "refill_minutes": 10 },
+      { "item_id": "回城卷", "count": 30, "refill_minutes": 10 },
+      { "item_id": "心心相印包", "count": 10, "refill_minutes": 10 },
+      { "item_id": "一心一意包", "count": 10, "refill_minutes": 10 },
+      { "item_id": "飞火流星包", "count": 10, "refill_minutes": 10 },
+      { "item_id": "浪漫星雨包", "count": 10, "refill_minutes": 10 },
+      { "item_id": "绮梦幻想包", "count": 10, "refill_minutes": 10 },
+      { "item_id": "如雾似梦包", "count": 10, "refill_minutes": 10 }
+    ]
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "欢迎. 我可以为你做什么吗?\\n<购买/@buy> 物品\\n<出售/@sell> 物品\\n<特殊修理/@s_repair>\\n<离 开/@exit>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "你需要哪种物品呢?\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "我们出售蜡烛，护身符，卷轴，修理液等.\\n<返 回/@Main>"
+        }
+      ]
+    }
+  }
+}

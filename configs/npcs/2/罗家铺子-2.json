@@ -1,0 +1,20 @@
+{
+  "id": "罗家铺子-2",
+  "name": "罗家铺子老板",
+  "kind": "merchant",
+  "map_id": "2",
+  "x": 505,
+  "y": 479,
+  "dir": 0,
+  "appr": 3,
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "欢迎来到罗家铺子。"
+        }
+      ]
+    }
+  }
+}

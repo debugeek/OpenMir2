@@ -1,0 +1,78 @@
+{
+  "id": "首饰店-1005",
+  "name": "首饰店老板",
+  "kind": "merchant",
+  "map_id": "1005",
+  "x": 9,
+  "y": 11,
+  "dir": 0,
+  "appr": 20,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true,
+      "repair": true
+    },
+    "stock": [
+      { "item_id": "金项链", "count": 10, "refill_minutes": 10 },
+      { "item_id": "传统项链", "count": 10, "refill_minutes": 10 },
+      { "item_id": "黑檀项链", "count": 10, "refill_minutes": 10 },
+      { "item_id": "黄色水晶项链", "count": 10, "refill_minutes": 10 },
+      { "item_id": "黑色水晶项链", "count": 10, "refill_minutes": 10 },
+      { "item_id": "灯笼项链", "count": 10, "refill_minutes": 10 },
+      { "item_id": "小手镯", "count": 10, "refill_minutes": 10 },
+      { "item_id": "银手镯", "count": 10, "refill_minutes": 10 },
+      { "item_id": "铁手镯", "count": 10, "refill_minutes": 10 },
+      { "item_id": "钢手镯", "count": 10, "refill_minutes": 10 },
+      { "item_id": "皮制手套", "count": 10, "refill_minutes": 10 },
+      { "item_id": "大手镯", "count": 10, "refill_minutes": 10 },
+      { "item_id": "古铜戒指", "count": 10, "refill_minutes": 10 },
+      { "item_id": "六角戒指", "count": 10, "refill_minutes": 10 },
+      { "item_id": "玻璃戒指", "count": 10, "refill_minutes": 10 },
+      { "item_id": "牛角戒指", "count": 10, "refill_minutes": 10 }
+    ]
+  },
+  "labels": {
+    "@首饰店": {
+      "name": "@首饰店",
+      "procedures": [
+        {
+          "say": "请问你需要什么装饰品吗?\\n<购买/@buy> 首饰\\n<出售/@sell> 首饰\\n<修理/@repair> 首饰品\\n<关 闭/@exit>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "这里有戒指，手镯，项链，您需要什么?\\n<返 回/@main>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "为了防止万一，我要准备一些必要的首饰品做备用\\n如果您有多余的首饰品，可以卖给我\\n<返 回/@main>"
+        }
+      ]
+    },
+    "@repair": {
+      "name": "@repair",
+      "procedures": [
+        {
+          "say": "我可以给您修理陈旧或损坏的首饰品.\\n您需要修理什么?\\n<返 回/@main>"
+        }
+      ]
+    },
+    "~@repair": {
+      "name": "~@repair",
+      "procedures": [
+        {
+          "say": "已经修理好了.\\n<返 回/@main>"
+        }
+      ]
+    }
+  }
+}

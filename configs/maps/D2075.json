@@ -3,8 +3,6 @@
   "name": "牛魔寺庙四层",
   "width": 147,
   "height": 131,
-  "spawn_x": 105,
-  "spawn_y": 95,
   "blocked": [],
   "connections": [
     {

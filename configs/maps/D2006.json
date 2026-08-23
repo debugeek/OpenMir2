@@ -3,8 +3,6 @@
   "name": "烈焰殿",
   "width": 94,
   "height": 103,
-  "spawn_x": 31,
-  "spawn_y": 38,
   "blocked": [],
   "connections": [
     {

@@ -1,0 +1,68 @@
+{
+  "id": "比奇老兵-0",
+  "name": "比奇老兵",
+  "kind": "special",
+  "map_id": "0",
+  "x": 331,
+  "y": 270,
+  "dir": 0,
+  "appr": 1,
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "我可以把你送到附近的这几个商店。\\n<书店/@Gbo>  <肉铺/@Gpu>  <首饰店/@Gza>\\n<药店/@Gpo>  <布料店/@Gre>  <武器店/@Gwe>"
+        }
+      ]
+    },
+    "@Gbo": {
+      "name": "@Gbo",
+      "procedures": [
+        {
+          "say": "这里是书店。"
+        }
+      ]
+    },
+    "@Gpu": {
+      "name": "@Gpu",
+      "procedures": [
+        {
+          "say": "这里是肉铺。"
+        }
+      ]
+    },
+    "@Gza": {
+      "name": "@Gza",
+      "procedures": [
+        {
+          "say": "这里是首饰店。"
+        }
+      ]
+    },
+    "@Gpo": {
+      "name": "@Gpo",
+      "procedures": [
+        {
+          "say": "这里是药店。"
+        }
+      ]
+    },
+    "@Gre": {
+      "name": "@Gre",
+      "procedures": [
+        {
+          "say": "这里是布料店。"
+        }
+      ]
+    },
+    "@Gwe": {
+      "name": "@Gwe",
+      "procedures": [
+        {
+          "say": "这里是武器店。"
+        }
+      ]
+    }
+  }
+}

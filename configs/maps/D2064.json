@@ -3,8 +3,6 @@
   "name": "骨魔洞四层",
   "width": 180,
   "height": 204,
-  "spawn_x": 105,
-  "spawn_y": 95,
   "blocked": [],
   "connections": [
     {

@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"openmir2/internal/npc"
 )
 
 func Load(dir string) (StdBundle, error) {
@@ -22,7 +24,7 @@ func LoadConfigs(dir string) (StdBundle, error) {
 
 func LoadConfigsWithReport(dir string) (StdBundle, StdLoadReport, error) {
 	var report StdLoadReport
-	items, err := loadConfigItems(filepath.Join(dir, "items"))
+	items, itemOrder, err := loadConfigItems(filepath.Join(dir, "items"))
 	if err != nil {
 		return StdBundle{}, report, err
 	}
@@ -39,13 +41,24 @@ func LoadConfigsWithReport(dir string) (StdBundle, StdLoadReport, error) {
 		return StdBundle{}, report, err
 	}
 	spawns := loadConfigSpawns(spawnRecords, monsters, &report)
+	makeItems, err := loadConfigMakeItems(filepath.Join(dir, "items_make.json"))
+	if err != nil {
+		return StdBundle{}, report, err
+	}
+	npcs, err := loadConfigNPCs(filepath.Join(dir, "npcs"))
+	if err != nil {
+		return StdBundle{}, report, err
+	}
 	b := StdBundle{
-		Items:    items,
-		Skills:   skills,
-		Monsters: monsters,
-		Drops:    drops,
-		Maps:     maps,
-		Spawns:   spawns,
+		Items:     items,
+		ItemOrder: append([]string(nil), itemOrder...),
+		Skills:    skills,
+		Monsters:  monsters,
+		Drops:     drops,
+		Maps:      maps,
+		Spawns:    spawns,
+		MakeItems: makeItems,
+		NPCs:      npcs,
 	}
 	if err := b.Validate(); err != nil {
 		return StdBundle{}, report, err
@@ -62,6 +75,25 @@ func loadJSON(path string, out any) error {
 		return fmt.Errorf("%s: %w", path, err)
 	}
 	return nil
+}
+
+func loadConfigNPCs(dir string) (npc.Library, error) {
+	lib, err := npc.Load(dir)
+	if err != nil {
+		return npc.Library{}, err
+	}
+	return lib, nil
+}
+
+func loadConfigMakeItems(path string) (map[string][]StdMakeIngredient, error) {
+	var recipes map[string][]StdMakeIngredient
+	if err := loadJSON(path, &recipes); err != nil {
+		return nil, err
+	}
+	if recipes == nil {
+		recipes = map[string][]StdMakeIngredient{}
+	}
+	return recipes, nil
 }
 
 type monsterAttributesConfig struct {
@@ -137,12 +169,16 @@ type spawnRecord struct {
 	StdSpawn StdMapSpawn
 }
 
-func loadConfigItems(dir string) (map[string]StdItem, error) {
+func loadConfigItems(dir string) (map[string]StdItem, []string, error) {
 	var manifest []string
 	if err := loadJSON(filepath.Join(dir, "items.json"), &manifest); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return loadConfigItemsFromManifest(dir, manifest)
+	items, err := loadConfigItemsFromManifest(dir, manifest)
+	if err != nil {
+		return nil, nil, err
+	}
+	return items, manifest, nil
 }
 
 func loadConfigSkills(dir string) (map[string]StdSkill, error) {
@@ -204,6 +240,9 @@ func loadConfigMaps(dir string) (map[string]StdMap, []spawnRecord, error) {
 				Index:    i,
 				StdSpawn: sp,
 			})
+		}
+		if mp.StartPoints == nil {
+			mp.StartPoints = []StdStartPoint{}
 		}
 		out[mp.ID] = mp
 	}

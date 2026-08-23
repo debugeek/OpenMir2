@@ -1,0 +1,51 @@
+{
+  "id": "商人-1",
+  "name": "商人",
+  "kind": "merchant",
+  "map_id": "1",
+  "x": 309,
+  "y": 81,
+  "dir": 0,
+  "appr": 4,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true
+    },
+    "stock": [
+      { "item_id": "金创药(小)包", "count": 100, "refill_minutes": 3 },
+      { "item_id": "魔法药(小)包", "count": 100, "refill_minutes": 3 },
+      { "item_id": "金创药(中)包", "count": 300, "refill_minutes": 3 },
+      { "item_id": "魔法药(中)包", "count": 300, "refill_minutes": 3 },
+      { "item_id": "超级金创药", "count": 600, "refill_minutes": 3 },
+      { "item_id": "超级魔法药", "count": 600, "refill_minutes": 3 }
+    ]
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "欢迎，我能为你做点什么？\\n<购买/@buy> 物品\\n<出售/@sell> 物品\\n<离开/@exit>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "需要什么物品吗？\\n<返回/@main>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "把要卖的东西给我，我会给你好价钱的。\\n<返回/@main>"
+        }
+      ]
+    }
+  }
+}

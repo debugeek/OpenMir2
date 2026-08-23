@@ -37,8 +37,17 @@ func TestLoadConfigsReadsRuntimeConfigs(t *testing.T) {
 	if len(b.Maps["0"].Spawns) == 0 {
 		t.Fatalf("expected map 0 spawns in runtime configs")
 	}
-	if !b.Maps["0"].Walkable(b.Maps["0"].SpawnX, b.Maps["0"].SpawnY) {
-		t.Fatalf("default spawn should be walkable")
+	foundStartPoint := false
+	for _, mp := range b.Maps {
+		for _, sp := range mp.StartPoints {
+			foundStartPoint = true
+			if !mp.Walkable(sp.X, sp.Y) {
+				t.Fatalf("start point should be walkable: %+v", sp)
+			}
+		}
+	}
+	if !foundStartPoint {
+		t.Fatalf("expected at least one start point in runtime configs")
 	}
 	mon := b.Monsters["半兽人"]
 	if mon.Level != 15 || mon.HP != 30 || mon.MinAttack != 4 || mon.MaxAttack != 9 || mon.Defense != 1 || mon.Experience != 20 || mon.WalkSpeedMS != 1500 || mon.AttackIntervalMS != 2500 {

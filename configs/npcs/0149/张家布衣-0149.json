@@ -1,0 +1,70 @@
+{
+  "id": "张家布衣-0149",
+  "name": "张家布衣老板",
+  "kind": "merchant",
+  "map_id": "0149",
+  "x": 23,
+  "y": 20,
+  "dir": 0,
+  "appr": 7,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "buy": true,
+      "sell": true,
+      "repair": true
+    },
+    "stock": [
+      { "item_id": "轻型盔甲(男)", "count": 4, "refill_minutes": 10 },
+      { "item_id": "轻型盔甲(女)", "count": 4, "refill_minutes": 10 },
+      { "item_id": "重盔甲(男)", "count": 4, "refill_minutes": 10 },
+      { "item_id": "重盔甲(女)", "count": 4, "refill_minutes": 10 },
+      { "item_id": "魔法长袍(男)", "count": 4, "refill_minutes": 10 },
+      { "item_id": "魔法长袍(女)", "count": 4, "refill_minutes": 10 },
+      { "item_id": "灵魂战衣(男)", "count": 4, "refill_minutes": 10 },
+      { "item_id": "灵魂战衣(女)", "count": 4, "refill_minutes": 10 }
+    ]
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "欢迎，你需要点什么？\\n<买/@buy>  衣服\\n<卖/@sell>  衣服\\n<修补/@repair> 衣服\\n<特殊修理/@s_repair>\\n<离 开/@exit>"
+        }
+      ]
+    },
+    "@buy": {
+      "name": "@buy",
+      "procedures": [
+        {
+          "say": "你想买什么样的衣服？\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@sell": {
+      "name": "@sell",
+      "procedures": [
+        {
+          "say": "把你要卖的衣服给我看看，我会给你个估价。\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "@repair": {
+      "name": "@repair",
+      "procedures": [
+        {
+          "say": "这里修补衣服，头盔和帽子\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "~@repair": {
+      "name": "~@repair",
+      "procedures": [
+        {
+          "say": "这个看上去已经修好了\\n<返 回/@Main>"
+        }
+      ]
+    }
+  }
+}

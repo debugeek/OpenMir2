@@ -21,14 +21,7 @@ func TeleportTo(ch storage.Character, mp data.StdMap, x, y int, rng *rand.Rand) 
 		ch.Y = y
 		return ch, nil
 	}
-	px, py, ok := findRandomWalkableNear(rng, mp, mp.SpawnX, mp.SpawnY, 4)
-	if !ok {
-		return ch, fmt.Errorf("target coordinate is blocked")
-	}
-	ch.MapID = mp.ID
-	ch.X = px
-	ch.Y = py
-	return ch, nil
+	return ch, fmt.Errorf("target coordinate is blocked")
 }
 
 func TeleportRandomInMap(ch storage.Character, mp data.StdMap, rng *rand.Rand) (storage.Character, error) {

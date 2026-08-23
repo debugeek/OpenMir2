@@ -22,6 +22,12 @@ func (w *World) canCarryBagItemsLocked(ch storage.Character, addItems int) bool 
 	return w.bagItemCountLocked(ch)+addItems <= w.gameplay.Item.MaxBagItem
 }
 
+func (w *World) CanCarryBagItems(ch storage.Character, addItems int) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.canCarryBagItemsLocked(ch, addItems)
+}
+
 func (w *World) bagItemsWeightLocked(ch storage.Character) int {
 	total := 0
 	for _, entry := range ch.BagItems {

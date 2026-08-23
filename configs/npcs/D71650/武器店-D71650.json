@@ -1,0 +1,55 @@
+{
+  "id": "武器店-D71650",
+  "name": "武器店老板",
+  "kind": "merchant",
+  "map_id": "D71650",
+  "x": 23,
+  "y": 27,
+  "dir": 0,
+  "appr": 0,
+  "merchant": {
+    "price_rate": 100,
+    "capabilities": {
+      "repair": true
+    },
+    "stock": [
+      { "item_id": "鹤嘴锄", "count": 3, "refill_minutes": 10 },
+      { "item_id": "凌风", "count": 3, "refill_minutes": 10 },
+      { "item_id": "破魂", "count": 3, "refill_minutes": 10 },
+      { "item_id": "斩马刀", "count": 3, "refill_minutes": 10 },
+      { "item_id": "八荒", "count": 3, "refill_minutes": 10 },
+      { "item_id": "半月", "count": 3, "refill_minutes": 10 },
+      { "item_id": "偃月", "count": 3, "refill_minutes": 10 },
+      { "item_id": "降魔", "count": 3, "refill_minutes": 10 },
+      { "item_id": "海魂", "count": 3, "refill_minutes": 10 },
+      { "item_id": "凝霜", "count": 3, "refill_minutes": 10 },
+      { "item_id": "修罗", "count": 3, "refill_minutes": 10 }
+    ]
+  },
+  "labels": {
+    "@main": {
+      "name": "@main",
+      "procedures": [
+        {
+          "say": "对你这样的武士来说，武器就跟生命一样。\\n如果时刻不准备着，那么你也会成为地上的骷髅。\\n要是你有好几条命，那么可以不修理武器，\\n怎么样，把你的武器交给我来修理？\\n<修理/@repair>武器\\n<关 闭/@exit>"
+        }
+      ]
+    },
+    "@repair": {
+      "name": "@repair",
+      "procedures": [
+        {
+          "say": "要修理武器吗？修理什么武器？\\n<返 回/@Main>"
+        }
+      ]
+    },
+    "~@repair": {
+      "name": "~@repair",
+      "procedures": [
+        {
+          "say": "看起来修好了,欢迎下次再来.\\n<返 回/@Main>"
+        }
+      ]
+    }
+  }
+}

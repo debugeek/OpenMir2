@@ -3,8 +3,6 @@
   "name": "牛魔寺庙二层",
   "width": 256,
   "height": 261,
-  "spawn_x": 135,
-  "spawn_y": 145,
   "blocked": [],
   "connections": [
     {

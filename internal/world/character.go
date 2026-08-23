@@ -63,6 +63,15 @@ func (w *World) CreateCharacter(account, name, class, mapID string, x, y int) (s
 	return w.CreateCharacterWithAppearance(account, name, class, 0, 0, mapID, x, y)
 }
 
+func (w *World) CreateCharacterAtRandomStartPoint(account, name, class string) (storage.Character, error) {
+	return w.CreateCharacterWithAppearanceAtRandomStartPoint(account, name, class, 0, 0)
+}
+
+func (w *World) CreateCharacterWithAppearanceAtRandomStartPoint(account, name, class string, hair, sex int) (storage.Character, error) {
+	mapID, x, y := w.RandomNewCharacterSpawn()
+	return w.CreateCharacterWithAppearance(account, name, class, hair, sex, mapID, x, y)
+}
+
 func (w *World) CreateCharacterWithAppearance(account, name, class string, hair, sex int, mapID string, x, y int) (storage.Character, error) {
 	base := Base(class, 1)
 	ch := storage.Character{
@@ -164,7 +173,7 @@ func (w *World) CharacterDisplayName(ch storage.Character) string {
 }
 
 func (w *World) CharacterNameColor(ch storage.Character) uint16 {
-	return 0
+	return 255
 }
 
 func (w *World) CharacterAttackMode(ch storage.Character) byte {
