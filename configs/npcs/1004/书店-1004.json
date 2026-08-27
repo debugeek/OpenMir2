@@ -14,12 +14,12 @@
       "sell": true
     },
     "stock": [
-      { "item_id": "基本剑术", "count": 5, "refill_minutes": 10 },
-      { "item_id": "火球术", "count": 5, "refill_minutes": 10 },
-      { "item_id": "大火球", "count": 5, "refill_minutes": 10 },
-      { "item_id": "治愈术", "count": 5, "refill_minutes": 10 },
-      { "item_id": "精神力战法", "count": 5, "refill_minutes": 10 },
-      { "item_id": "施毒术", "count": 5, "refill_minutes": 10 }
+      { "item_id": "基本剑术", "count": 5 },
+      { "item_id": "火球术", "count": 5 },
+      { "item_id": "大火球", "count": 5 },
+      { "item_id": "治愈术", "count": 5 },
+      { "item_id": "精神力战法", "count": 5 },
+      { "item_id": "施毒术", "count": 5 }
     ]
   },
   "labels": {

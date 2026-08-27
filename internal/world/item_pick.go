@@ -92,11 +92,6 @@ func (w *World) pickupableDropAtLocked(mapID string, x, y int) (GroundDrop, bool
 	return found, ok
 }
 
-func (w *World) Pickup(ch storage.Character, dropID string) (storage.Character, GroundDrop, error) {
-	updated, result, err := w.PickupWithResult(ch, dropID)
-	return updated, result.Drop, err
-}
-
 func (w *World) PickupWithResult(ch storage.Character, dropID string) (storage.Character, PickupResult, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()

@@ -12,15 +12,6 @@ func (w *World) NPCByID(id string) (npc.Entity, bool) {
 	return entity, ok
 }
 
-func (w *World) NPCAt(mapID string, x, y int) (npc.Entity, bool) {
-	for _, entity := range w.data.NPCs.Entities {
-		if entity.MapID == mapID && entity.X == x && entity.Y == y {
-			return entity, true
-		}
-	}
-	return npc.Entity{}, false
-}
-
 func (w *World) NPCsInMap(mapID string) []npc.Entity {
 	out := make([]npc.Entity, 0)
 	for _, entity := range w.data.NPCs.Entities {
@@ -29,15 +20,6 @@ func (w *World) NPCsInMap(mapID string) []npc.Entity {
 		}
 	}
 	return out
-}
-
-func (w *World) NPCScript(id string) (npc.Script, bool) {
-	entity, ok := w.NPCByID(id)
-	if !ok || entity.ScriptID == "" {
-		return npc.Script{}, false
-	}
-	script, ok := w.data.NPCs.Scripts[entity.ScriptID]
-	return script, ok
 }
 
 func (w *World) NPCConversation(activeChar storage.Character, npcID, label string) (npc.Conversation, bool) {

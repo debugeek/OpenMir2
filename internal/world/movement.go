@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"openmir2/internal/protocol/mir176"
 	"openmir2/internal/storage"
 )
 
@@ -70,6 +71,10 @@ func (w *World) SitDown(ch storage.Character, x, y, dir int) (storage.Character,
 // A swing that connects with nothing is not an error, it just carries no
 // AttackResult.MonsterID.
 func (w *World) Hit(ch storage.Character, x, y, dir int, blockers ...storage.Character) (AttackResult, error) {
+	return w.HitWithIdent(ch, x, y, dir, mir176.CMHit, blockers...)
+}
+
+func (w *World) HitWithIdent(ch storage.Character, x, y, dir int, attackIdent uint16, blockers ...storage.Character) (AttackResult, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if err := validDir(dir); err != nil {
@@ -80,14 +85,62 @@ func (w *World) Hit(ch storage.Character, x, y, dir int, blockers ...storage.Cha
 	}
 	ch.Dir = dir
 	w.respawnLocked(time.Now())
-	off := dirOffsets[dir]
-	targetX, targetY := ch.X+off[0], ch.Y+off[1]
-	for _, mon := range w.monsters {
-		if mon.Alive && mon.MapID == ch.MapID && mon.X == targetX && mon.Y == targetY {
-			return w.attackLocked(ch, mon, blockers...)
+	for _, point := range w.hitPointsForAttackLocked(ch.X, ch.Y, dir, attackIdent) {
+		if mon := w.monsterAtExactPointLocked(ch.MapID, point[0], point[1]); mon != nil {
+			return w.attackLocked(ch, mon, attackIdent, blockers...)
+		}
+		if target, ok := w.characterAtExactPointLocked(blockers, ch.MapID, point[0], point[1]); ok {
+			_, hit, err := w.attackCharacterWithDamageLocked(ch, target, w.characterHitDamageForAttackLocked(ch, attackIdent))
+			if err != nil {
+				return AttackResult{}, err
+			}
+			return AttackResult{Character: ch, CharacterHits: []CharacterHit{hit}}, nil
 		}
 	}
 	return AttackResult{Character: ch}, w.store.SaveCharacter(ch)
+}
+
+func (w *World) hitPointsForAttackLocked(x, y, dir int, attackIdent uint16) [][2]int {
+	off := dirOffsets[dir]
+	switch attackIdent {
+	case mir176.CMLongHit:
+		return [][2]int{{x + off[0]*2, y + off[1]*2}}
+	case mir176.CMWideHit:
+		points := make([][2]int, 0, 3)
+		for _, rel := range []int{7, 1, 2} {
+			fd := (dir + rel) % 8
+			foff := dirOffsets[fd]
+			points = append(points, [2]int{x + foff[0], y + foff[1]})
+		}
+		return points
+	default:
+		return [][2]int{{x + off[0], y + off[1]}}
+	}
+}
+
+func (w *World) monsterAtExactPointLocked(mapID string, x, y int) *Monster {
+	for _, mon := range w.monsters {
+		if mon.Alive && mon.MapID == mapID && mon.X == x && mon.Y == y {
+			return mon
+		}
+	}
+	return nil
+}
+
+func (w *World) characterAtExactPointLocked(players []storage.Character, mapID string, x, y int) (storage.Character, bool) {
+	for _, target := range players {
+		if target.ID == "" || target.MapID != mapID || target.HP <= 0 {
+			continue
+		}
+		if target.X == x && target.Y == y {
+			return target, true
+		}
+	}
+	return storage.Character{}, false
+}
+
+func (w *World) characterHitDamageForAttackLocked(ch storage.Character, attackIdent uint16) int {
+	return w.characterAttackDamageLocked(ch, nil, attackIdent)
 }
 
 func (w *World) stepLocked(ch storage.Character, x, y, maxDist int) (storage.Character, error) {
@@ -103,6 +156,9 @@ func (w *World) stepLocked(ch storage.Character, x, y, maxDist int) (storage.Cha
 	}
 	ch.X = x
 	ch.Y = y
+	if characterTransparentActive(ch, time.Now()) {
+		ch.TransparentUntil = time.Now().Add(time.Second).UnixNano()
+	}
 	w.syncCharacterHomeFromStartPointLocked(&ch)
 	return ch, w.store.SaveCharacter(ch)
 }
@@ -135,6 +191,9 @@ func (w *World) directionalStepLocked(ch storage.Character, x, y, dir, steps int
 	}
 	ch.X = destX
 	ch.Y = destY
+	if characterTransparentActive(ch, time.Now()) {
+		ch.TransparentUntil = time.Now().Add(time.Second).UnixNano()
+	}
 	w.syncCharacterHomeFromStartPointLocked(&ch)
 	return ch, w.store.SaveCharacter(ch)
 }

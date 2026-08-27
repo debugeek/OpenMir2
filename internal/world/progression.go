@@ -17,16 +17,15 @@ func canLearnSkill(ch storage.Character, skill data.StdSkill) bool {
 	if skill.Job != 99 && skill.Job != job {
 		return false
 	}
-	return ch.Level >= skill.TrainLevel1
+	return ch.Level >= skill.NeedLevel1
 }
 
 func hasSkill(ch storage.Character, skillID string) bool {
-	for _, learned := range ch.Skills {
-		if learned == skillID {
-			return true
-		}
-	}
-	return false
+	return ch.Skills.Has(skillID)
+}
+
+func learnSkill(ch *storage.Character, skillID string) bool {
+	return (&ch.Skills).Learn(skillID)
 }
 
 func (w *World) RequiredExperience(level int) int {

@@ -15,17 +15,17 @@
       "repair": true
     },
     "stock": [
-      { "item_id": "小手镯", "count": 3, "refill_minutes": 10 },
-      { "item_id": "银手镯", "count": 3, "refill_minutes": 10 },
-      { "item_id": "铁手镯", "count": 3, "refill_minutes": 10 },
-      { "item_id": "钢手镯", "count": 3, "refill_minutes": 10 },
-      { "item_id": "皮制手套", "count": 3, "refill_minutes": 10 },
-      { "item_id": "大手镯", "count": 3, "refill_minutes": 10 },
-      { "item_id": "坚固手套", "count": 3, "refill_minutes": 10 },
-      { "item_id": "魔力手镯", "count": 3, "refill_minutes": 10 },
-      { "item_id": "道士手镯", "count": 3, "refill_minutes": 10 },
-      { "item_id": "黑檀手镯", "count": 3, "refill_minutes": 10 },
-      { "item_id": "死神手套", "count": 4, "refill_minutes": 10 }
+      { "item_id": "小手镯", "count": 3 },
+      { "item_id": "银手镯", "count": 3 },
+      { "item_id": "铁手镯", "count": 3 },
+      { "item_id": "钢手镯", "count": 3 },
+      { "item_id": "皮制手套", "count": 3 },
+      { "item_id": "大手镯", "count": 3 },
+      { "item_id": "坚固手套", "count": 3 },
+      { "item_id": "魔力手镯", "count": 3 },
+      { "item_id": "道士手镯", "count": 3 },
+      { "item_id": "黑檀手镯", "count": 3 },
+      { "item_id": "死神手套", "count": 4 }
     ]
   },
   "labels": {

@@ -15,12 +15,12 @@
       "repair": true
     },
     "stock": [
-      { "item_id": "布衣(男)", "count": 10, "refill_minutes": 10 },
-      { "item_id": "布衣(女)", "count": 10, "refill_minutes": 10 },
-      { "item_id": "轻型盔甲(男)", "count": 10, "refill_minutes": 10 },
-      { "item_id": "轻型盔甲(女)", "count": 10, "refill_minutes": 10 },
-      { "item_id": "中型盔甲(男)", "count": 10, "refill_minutes": 10 },
-      { "item_id": "中型盔甲(女)", "count": 10, "refill_minutes": 10 }
+      { "item_id": "布衣(男)", "count": 10 },
+      { "item_id": "布衣(女)", "count": 10 },
+      { "item_id": "轻型盔甲(男)", "count": 10 },
+      { "item_id": "轻型盔甲(女)", "count": 10 },
+      { "item_id": "中型盔甲(男)", "count": 10 },
+      { "item_id": "中型盔甲(女)", "count": 10 }
     ]
   },
   "labels": {

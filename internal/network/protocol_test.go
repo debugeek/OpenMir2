@@ -6,7 +6,6 @@ import (
 
 	"openmir2/internal/data"
 	"openmir2/internal/protocol/mir176"
-	"openmir2/internal/storage"
 	"openmir2/internal/world"
 )
 
@@ -22,7 +21,13 @@ func TestDecodeRunLogin(t *testing.T) {
 }
 
 func TestDecodeRunLoginLegacyPayload(t *testing.T) {
-	frame := mir176.WrapFrame(append([]byte{'1'}, mir176.EncodePayload([]byte("**test/hero/1/176/2022080300"))...))
+	legacyPayload := []byte{
+		0x5e, 0x5e, 0x54, 0x71, 0x6d, 0x73, 0x54, 0x77, 0x5f, 0x6c,
+		0x45, 0x6d, 0x72, 0x6f, 0x3f, 0x68, 0x61, 0x5f, 0x59, 0x68,
+		0x63, 0x62, 0x3f, 0x66, 0x62, 0x60, 0x5a, 0x6b, 0x62, 0x60,
+		0x50, 0x6b, 0x60, 0x63, 0x58, 0x6b, 0x60, 0x3f,
+	}
+	frame := mir176.WrapFrame(append([]byte{'1'}, legacyPayload...))
 	if _, ok := decodeRunLogin(frame); ok {
 		t.Fatal("decodeRunLogin() accepted legacy XOR payload")
 	}
@@ -115,16 +120,16 @@ func TestClientItemBodyUsesItemName(t *testing.T) {
 
 func TestClientItemBodyMatchesReferenceLayout(t *testing.T) {
 	item := data.StdItem{
-		Name:       "Sword",
-		StdMode:    1,
-		Shape:      2,
-		Weight:     3,
-		AniCount:   4,
-		SpecialPwr: 5,
-		ItemDesc:   6,
+		Name:         "Sword",
+		StdMode:      1,
+		Shape:        2,
+		Weight:       3,
+		AniCount:     4,
+		SpecialPwr:   5,
+		ItemDesc:     6,
 		NeedIdentify: 7,
-		Looks:      7,
-		DuraMax:    8,
+		Looks:        7,
+		DuraMax:      8,
 		Stats: data.StdItemStats{
 			AcMin:  1,
 			AcMax:  2,
@@ -211,22 +216,6 @@ func TestDecodeLoginNoticeOK(t *testing.T) {
 	}
 	if cmd.Ident != mir176.CMLoginNoticeOK {
 		t.Fatalf("decoded ident = %d, want %d", cmd.Ident, mir176.CMLoginNoticeOK)
-	}
-}
-
-func TestHumanFeatureUsesSexHairAndEquipmentShapes(t *testing.T) {
-	feature := world.HumanFeature(storage.Character{Hair: 3, Sex: 1}, 8, 15)
-	if got := byte(uint32(feature)); got != 0 {
-		t.Fatalf("race feature = %d, want 0", got)
-	}
-	if got := byte(uint32(feature) >> 8); got != 31 {
-		t.Fatalf("weapon feature = %d, want 31", got)
-	}
-	if got := byte(uint32(feature) >> 16); got != 7 {
-		t.Fatalf("hair feature = %d, want 7", got)
-	}
-	if got := byte(uint32(feature) >> 24); got != 17 {
-		t.Fatalf("dress feature = %d, want 17", got)
 	}
 }
 

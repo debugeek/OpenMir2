@@ -14,20 +14,20 @@
       "sell": true
     },
     "stock": [
-      { "item_id": "金创药(小量)", "count": 50, "refill_minutes": 10 },
-      { "item_id": "魔法药(小量)", "count": 50, "refill_minutes": 10 },
-      { "item_id": "金创药(中量)", "count": 50, "refill_minutes": 10 },
-      { "item_id": "魔法药(中量)", "count": 50, "refill_minutes": 10 },
-      { "item_id": "强效金创药", "count": 200, "refill_minutes": 10 },
-      { "item_id": "强效魔法药", "count": 200, "refill_minutes": 10 },
-      { "item_id": "金创药(小)包", "count": 200, "refill_minutes": 10 },
-      { "item_id": "魔法药(小)包", "count": 200, "refill_minutes": 10 },
-      { "item_id": "金创药(中)包", "count": 200, "refill_minutes": 10 },
-      { "item_id": "魔法药(中)包", "count": 200, "refill_minutes": 10 },
-      { "item_id": "超级金创药", "count": 200, "refill_minutes": 10 },
-      { "item_id": "超级魔法药", "count": 200, "refill_minutes": 10 },
-      { "item_id": "太阳水", "count": 200, "refill_minutes": 10 },
-      { "item_id": "强效太阳水", "count": 200, "refill_minutes": 10 }
+      { "item_id": "金创药(小量)", "count": 50 },
+      { "item_id": "魔法药(小量)", "count": 50 },
+      { "item_id": "金创药(中量)", "count": 50 },
+      { "item_id": "魔法药(中量)", "count": 50 },
+      { "item_id": "强效金创药", "count": 200 },
+      { "item_id": "强效魔法药", "count": 200 },
+      { "item_id": "金创药(小)包", "count": 200 },
+      { "item_id": "魔法药(小)包", "count": 200 },
+      { "item_id": "金创药(中)包", "count": 200 },
+      { "item_id": "魔法药(中)包", "count": 200 },
+      { "item_id": "超级金创药", "count": 200 },
+      { "item_id": "超级魔法药", "count": 200 },
+      { "item_id": "太阳水", "count": 200 },
+      { "item_id": "强效太阳水", "count": 200 }
     ]
   },
   "labels": {

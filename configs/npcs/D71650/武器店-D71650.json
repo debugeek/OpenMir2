@@ -13,17 +13,17 @@
       "repair": true
     },
     "stock": [
-      { "item_id": "鹤嘴锄", "count": 3, "refill_minutes": 10 },
-      { "item_id": "凌风", "count": 3, "refill_minutes": 10 },
-      { "item_id": "破魂", "count": 3, "refill_minutes": 10 },
-      { "item_id": "斩马刀", "count": 3, "refill_minutes": 10 },
-      { "item_id": "八荒", "count": 3, "refill_minutes": 10 },
-      { "item_id": "半月", "count": 3, "refill_minutes": 10 },
-      { "item_id": "偃月", "count": 3, "refill_minutes": 10 },
-      { "item_id": "降魔", "count": 3, "refill_minutes": 10 },
-      { "item_id": "海魂", "count": 3, "refill_minutes": 10 },
-      { "item_id": "凝霜", "count": 3, "refill_minutes": 10 },
-      { "item_id": "修罗", "count": 3, "refill_minutes": 10 }
+      { "item_id": "鹤嘴锄", "count": 3 },
+      { "item_id": "凌风", "count": 3 },
+      { "item_id": "破魂", "count": 3 },
+      { "item_id": "斩马刀", "count": 3 },
+      { "item_id": "八荒", "count": 3 },
+      { "item_id": "半月", "count": 3 },
+      { "item_id": "偃月", "count": 3 },
+      { "item_id": "降魔", "count": 3 },
+      { "item_id": "海魂", "count": 3 },
+      { "item_id": "凝霜", "count": 3 },
+      { "item_id": "修罗", "count": 3 }
     ]
   },
   "labels": {

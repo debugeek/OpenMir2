@@ -32,18 +32,3 @@ func DropActorID(drop GroundDrop) int32 {
 	}
 	return int32(200000 + n)
 }
-
-func DropMakeIndex(drop GroundDrop) int32 {
-	if drop.MakeIndex > 0 {
-		return drop.MakeIndex
-	}
-	_, suffix, ok := strings.Cut(drop.ID, "-")
-	if !ok {
-		return 0
-	}
-	n, err := strconv.Atoi(suffix)
-	if err != nil {
-		return 0
-	}
-	return int32(n)
-}

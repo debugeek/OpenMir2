@@ -15,19 +15,19 @@
       "repair": true
     },
     "stock": [
-      { "item_id": "古铜戒指", "count": 3, "refill_minutes": 10 },
-      { "item_id": "六角戒指", "count": 3, "refill_minutes": 10 },
-      { "item_id": "玻璃戒指", "count": 3, "refill_minutes": 10 },
-      { "item_id": "牛角戒指", "count": 3, "refill_minutes": 10 },
-      { "item_id": "蓝色水晶戒指", "count": 3, "refill_minutes": 10 },
-      { "item_id": "生铁戒指", "count": 3, "refill_minutes": 10 },
-      { "item_id": "金戒指", "count": 3, "refill_minutes": 10 },
-      { "item_id": "魅力戒指", "count": 3, "refill_minutes": 10 },
-      { "item_id": "道德戒指", "count": 3, "refill_minutes": 10 },
-      { "item_id": "黑色水晶戒指", "count": 3, "refill_minutes": 10 },
-      { "item_id": "蛇眼戒指", "count": 3, "refill_minutes": 10 },
-      { "item_id": "珍珠戒指", "count": 3, "refill_minutes": 10 },
-      { "item_id": "骷髅戒指", "count": 3, "refill_minutes": 10 }
+      { "item_id": "古铜戒指", "count": 3 },
+      { "item_id": "六角戒指", "count": 3 },
+      { "item_id": "玻璃戒指", "count": 3 },
+      { "item_id": "牛角戒指", "count": 3 },
+      { "item_id": "蓝色水晶戒指", "count": 3 },
+      { "item_id": "生铁戒指", "count": 3 },
+      { "item_id": "金戒指", "count": 3 },
+      { "item_id": "魅力戒指", "count": 3 },
+      { "item_id": "道德戒指", "count": 3 },
+      { "item_id": "黑色水晶戒指", "count": 3 },
+      { "item_id": "蛇眼戒指", "count": 3 },
+      { "item_id": "珍珠戒指", "count": 3 },
+      { "item_id": "骷髅戒指", "count": 3 }
     ]
   },
   "labels": {

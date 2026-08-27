@@ -55,17 +55,13 @@ func TestWorldNPCQueries(t *testing.T) {
 	if entity.Name != "Guide" {
 		t.Fatalf("NPCByID() = %+v, want Guide", entity)
 	}
-	atEntity, ok := w.NPCAt("0", 11, 12)
-	if !ok || atEntity.ID != "guide" {
-		t.Fatalf("NPCAt() = %+v, want guide", atEntity)
-	}
 	inMap := w.NPCsInMap("0")
 	if len(inMap) != 1 || inMap[0].ID != "guide" {
 		t.Fatalf("NPCsInMap() = %+v, want one guide", inMap)
 	}
-	script, ok := w.NPCScript("guide")
-	if !ok || script.ID != "guide_script" {
-		t.Fatalf("NPCScript() = %+v, want guide_script", script)
+	script := w.data.NPCs.Scripts["guide_script"]
+	if script.ID != "guide_script" {
+		t.Fatalf("script = %+v, want guide_script", script)
 	}
 }
 

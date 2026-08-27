@@ -7,14 +7,6 @@ import (
 	"openmir2/internal/world"
 )
 
-func (s *Server) handleUserCommand(conn net.Conn, activeChar *storage.Character, line string) {
-	result, ok := s.world.HandleUserCommand(*activeChar, line)
-	if !ok {
-		return
-	}
-	s.handleUserCommandResult(conn, activeChar, result)
-}
-
 func (s *Server) handleUserCommandResult(conn net.Conn, activeChar *storage.Character, result world.UserCommandResult) {
 	if result.Message != "" {
 		s.sendHear(conn, result.Message, 0x00, 0xFF)

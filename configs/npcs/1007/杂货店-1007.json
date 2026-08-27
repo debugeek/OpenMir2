@@ -15,15 +15,15 @@
       "repair": true
     },
     "stock": [
-      { "item_id": "随机传送卷", "count": 10, "refill_minutes": 10 },
-      { "item_id": "地牢逃脱卷", "count": 10, "refill_minutes": 10 },
-      { "item_id": "随机传送卷包", "count": 110, "refill_minutes": 10 },
-      { "item_id": "地牢逃脱卷包", "count": 10, "refill_minutes": 10 },
-      { "item_id": "护身符", "count": 20, "refill_minutes": 10 },
-      { "item_id": "护身符(大)", "count": 20, "refill_minutes": 10 },
-      { "item_id": "修复油", "count": 110, "refill_minutes": 10 },
-      { "item_id": "行会回城卷", "count": 110, "refill_minutes": 10 },
-      { "item_id": "回城卷", "count": 30, "refill_minutes": 10 }
+      { "item_id": "随机传送卷", "count": 10 },
+      { "item_id": "地牢逃脱卷", "count": 10 },
+      { "item_id": "随机传送卷包", "count": 110 },
+      { "item_id": "地牢逃脱卷包", "count": 10 },
+      { "item_id": "护身符", "count": 20 },
+      { "item_id": "护身符(大)", "count": 20 },
+      { "item_id": "修复油", "count": 110 },
+      { "item_id": "行会回城卷", "count": 110 },
+      { "item_id": "回城卷", "count": 30 }
     ]
   },
   "labels": {

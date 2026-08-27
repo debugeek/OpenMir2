@@ -15,22 +15,22 @@
       "repair": true
     },
     "stock": [
-      { "item_id": "金项链", "count": 10, "refill_minutes": 10 },
-      { "item_id": "传统项链", "count": 10, "refill_minutes": 10 },
-      { "item_id": "黑檀项链", "count": 10, "refill_minutes": 10 },
-      { "item_id": "黄色水晶项链", "count": 10, "refill_minutes": 10 },
-      { "item_id": "黑色水晶项链", "count": 10, "refill_minutes": 10 },
-      { "item_id": "灯笼项链", "count": 10, "refill_minutes": 10 },
-      { "item_id": "小手镯", "count": 10, "refill_minutes": 10 },
-      { "item_id": "银手镯", "count": 10, "refill_minutes": 10 },
-      { "item_id": "铁手镯", "count": 10, "refill_minutes": 10 },
-      { "item_id": "钢手镯", "count": 10, "refill_minutes": 10 },
-      { "item_id": "皮制手套", "count": 10, "refill_minutes": 10 },
-      { "item_id": "大手镯", "count": 10, "refill_minutes": 10 },
-      { "item_id": "古铜戒指", "count": 10, "refill_minutes": 10 },
-      { "item_id": "六角戒指", "count": 10, "refill_minutes": 10 },
-      { "item_id": "玻璃戒指", "count": 10, "refill_minutes": 10 },
-      { "item_id": "牛角戒指", "count": 10, "refill_minutes": 10 }
+      { "item_id": "金项链", "count": 10 },
+      { "item_id": "传统项链", "count": 10 },
+      { "item_id": "黑檀项链", "count": 10 },
+      { "item_id": "黄色水晶项链", "count": 10 },
+      { "item_id": "黑色水晶项链", "count": 10 },
+      { "item_id": "灯笼项链", "count": 10 },
+      { "item_id": "小手镯", "count": 10 },
+      { "item_id": "银手镯", "count": 10 },
+      { "item_id": "铁手镯", "count": 10 },
+      { "item_id": "钢手镯", "count": 10 },
+      { "item_id": "皮制手套", "count": 10 },
+      { "item_id": "大手镯", "count": 10 },
+      { "item_id": "古铜戒指", "count": 10 },
+      { "item_id": "六角戒指", "count": 10 },
+      { "item_id": "玻璃戒指", "count": 10 },
+      { "item_id": "牛角戒指", "count": 10 }
     ]
   },
   "labels": {

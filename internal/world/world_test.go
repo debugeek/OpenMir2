@@ -6,11 +6,13 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
 	"openmir2/internal/config"
 	"openmir2/internal/data"
+	"openmir2/internal/protocol/mir176"
 	"openmir2/internal/storage"
 )
 
@@ -27,9 +29,9 @@ const (
 
 func loadTestBundle(t *testing.T) data.StdBundle {
 	t.Helper()
-	bundle, err := data.Load(testConfigsDir)
+	bundle, _, err := data.LoadConfigsWithReport(testConfigsDir)
 	if err != nil {
-		t.Fatalf("Load() error = %v", err)
+		t.Fatalf("LoadConfigsWithReport() error = %v", err)
 	}
 	bundle.Spawns = nil
 	return bundle
@@ -54,6 +56,15 @@ func allStartPoints(bundle data.StdBundle) []data.StdStartPoint {
 	return points
 }
 
+func defaultSpawn(bundle data.StdBundle) (string, int, int) {
+	points := allStartPoints(bundle)
+	if len(points) == 0 {
+		return "0", 0, 0
+	}
+	sp := points[0]
+	return sp.MapID, sp.X, sp.Y
+}
+
 func startCoordsForMap(t *testing.T, bundle data.StdBundle, mapID string) (int, int) {
 	t.Helper()
 	mp, ok := bundle.Maps[mapID]
@@ -70,6 +81,21 @@ func countBagItems(items []storage.UserItem) int {
 	return len(items)
 }
 
+func spawnMonsterForTest(t *testing.T, w *World, mapID string, x, y int, name string, count int) (SpawnResult, error) {
+	t.Helper()
+	return w.spawnMonsterByName(mapID, x, y, name, count, -1, -1)
+}
+
+func attackMonsterForTest(w *World, ch storage.Character, monsterID string) (AttackResult, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	mon, ok := w.monsters[monsterID]
+	if !ok || !mon.Alive {
+		return AttackResult{}, fmt.Errorf("monster not found")
+	}
+	return w.attackLocked(ch, mon, mir176.CMHit)
+}
+
 func setEquippedItem(ch *storage.Character, slot int, item storage.UserItem) {
 	if ch.EquippedItems == nil {
 		ch.EquippedItems = map[int]storage.UserItem{}
@@ -80,6 +106,35 @@ func setEquippedItem(ch *storage.Character, slot int, item storage.UserItem) {
 	}
 	ch.EquippedItems[slot] = item
 }
+
+type zeroSource struct{}
+
+func (zeroSource) Int63() int64 { return 0 }
+func (zeroSource) Seed(int64)   {}
+
+type twoSource struct{}
+
+func (twoSource) Int63() int64 { return 2 }
+func (twoSource) Seed(int64)   {}
+
+type seqSource struct {
+	vals []int64
+	idx  int
+}
+
+func (s *seqSource) Int63() int64 {
+	if len(s.vals) == 0 {
+		return 0
+	}
+	if s.idx >= len(s.vals) {
+		return s.vals[len(s.vals)-1]
+	}
+	v := s.vals[s.idx]
+	s.idx++
+	return v
+}
+
+func (s *seqSource) Seed(int64) {}
 
 func TestWorldNewNormalizesMonsterDefaults(t *testing.T) {
 	bundle := loadTestBundle(t)
@@ -134,8 +189,8 @@ func newAIWorldCharacter(t *testing.T) (*World, storage.Character) {
 	bundle.Monsters["鹿"] = mon
 	w := New(bundle, store, settings)
 	primeMonsterTimersForTests(w)
-	mapID, x, y := w.DefaultSpawn()
-	ch, err := w.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	mapID, x, y := defaultSpawn(bundle)
+	ch, err := w.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
 	if err != nil {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
@@ -162,8 +217,8 @@ func newAggressiveAIWorldCharacter(t *testing.T) (*World, storage.Character) {
 	bundle.Monsters["半兽人"] = mon
 	w := New(bundle, store, settings)
 	primeMonsterTimersForTests(w)
-	mapID, x, y := w.DefaultSpawn()
-	ch, err := w.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	mapID, x, y := defaultSpawn(bundle)
+	ch, err := w.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
 	if err != nil {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
@@ -179,8 +234,8 @@ func newRealDataWorldCharacter(t *testing.T) (*World, storage.Character) {
 	}
 	w := New(bundle, store)
 	primeMonsterTimersForTests(w)
-	mapID, x, y := w.DefaultSpawn()
-	ch, err := w.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	mapID, x, y := defaultSpawn(bundle)
+	ch, err := w.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
 	if err != nil {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
@@ -228,7 +283,7 @@ func primeMonsterTimersForTests(w *World) {
 
 func TestMonsterTickChasesNearbyCharacter(t *testing.T) {
 	w, ch := newAggressiveAIWorldCharacter(t)
-	monsters, _ := w.Snapshot(ch.MapID)
+	monsters, _ := w.SnapshotAround(ch.MapID, 0, 0, 99999)
 	if len(monsters) == 0 {
 		t.Fatalf("expected monsters")
 	}
@@ -249,7 +304,7 @@ func TestMonsterTickChasesNearbyCharacter(t *testing.T) {
 
 func TestMonsterSpawnFacesSouth(t *testing.T) {
 	w, _ := newAIWorldCharacter(t)
-	monsters, _ := w.Snapshot(testMapID)
+	monsters, _ := w.SnapshotAround(testMapID, 0, 0, 99999)
 	if len(monsters) == 0 {
 		t.Fatalf("expected spawned monsters")
 	}
@@ -1027,7 +1082,7 @@ func TestCentipedeKingStaysFixedWhenPlayerApproaches(t *testing.T) {
 
 func TestMonsterTickRoutesAroundBlockingMonster(t *testing.T) {
 	w, ch := newAggressiveAIWorldCharacter(t)
-	monsters, _ := w.Snapshot(ch.MapID)
+	monsters, _ := w.SnapshotAround(ch.MapID, 0, 0, 99999)
 	if len(monsters) == 0 {
 		t.Fatalf("expected monsters")
 	}
@@ -1071,7 +1126,7 @@ func TestMonsterTickRoutesAroundBlockingMonster(t *testing.T) {
 
 func TestMonsterTickAttacksAdjacentCharacter(t *testing.T) {
 	w, ch := newAggressiveAIWorldCharacter(t)
-	monsters, _ := w.Snapshot(ch.MapID)
+	monsters, _ := w.SnapshotAround(ch.MapID, 0, 0, 99999)
 	if len(monsters) == 0 {
 		t.Fatalf("expected monsters")
 	}
@@ -1095,7 +1150,7 @@ func TestMonsterTickAttacksAdjacentCharacter(t *testing.T) {
 
 func TestMonsterTickStopsChasingPastLeashRange(t *testing.T) {
 	w, ch := newAggressiveAIWorldCharacter(t)
-	monsters, _ := w.Snapshot(ch.MapID)
+	monsters, _ := w.SnapshotAround(ch.MapID, 0, 0, 99999)
 	if len(monsters) == 0 {
 		t.Fatalf("expected monsters")
 	}
@@ -1123,8 +1178,8 @@ func TestCombatDropPickupAndPersistence(t *testing.T) {
 		t.Fatalf("Open() error = %v", err)
 	}
 	w := New(bundle, store)
-	mapID, x, y := w.DefaultSpawn()
-	ch, err := w.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	mapID, x, y := defaultSpawn(bundle)
+	ch, err := w.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
 	if err != nil {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
@@ -1132,13 +1187,13 @@ func TestCombatDropPickupAndPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Move() error = %v", err)
 	}
-	monsters, _ := w.Snapshot(ch.MapID)
+	monsters, _ := w.SnapshotAround(ch.MapID, 0, 0, 99999)
 	if len(monsters) == 0 {
 		t.Fatalf("expected monsters")
 	}
 	var result AttackResult
 	for i := 0; i < 10; i++ {
-		result, err = w.Attack(ch, monsters[0].ID)
+		result, err = attackMonsterForTest(w, ch, monsters[0].ID)
 		if err != nil {
 			t.Fatalf("Attack() error = %v", err)
 		}
@@ -1157,7 +1212,7 @@ func TestCombatDropPickupAndPersistence(t *testing.T) {
 		t.Fatalf("expected drops")
 	}
 	ch.X, ch.Y = result.Drops[0].X, result.Drops[0].Y
-	ch, _, err = w.Pickup(ch, result.Drops[0].ID)
+	ch, _, err = w.PickupWithResult(ch, result.Drops[0].ID)
 	if err != nil {
 		t.Fatalf("Pickup() error = %v", err)
 	}
@@ -1223,35 +1278,6 @@ func TestMonsterDeathResetsSearchCooldown(t *testing.T) {
 	}
 	if mon.TargetCharacterID != ch.ID {
 		t.Fatalf("TargetCharacterID = %q, want %q after cooldown reset", mon.TargetCharacterID, ch.ID)
-	}
-}
-
-func TestDefaultSpawnIsDeterministic(t *testing.T) {
-	bundle := loadTestBundle(t)
-	store, err := storage.Open(filepath.Join(t.TempDir(), "state.json"))
-	if err != nil {
-		t.Fatalf("Open() error = %v", err)
-	}
-	w := New(bundle, store)
-	mapID, x, y := w.DefaultSpawn()
-	if mapID == "" {
-		t.Fatal("DefaultSpawn() returned empty map id")
-	}
-	found := false
-	for _, sp := range allStartPoints(bundle) {
-		if sp.MapID == mapID && sp.X == x && sp.Y == y {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatalf("DefaultSpawn() = (%s,%d,%d), want one of configured start points", mapID, x, y)
-	}
-	for i := 0; i < 20; i++ {
-		nextMapID, nextX, nextY := w.DefaultSpawn()
-		if nextMapID != mapID || nextX != x || nextY != y {
-			t.Fatalf("DefaultSpawn() call %d = (%s,%d,%d), want (%s,%d,%d)", i, nextMapID, nextX, nextY, mapID, x, y)
-		}
 	}
 }
 
@@ -1324,7 +1350,7 @@ func TestOfficialConfigMapSupportsWalkAndCombat(t *testing.T) {
 	}
 	w := New(bundle, store)
 	startX, startY := startCoordsForMap(t, bundle, testMapID)
-	ch, err := w.CreateCharacter("test", "tester3", "warrior", testMapID, startX, startY)
+	ch, err := w.CreateCharacterWithAppearance("test", "tester3", "warrior", 0, 0, testMapID, startX, startY)
 	if err != nil {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
@@ -1336,11 +1362,11 @@ func TestOfficialConfigMapSupportsWalkAndCombat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Walk() on config map error = %v", err)
 	}
-	monsters, _ := w.Snapshot(ch.MapID)
+	monsters, _ := w.SnapshotAround(ch.MapID, 0, 0, 99999)
 	if len(monsters) == 0 {
 		t.Fatalf("expected monsters on config map")
 	}
-	if _, err := w.Attack(ch, monsters[0].ID); err != nil {
+	if _, err := attackMonsterForTest(w, ch, monsters[0].ID); err != nil {
 		t.Fatalf("Attack() on config map error = %v", err)
 	}
 }
@@ -1354,8 +1380,8 @@ func newTestWorldCharacter(t *testing.T) (*World, storage.Character) {
 		t.Fatalf("Open() error = %v", err)
 	}
 	w := New(bundle, store)
-	mapID, x, y := w.DefaultSpawn()
-	ch, err := w.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	mapID, x, y := defaultSpawn(bundle)
+	ch, err := w.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
 	if err != nil {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
@@ -1370,6 +1396,25 @@ func TestWalkMovesOneTileAndSetsDirection(t *testing.T) {
 	}
 	if updated.X != ch.X+1 || updated.Y != ch.Y || updated.Dir != 2 {
 		t.Fatalf("Walk() = %+v", updated)
+	}
+}
+
+func TestMoveShortensTransparentDurationOnMovement(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	before := time.Now().Add(10 * time.Second).UnixNano()
+	ch.TransparentUntil = before
+	updated, err := w.Move(ch, ch.X+1, ch.Y)
+	if err != nil {
+		t.Fatalf("Move() error = %v", err)
+	}
+	if updated.TransparentUntil == before {
+		t.Fatalf("TransparentUntil = %d, want shortened", updated.TransparentUntil)
+	}
+	if updated.TransparentUntil <= time.Now().UnixNano() {
+		t.Fatalf("TransparentUntil = %d, want future expiration", updated.TransparentUntil)
+	}
+	if updated.TransparentUntil > time.Now().Add(2*time.Second).UnixNano() {
+		t.Fatalf("TransparentUntil = %d, want near-term expiration", updated.TransparentUntil)
 	}
 }
 
@@ -1409,7 +1454,7 @@ func TestRunRejectsBlockedIntermediateTile(t *testing.T) {
 		t.Fatalf("Open() error = %v", err)
 	}
 	w := New(bundle, store)
-	ch, err := w.CreateCharacter("test", "tester1", "warrior", testMapID, startX, startY)
+	ch, err := w.CreateCharacterWithAppearance("test", "tester1", "warrior", 0, 0, testMapID, startX, startY)
 	if err != nil {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
@@ -1449,7 +1494,7 @@ func TestHitConnectsWithMonsterInFront(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Walk() error = %v", err)
 	}
-	monsters, _ := w.Snapshot(ch.MapID)
+	monsters, _ := w.SnapshotAround(ch.MapID, 0, 0, 99999)
 	if len(monsters) == 0 {
 		t.Fatalf("expected monsters")
 	}
@@ -1486,17 +1531,250 @@ func TestHitRejectsCoordinateMismatch(t *testing.T) {
 	}
 }
 
+func prepareHitDamageTestWorld(t *testing.T, skills storage.SkillStates) (*World, storage.Character) {
+	t.Helper()
+	w, ch := newTestWorldCharacter(t)
+	w.mu.Lock()
+	w.monsters = map[string]*Monster{}
+	w.occupied = map[monsterPosition]string{}
+	w.rand = rand.New(rand.NewSource(1))
+	w.mu.Unlock()
+	ch.Skills = skills
+	result, err := w.SpawnMonsterByNameAt(ch.MapID, ch.X+1, ch.Y, "鸡", 1)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
+	}
+	if len(result.Monsters) != 1 {
+		t.Fatalf("SpawnMonsterByNameAt() monsters = %d, want 1", len(result.Monsters))
+	}
+	w.mu.Lock()
+	mon := w.monsters[result.Monsters[0].ID]
+	mon.HP = 1000
+	mon.MaxHP = 1000
+	w.mu.Unlock()
+	return w, ch
+}
+
+func TestAbilitiesIncludesWeaponSkillBonuses(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	ch.Skills = storage.SkillStates{
+		{ID: "基本剑术", Level: 0, Train: 0},
+		{ID: "精神力战法", Level: 1, Train: 0},
+	}
+	base := Base(ch.Class, ch.Level)
+	got := w.Abilities(ch)
+	if got.DC != PackWord(base.DC+1, base.DCMax+1, 0, 0) {
+		t.Fatalf("Abilities().DC = %d, want basic sword bonus applied", got.DC)
+	}
+	if got.SC != PackWord(base.SC+2, base.SCMax+2, 0, 0) {
+		t.Fatalf("Abilities().SC = %d, want spirit power bonus applied", got.SC)
+	}
+}
+
+func TestHitWithWarriorSkillsAddsDamage(t *testing.T) {
+	baseW, baseCh := prepareHitDamageTestWorld(t, nil)
+	baseResult, err := baseW.HitWithIdent(baseCh, baseCh.X, baseCh.Y, 2, mir176.CMHit)
+	if err != nil {
+		t.Fatalf("base HitWithIdent() error = %v", err)
+	}
+	skillW, skillCh := prepareHitDamageTestWorld(t, storage.SkillStates{{ID: "基本剑术", Level: 0, Train: 0}})
+	skillResult, err := skillW.HitWithIdent(skillCh, skillCh.X, skillCh.Y, 2, mir176.CMHit)
+	if err != nil {
+		t.Fatalf("skill HitWithIdent() error = %v", err)
+	}
+	if skillResult.Damage <= baseResult.Damage {
+		t.Fatalf("skill damage = %d, base = %d, want higher with basic sword", skillResult.Damage, baseResult.Damage)
+	}
+}
+
+func TestHeavyHitDoesNotTrainPowerHitSkill(t *testing.T) {
+	w, ch := prepareHitDamageTestWorld(t, storage.SkillStates{{ID: "攻杀剑术", Level: 0, Train: 0}})
+	result, err := w.HitWithIdent(ch, ch.X, ch.Y, 2, mir176.CMHeavyHit)
+	if err != nil {
+		t.Fatalf("HitWithIdent() error = %v", err)
+	}
+	if len(result.Character.Skills) != 1 {
+		t.Fatalf("skills = %+v, want one learned skill", result.Character.Skills)
+	}
+	if got := result.Character.Skills[0].Train; got != 0 {
+		t.Fatalf("skill train = %d, want unchanged for heavy hit", got)
+	}
+}
+
+func TestHitWithWarriorSkillsTrainsBasicSword(t *testing.T) {
+	w, ch := prepareHitDamageTestWorld(t, storage.SkillStates{{ID: "基本剑术", Level: 0, Train: 0}})
+	ch.Level = 7
+	result, err := w.HitWithIdent(ch, ch.X, ch.Y, 2, mir176.CMHit)
+	if err != nil {
+		t.Fatalf("HitWithIdent() error = %v", err)
+	}
+	if len(result.Character.Skills) != 1 {
+		t.Fatalf("skills = %+v, want one learned skill", result.Character.Skills)
+	}
+	if got := result.Character.Skills[0].Train; got < 1 || got > 3 {
+		t.Fatalf("skill train = %d, want 1..3 after hit", got)
+	}
+}
+
+func TestFireHitUsesFireSwordBonus(t *testing.T) {
+	baseW, baseCh := prepareHitDamageTestWorld(t, storage.SkillStates{{ID: "烈火剑法", Level: 0, Train: 0}})
+	baseResult, err := baseW.HitWithIdent(baseCh, baseCh.X, baseCh.Y, 2, mir176.CMHit)
+	if err != nil {
+		t.Fatalf("base HitWithIdent() error = %v", err)
+	}
+	fireW, fireCh := prepareHitDamageTestWorld(t, storage.SkillStates{{ID: "烈火剑法", Level: 0, Train: 0}})
+	fireResult, err := fireW.HitWithIdent(fireCh, fireCh.X, fireCh.Y, 2, mir176.CMFireHit)
+	if err != nil {
+		t.Fatalf("fire HitWithIdent() error = %v", err)
+	}
+	if fireResult.Damage <= baseResult.Damage {
+		t.Fatalf("fire damage = %d, base = %d, want higher with fire sword", fireResult.Damage, baseResult.Damage)
+	}
+}
+
+func TestCastSkillRespectsCooldown(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	ch.Skills = storage.SkillStates{{ID: "火球术", Level: 0, Train: 0}}
+	ch.MP = 100
+
+	first, err := w.CastSkillWithPlayers(ch, "火球术", ch.X+1, ch.Y, 0, nil)
+	if err != nil {
+		t.Fatalf("first CastSkillWithPlayers() error = %v", err)
+	}
+	if first.Character.Skills[0].LastCastAt == 0 {
+		t.Fatal("first cast LastCastAt = 0, want set")
+	}
+
+	second, err := w.CastSkillWithPlayers(first.Character, "火球术", ch.X+1, ch.Y, 0, nil)
+	if err == nil {
+		t.Fatalf("second CastSkillWithPlayers() error = nil, want cooldown rejection")
+	}
+	if !strings.Contains(err.Error(), "cooling down") {
+		t.Fatalf("second CastSkillWithPlayers() error = %v, want cooldown rejection", err)
+	}
+	if second.SkillID != "" {
+		t.Fatalf("second result = %+v, want zero-value result on cooldown rejection", second)
+	}
+}
+
+func TestCastSkillRejectsTargetsOutOfRange(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	caster.Skills = storage.SkillStates{{ID: "火球术", Level: 0, Train: 0}}
+	caster.MP = 100
+	if _, err := w.CastSkillWithPlayers(caster, "火球术", caster.X+9, caster.Y, 0, nil); err == nil {
+		t.Fatal("CastSkillWithPlayers() expected range rejection")
+	}
+}
+
+func TestLongHitConnectsTwoTilesAhead(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	w.mu.Lock()
+	w.monsters = map[string]*Monster{}
+	w.occupied = map[monsterPosition]string{}
+	w.rand = rand.New(rand.NewSource(1))
+	w.mu.Unlock()
+	mapID := ch.MapID
+	targetX, targetY := ch.X+2, ch.Y
+	if !w.data.Maps[mapID].Walkable(targetX, targetY) {
+		t.Fatal("expected walkable tile for long hit test")
+	}
+	result, err := w.SpawnMonsterByNameAt(mapID, targetX, targetY, "鸡", 1)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
+	}
+	if len(result.Monsters) != 1 {
+		t.Fatalf("SpawnMonsterByNameAt() monsters = %d, want 1", len(result.Monsters))
+	}
+	hit, err := w.HitWithIdent(ch, ch.X, ch.Y, 2, mir176.CMLongHit)
+	if err != nil {
+		t.Fatalf("HitWithIdent() error = %v", err)
+	}
+	if hit.MonsterID == "" {
+		t.Fatal("expected long hit to connect")
+	}
+}
+
+func TestWideHitConnectsInReferenceArc(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	w.mu.Lock()
+	w.monsters = map[string]*Monster{}
+	w.occupied = map[monsterPosition]string{}
+	w.rand = rand.New(rand.NewSource(1))
+	w.mu.Unlock()
+	mapID := ch.MapID
+	dir := 2
+	relDirs := []int{7, 1, 2}
+	targetX, targetY := -1, -1
+	for _, rel := range relDirs {
+		fd := (dir + rel) % 8
+		off := dirOffsets[fd]
+		tx, ty := ch.X+off[0], ch.Y+off[1]
+		if !w.data.Maps[mapID].Walkable(tx, ty) {
+			continue
+		}
+		targetX, targetY = tx, ty
+		break
+	}
+	if targetX < 0 {
+		t.Fatal("could not find walkable tile for wide hit test")
+	}
+	result, err := w.SpawnMonsterByNameAt(mapID, targetX, targetY, "鸡", 1)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
+	}
+	if len(result.Monsters) != 1 {
+		t.Fatalf("SpawnMonsterByNameAt() monsters = %d, want 1", len(result.Monsters))
+	}
+	hit, err := w.HitWithIdent(ch, ch.X, ch.Y, dir, mir176.CMWideHit)
+	if err != nil {
+		t.Fatalf("HitWithIdent() error = %v", err)
+	}
+	if hit.MonsterID == "" {
+		t.Fatal("expected wide hit to connect")
+	}
+}
+
+func TestHitWithIdentReturnsCharacterHitOnPlayerTarget(t *testing.T) {
+	w, attacker := newTestWorldCharacter(t)
+	w.mu.Lock()
+	w.monsters = map[string]*Monster{}
+	w.occupied = map[monsterPosition]string{}
+	w.mu.Unlock()
+	mapID := attacker.MapID
+	target, err := w.CreateCharacterWithAppearance("test2", "target", "warrior", 0, 0, mapID, attacker.X+1, attacker.Y)
+	if err != nil {
+		t.Fatalf("CreateCharacterWithAppearance() error = %v", err)
+	}
+	updated, err := w.HitWithIdent(attacker, attacker.X, attacker.Y, 2, mir176.CMHit, target)
+	if err != nil {
+		t.Fatalf("HitWithIdent() error = %v", err)
+	}
+	if len(updated.CharacterHits) != 1 {
+		t.Fatalf("CharacterHits = %+v, want 1", updated.CharacterHits)
+	}
+	hit := updated.CharacterHits[0]
+	if hit.Character.ID != target.ID {
+		t.Fatalf("hit target = %s, want %s", hit.Character.ID, target.ID)
+	}
+	if hit.AttackerID != attacker.ID {
+		t.Fatalf("hit attacker = %s, want %s", hit.AttackerID, attacker.ID)
+	}
+	if hit.Damage <= 0 {
+		t.Fatalf("hit damage = %d, want positive", hit.Damage)
+	}
+}
+
 func TestSpawnMonsterByNameAddsLiveMonsters(t *testing.T) {
 	w, ch := newRealDataWorldCharacter(t)
-	before, _ := w.Snapshot(ch.MapID)
-	result, err := w.SpawnMonsterByName(ch.MapID, ch.X+1, ch.Y, "鹿", 2)
+	before, _ := w.SnapshotAround(ch.MapID, 0, 0, 99999)
+	result, err := spawnMonsterForTest(t, w, ch.MapID, ch.X+1, ch.Y, "鹿", 2)
 	if err != nil {
 		t.Fatalf("SpawnMonsterByName() error = %v", err)
 	}
 	if len(result.Monsters) != 2 {
 		t.Fatalf("spawn result = %d monsters, want 2", len(result.Monsters))
 	}
-	after, _ := w.Snapshot(ch.MapID)
+	after, _ := w.SnapshotAround(ch.MapID, 0, 0, 99999)
 	if len(after) != len(before)+2 {
 		t.Fatalf("monster count = %d, want %d", len(after), len(before)+2)
 	}
@@ -1520,7 +1798,7 @@ func TestSpawnMonsterByNameAddsLiveMonsters(t *testing.T) {
 
 func TestSpawnMonsterByNameLoadsRedMoonEvilFromConfigs(t *testing.T) {
 	w, ch := newRealDataWorldCharacter(t)
-	result, err := w.SpawnMonsterByName(ch.MapID, ch.X+1, ch.Y, "赤月恶魔", 1)
+	result, err := spawnMonsterForTest(t, w, ch.MapID, ch.X+1, ch.Y, "赤月恶魔", 1)
 	if err != nil {
 		t.Fatalf("SpawnMonsterByName() error = %v", err)
 	}
@@ -1537,7 +1815,7 @@ func TestSpawnMonsterCarriesConfiguredCombatAttributes(t *testing.T) {
 		t.Fatalf("Open() error = %v", err)
 	}
 	w := New(bundle, store)
-	monsters, _ := w.Snapshot(testMapID)
+	monsters, _ := w.SnapshotAround(testMapID, 0, 0, 99999)
 	if len(monsters) != 1 {
 		t.Fatalf("monster count = %d, want 1", len(monsters))
 	}
@@ -1563,12 +1841,12 @@ func TestSpawnMonsterByNameReturnsErrorWhenNoSpaceIsAvailable(t *testing.T) {
 		t.Fatalf("Open() error = %v", err)
 	}
 	w := New(bundle, store)
-	mapID, x, y := w.DefaultSpawn()
-	ch, err := w.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	mapID, x, y := defaultSpawn(bundle)
+	ch, err := w.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
 	if err != nil {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
-	if _, err := w.SpawnMonsterByName(ch.MapID, targetX, targetY, "鹿", 1); err == nil {
+	if _, err := spawnMonsterForTest(t, w, ch.MapID, targetX, targetY, "鹿", 1); err == nil {
 		t.Fatalf("SpawnMonsterByName() expected error when no spawn positions are available")
 	}
 }
@@ -1582,7 +1860,7 @@ func TestInitialSpawnDoesNotOverlapWhenCountExceedsRange(t *testing.T) {
 		t.Fatalf("Open() error = %v", err)
 	}
 	w := New(bundle, store)
-	monsters, _ := w.Snapshot(testMapID)
+	monsters, _ := w.SnapshotAround(testMapID, 0, 0, 99999)
 	if len(monsters) != 3 {
 		t.Fatalf("monster count = %d, want 3", len(monsters))
 	}
@@ -1608,7 +1886,7 @@ func TestInitialSpawnScalesWithMapMonsterSpawnRate(t *testing.T) {
 		t.Fatalf("Open() error = %v", err)
 	}
 	w := New(bundle, store)
-	monsters, _ := w.Snapshot(testMapID)
+	monsters, _ := w.SnapshotAround(testMapID, 0, 0, 99999)
 	if len(monsters) != 2 {
 		t.Fatalf("monster count = %d, want 2 when map spawn rate doubles the divisor", len(monsters))
 	}
@@ -1624,7 +1902,7 @@ func TestRespawnDoesNotOverlapLivingMonster(t *testing.T) {
 		t.Fatalf("Open() error = %v", err)
 	}
 	w := New(bundle, store)
-	monsters, _ := w.Snapshot(testMapID)
+	monsters, _ := w.SnapshotAround(testMapID, 0, 0, 99999)
 	if len(monsters) != 1 {
 		t.Fatalf("monster count = %d, want 1", len(monsters))
 	}
@@ -1649,7 +1927,7 @@ func TestRespawnDoesNotOverlapLivingMonster(t *testing.T) {
 	w.occupyMonsterLocked(w.monsters["blocker"])
 	w.mu.Unlock()
 
-	after, _ := w.Snapshot("0")
+	after, _ := w.SnapshotAround("0", 0, 0, 99999)
 	seen := map[[2]int]string{}
 	for _, current := range after {
 		pos := [2]int{current.X, current.Y}
@@ -1672,7 +1950,7 @@ func TestRespawnDoesNotOverlapLivingMonster(t *testing.T) {
 func TestSpawnMonsterCarriesConfiguredSpecialState(t *testing.T) {
 	w, ch := newRealDataWorldCharacter(t)
 
-	result, err := w.SpawnMonsterByName(ch.MapID, ch.X+1, ch.Y, "暗之触龙神", 1)
+	result, err := spawnMonsterForTest(t, w, ch.MapID, ch.X+1, ch.Y, "暗之触龙神", 1)
 	if err != nil {
 		t.Fatalf("SpawnMonsterByName() error = %v", err)
 	}
@@ -1684,7 +1962,7 @@ func TestSpawnMonsterCarriesConfiguredSpecialState(t *testing.T) {
 		t.Fatalf("spawned monster = %+v, want hidden stone monster facing south", dragon)
 	}
 
-	result, err = w.SpawnMonsterByName(ch.MapID, ch.X+2, ch.Y, "圣域弓箭手", 1)
+	result, err = spawnMonsterForTest(t, w, ch.MapID, ch.X+2, ch.Y, "圣域弓箭手", 1)
 	if err != nil {
 		t.Fatalf("SpawnMonsterByName() error = %v", err)
 	}
@@ -1946,47 +2224,6 @@ func TestEquipSwapsPreviouslyEquippedItemBackToBag(t *testing.T) {
 	}
 }
 
-func TestMoveBagItemMovesIntoEmptySlot(t *testing.T) {
-	w, ch := newTestWorldCharacter(t)
-	ch.BagItems = []storage.UserItem{{ItemID: testHPItemID, MakeIndex: 11}}
-
-	updated, err := w.MoveBagItem(ch, 0, 5)
-	if err != nil {
-		t.Fatalf("MoveBagItem() error = %v", err)
-	}
-	if len(updated.BagItems) != 1 {
-		t.Fatalf("bag len = %d, want 1", len(updated.BagItems))
-	}
-	if updated.BagItems[0].ItemID != testHPItemID {
-		t.Fatalf("bag[0] = %+v, want moved item", updated.BagItems[0])
-	}
-	if updated.BagItems[0].MakeIndex != 11 {
-		t.Fatalf("bag[0].MakeIndex = %d, want 11", updated.BagItems[0].MakeIndex)
-	}
-}
-
-func TestMoveBagItemSwapsOccupiedSlots(t *testing.T) {
-	w, ch := newTestWorldCharacter(t)
-	ch.BagItems = []storage.UserItem{
-		{ItemID: testHPItemID, MakeIndex: 11},
-		{ItemID: testWeaponID, MakeIndex: 22},
-	}
-
-	updated, err := w.MoveBagItem(ch, 0, 5)
-	if err != nil {
-		t.Fatalf("MoveBagItem() error = %v", err)
-	}
-	if updated.BagItems[0].ItemID != testWeaponID {
-		t.Fatalf("bag[0] = %+v, want remaining item first", updated.BagItems[0])
-	}
-	if updated.BagItems[1].ItemID != testHPItemID {
-		t.Fatalf("bag[1] = %+v, want moved item at the end", updated.BagItems[1])
-	}
-	if updated.BagItems[0].MakeIndex != 22 || updated.BagItems[1].MakeIndex != 11 {
-		t.Fatalf("bag makeindexes = [%d %d], want [22 11]", updated.BagItems[0].MakeIndex, updated.BagItems[1].MakeIndex)
-	}
-}
-
 func TestDropItemMovesOneItemToGround(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
 	ch.BagItems = []storage.UserItem{
@@ -1994,7 +2231,7 @@ func TestDropItemMovesOneItemToGround(t *testing.T) {
 		{ItemID: testHPItemID, MakeIndex: 2},
 		{ItemID: testHPItemID, MakeIndex: 3},
 	}
-	updated, drop, err := w.DropItem(ch, testHPItemID)
+	updated, drop, err := w.DropItemCountByBagIndex(ch, 0, testHPItemID)
 	if err != nil {
 		t.Fatalf("DropItem() error = %v", err)
 	}
@@ -2025,7 +2262,7 @@ func TestDropItemCountDropsPartialStack(t *testing.T) {
 		{ItemID: testHPItemID, MakeIndex: 2},
 		{ItemID: testHPItemID, MakeIndex: 3},
 	}
-	updated, drop, err := w.DropItemCount(ch, testHPItemID, 2)
+	updated, drop, err := w.DropItemCountByBagIndex(ch, 0, testHPItemID)
 	if err != nil {
 		t.Fatalf("DropItemCount() error = %v", err)
 	}
@@ -2050,7 +2287,7 @@ func TestDropItemCountByBagIndexUsesMakeIndex(t *testing.T) {
 		{ItemID: testHPItemID, MakeIndex: 12},
 		{ItemID: testHPItemID, MakeIndex: 13},
 	}
-	updated, drop, err := w.DropItemCountByBagIndex(ch, 11, testHPItemID, 2)
+	updated, drop, err := w.DropItemCountByBagIndex(ch, 11, testHPItemID)
 	if err != nil {
 		t.Fatalf("DropItemCountByBagIndex() error = %v", err)
 	}
@@ -2078,7 +2315,7 @@ func TestDropItemCountByBagIndexClearsStaleQuickSlotBinding(t *testing.T) {
 	}
 	setEquippedItem(&ch, SlotCharm, storage.UserItem{ItemID: testMPItemID, MakeIndex: 21, Dura: 8})
 
-	updated, drop, err := w.DropItemCountByBagIndex(ch, 21, testMPItemID, 1)
+	updated, drop, err := w.DropItemCountByBagIndex(ch, 21, testMPItemID)
 	if err != nil {
 		t.Fatalf("DropItemCountByBagIndex() error = %v", err)
 	}
@@ -2485,7 +2722,7 @@ func TestPickupAtReturnsItemToBag(t *testing.T) {
 		{ItemID: testHPItemID, MakeIndex: 1},
 		{ItemID: testHPItemID, MakeIndex: 2},
 	}
-	ch, drop, err := w.DropItem(ch, testHPItemID)
+	ch, drop, err := w.DropItemCountByBagIndex(ch, 0, testHPItemID)
 	if err != nil {
 		t.Fatalf("DropItem() error = %v", err)
 	}
@@ -2514,8 +2751,29 @@ func TestPickupAtReturnsItemToBag(t *testing.T) {
 func TestUseWeaponDoesNotAutoEquipItem(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
 	ch.BagItems = []storage.UserItem{{ItemID: testWeaponID}}
-	if _, _, err := w.UseItem(ch, testWeaponID); err == nil {
+	if _, _, err := w.UseItemByBagIndex(ch, 0); err == nil {
 		t.Fatalf("UseItem() expected error for wearable item")
+	}
+}
+
+func TestUseSkillBookLearnsBasicSwordSkill(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	ch.Class = "warrior"
+	ch.Level = 7
+	ch.BagItems = []storage.UserItem{{ItemID: "基本剑术", MakeIndex: 1}}
+
+	updated, result, err := w.UseItemByBagIndex(ch, 1)
+	if err != nil {
+		t.Fatalf("UseItemByBagIndex() error = %v", err)
+	}
+	if !result.SkillChanged {
+		t.Fatalf("SkillChanged = false, want true")
+	}
+	if !updated.Skills.Has("基本剑术") {
+		t.Fatalf("skills = %+v, want learned 基本剑术", updated.Skills)
+	}
+	if countBagItems(updated.BagItems) != 0 {
+		t.Fatalf("bag = %+v, want consumed skill book", updated.BagItems)
 	}
 }
 
@@ -2529,7 +2787,7 @@ func TestUseItemConsumesSlowPotionAndQueuesRecovery(t *testing.T) {
 		{ItemID: testHPItemID, MakeIndex: 1},
 		{ItemID: testHPItemID, MakeIndex: 2},
 	}
-	updated, _, err := w.UseItem(ch, testHPItemID)
+	updated, _, err := w.UseItemByBagIndex(ch, 1)
 	if err != nil {
 		t.Fatalf("UseItem() error = %v", err)
 	}
@@ -2717,8 +2975,8 @@ func TestUseItemShape13AddsExperience(t *testing.T) {
 	gameplay := config.DefaultGameplay()
 	gameplay.Progression.RequiredExperiencePerLevel = 1000
 	w := New(bundle, store, gameplay)
-	mapID, x, y := w.DefaultSpawn()
-	ch, err := w.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	mapID, x, y := defaultSpawn(bundle)
+	ch, err := w.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
 	if err != nil {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
@@ -2743,6 +3001,2055 @@ func TestUseItemShape13AddsExperience(t *testing.T) {
 	}
 	if result.LevelUp {
 		t.Fatal("LevelUp = true, want false with high threshold")
+	}
+}
+
+func TestCastSkillLevelsUpWhenTrainThresholdReached(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	w.mu.Lock()
+	w.monsters = map[string]*Monster{}
+	w.occupied = map[monsterPosition]string{}
+	w.mu.Unlock()
+	mapID := caster.MapID
+	targetX, targetY := caster.X+1, caster.Y
+	if !w.data.Maps[mapID].Walkable(targetX, targetY) {
+		t.Fatal("expected walkable tile for skill level-up test")
+	}
+	result, err := w.SpawnMonsterByNameAt(mapID, targetX, targetY, "鸡", 1)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
+	}
+	if len(result.Monsters) != 1 {
+		t.Fatalf("SpawnMonsterByNameAt() monsters = %d, want 1", len(result.Monsters))
+	}
+	caster.Skills = storage.SkillStates{{ID: "火球术", Level: 0, Train: 99}}
+	caster.Level = 7
+	caster.MP = 100
+	updated, err := w.CastSkillWithPlayers(caster, "火球术", targetX, targetY, 0, nil)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if len(updated.Character.Skills) != 1 {
+		t.Fatalf("Skills = %+v, want 1 entry", updated.Character.Skills)
+	}
+	if updated.Character.Skills[0].Level != 1 {
+		t.Fatalf("skill level = %d, want 1 after threshold", updated.Character.Skills[0].Level)
+	}
+	if got := updated.Character.Skills[0].Train; got < 0 || got > 2 {
+		t.Fatalf("skill train = %d, want 0..2 after level up", got)
+	}
+}
+
+func TestCastSkillGroupHealingHealsGroupMembers(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	mapID, x, y := caster.MapID, caster.X, caster.Y
+	friend, err := w.CreateCharacterWithAppearance("test", "friend", "wizard", 0, 0, mapID, x+1, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() friend error = %v", err)
+	}
+	caster.AllowGroup = true
+	friend.AllowGroup = true
+	caster, friend, err = w.CreateGroup(caster, friend, 2)
+	if err != nil {
+		t.Fatalf("CreateGroup() error = %v", err)
+	}
+	caster.Skills = storage.SkillStates{{ID: "群体治疗术", Level: 0, Train: 0}}
+	caster.HP = 20
+	caster.MaxHP = 100
+	caster.MP = 50
+	friend.HP = 30
+	friend.MaxHP = 100
+	players := []storage.Character{caster, friend}
+	result, err := w.CastSkillWithPlayers(caster, "群体治疗术", x, y, 0, players)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if result.SkillID != "群体治疗术" {
+		t.Fatalf("SkillID = %q, want 群体治疗术", result.SkillID)
+	}
+	if len(result.AffectedCharacters) != 2 {
+		t.Fatalf("AffectedCharacters = %d, want 2", len(result.AffectedCharacters))
+	}
+	if result.Character.HP <= 20 {
+		t.Fatalf("caster HP = %d, want healed above 20", result.Character.HP)
+	}
+	if result.Character.MP >= 50 {
+		t.Fatalf("caster MP = %d, want spent mana", result.Character.MP)
+	}
+	seenCaster := false
+	seenFriend := false
+	for _, ch := range result.AffectedCharacters {
+		switch ch.ID {
+		case caster.ID:
+			seenCaster = true
+			if ch.HP <= 20 {
+				t.Fatalf("caster affected HP = %d, want healed", ch.HP)
+			}
+		case friend.ID:
+			seenFriend = true
+			if ch.HP <= 30 {
+				t.Fatalf("friend affected HP = %d, want healed", ch.HP)
+			}
+		}
+	}
+	if !seenCaster || !seenFriend {
+		t.Fatalf("affected set missing caster or friend: caster=%v friend=%v", seenCaster, seenFriend)
+	}
+}
+
+func TestCastSkillGroupHealingHealsFriendlySummon(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	caster.Dir = 2
+	caster.MP = 100
+	caster.HP = 20
+	caster.MaxHP = 100
+	caster.Skills = storage.SkillStates{{ID: "召唤骷髅", Level: 0, Train: 0}, {ID: "群体治疗术", Level: 0, Train: 0}}
+	summonedResult, err := w.CastSkillWithPlayers(caster, "召唤骷髅", caster.X, caster.Y, 0, nil)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() summon error = %v", err)
+	}
+	summoned := summonedResult.SummonedMonsters[0]
+	w.mu.Lock()
+	if mon, ok := w.monsters[summoned.ID]; ok {
+		mon.HP = 5
+	}
+	w.mu.Unlock()
+	updated, err := w.CastSkillWithPlayers(summonedResult.Character, "群体治疗术", caster.X, caster.Y, 0, []storage.Character{summonedResult.Character})
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() group heal error = %v", err)
+	}
+	if updated.Character.HP <= 20 {
+		t.Fatalf("caster HP = %d, want healed above 20", updated.Character.HP)
+	}
+	w.mu.Lock()
+	gotHP := 0
+	if mon, ok := w.monsters[summoned.ID]; ok {
+		gotHP = mon.HP
+	}
+	w.mu.Unlock()
+	if gotHP <= 5 {
+		t.Fatalf("summoned HP = %d, want healed above 5", gotHP)
+	}
+}
+
+func TestCastSkillGroupHealingReturnsFriendlySummonInAffectedMonsters(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	caster.Dir = 2
+	caster.MP = 100
+	caster.HP = 20
+	caster.MaxHP = 100
+	caster.Skills = storage.SkillStates{{ID: "召唤骷髅", Level: 0, Train: 0}, {ID: "群体治疗术", Level: 0, Train: 0}}
+	summonedResult, err := w.CastSkillWithPlayers(caster, "召唤骷髅", caster.X, caster.Y, 0, nil)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() summon error = %v", err)
+	}
+	summoned := summonedResult.SummonedMonsters[0]
+	w.mu.Lock()
+	if mon, ok := w.monsters[summoned.ID]; ok {
+		mon.HP = 5
+	}
+	w.mu.Unlock()
+	updated, err := w.CastSkillWithPlayers(summonedResult.Character, "群体治疗术", caster.X, caster.Y, 0, []storage.Character{summonedResult.Character})
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() group heal error = %v", err)
+	}
+	if len(updated.AffectedMonsters) != 1 {
+		t.Fatalf("AffectedMonsters = %d, want 1", len(updated.AffectedMonsters))
+	}
+	if updated.AffectedMonsters[0].ID != summoned.ID {
+		t.Fatalf("AffectedMonsters[0].ID = %q, want %q", updated.AffectedMonsters[0].ID, summoned.ID)
+	}
+}
+
+func TestCastSkillHealRestoresCasterHP(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	caster.Skills = storage.SkillStates{{ID: "治愈术", Level: 0, Train: 0}}
+	caster.HP = 20
+	caster.MaxHP = 100
+	updated, err := w.CastSkillWithPlayers(caster, "治愈术", caster.X, caster.Y, 0, nil)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if updated.Character.HP <= 20 {
+		t.Fatalf("caster HP = %d, want healed above 20", updated.Character.HP)
+	}
+	if updated.Character.HP > updated.Character.MaxHP {
+		t.Fatalf("caster HP = %d, want not above max %d", updated.Character.HP, updated.Character.MaxHP)
+	}
+}
+
+func TestCastSkillHealHealsFriendlySummon(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	caster.Dir = 2
+	caster.MP = 100
+	caster.HP = 20
+	caster.MaxHP = 100
+	caster.Skills = storage.SkillStates{{ID: "召唤骷髅", Level: 0, Train: 0}, {ID: "治愈术", Level: 0, Train: 0}}
+	summonedResult, err := w.CastSkillWithPlayers(caster, "召唤骷髅", caster.X, caster.Y, 0, nil)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() summon error = %v", err)
+	}
+	summoned := summonedResult.SummonedMonsters[0]
+	w.mu.Lock()
+	if mon, ok := w.monsters[summoned.ID]; ok {
+		mon.HP = 5
+	}
+	w.mu.Unlock()
+	updated, err := w.CastSkillWithPlayers(summonedResult.Character, "治愈术", summoned.X, summoned.Y, 0, nil)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() heal error = %v", err)
+	}
+	if updated.Character.HP != 20 {
+		t.Fatalf("caster HP = %d, want self HP unchanged when healing summon", updated.Character.HP)
+	}
+	w.mu.Lock()
+	gotHP := 0
+	if mon, ok := w.monsters[summoned.ID]; ok {
+		gotHP = mon.HP
+	}
+	w.mu.Unlock()
+	if gotHP <= 5 {
+		t.Fatalf("summoned HP = %d, want healed above 5", gotHP)
+	}
+}
+
+func TestCastSkillHealCanTargetGroupMember(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	mapID, x, y := caster.MapID, caster.X, caster.Y
+	friend, err := w.CreateCharacterWithAppearance("test", "friend", "wizard", 0, 0, mapID, x+1, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() friend error = %v", err)
+	}
+	caster.AllowGroup = true
+	friend.AllowGroup = true
+	caster, friend, err = w.CreateGroup(caster, friend, 2)
+	if err != nil {
+		t.Fatalf("CreateGroup() error = %v", err)
+	}
+	caster.Skills = storage.SkillStates{{ID: "治愈术", Level: 0, Train: 0}}
+	friend.HP = 30
+	friend.MaxHP = 100
+	players := []storage.Character{caster, friend}
+	updated, err := w.CastSkillWithPlayers(caster, "治愈术", friend.X, friend.Y, CharacterActorID(friend), players)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if updated.Character.HP != caster.HP {
+		t.Fatalf("caster HP = %d, want unchanged", updated.Character.HP)
+	}
+	if len(updated.AffectedCharacters) != 1 {
+		t.Fatalf("AffectedCharacters = %d, want 1", len(updated.AffectedCharacters))
+	}
+	if updated.AffectedCharacters[0].ID != friend.ID {
+		t.Fatalf("affected target = %s, want %s", updated.AffectedCharacters[0].ID, friend.ID)
+	}
+	if updated.AffectedCharacters[0].HP <= 30 {
+		t.Fatalf("friend HP = %d, want healed", updated.AffectedCharacters[0].HP)
+	}
+}
+
+func TestCastSkillHealCanTargetFriendlyNonGroupInPeaceMode(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	mapID, x, y := caster.MapID, caster.X, caster.Y
+	friend, err := w.CreateCharacterWithAppearance("test", "friend", "wizard", 0, 0, mapID, x+1, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() friend error = %v", err)
+	}
+	caster.AttackMode = 1
+	caster.Skills = storage.SkillStates{{ID: "治愈术", Level: 0, Train: 0}}
+	friend.HP = 30
+	friend.MaxHP = 100
+	players := []storage.Character{caster, friend}
+	updated, err := w.CastSkillWithPlayers(caster, "治愈术", friend.X, friend.Y, CharacterActorID(friend), players)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if len(updated.AffectedCharacters) != 1 {
+		t.Fatalf("AffectedCharacters = %d, want 1", len(updated.AffectedCharacters))
+	}
+	if updated.AffectedCharacters[0].ID != friend.ID {
+		t.Fatalf("affected target = %s, want %s", updated.AffectedCharacters[0].ID, friend.ID)
+	}
+	if updated.AffectedCharacters[0].HP <= 30 {
+		t.Fatalf("friend HP = %d, want healed", updated.AffectedCharacters[0].HP)
+	}
+}
+
+func TestCastSkillHealPrefersExactTargetID(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	mapID, x, y := caster.MapID, caster.X, caster.Y
+	first, err := w.CreateCharacterWithAppearance("test", "first", "wizard", 0, 0, mapID, x+1, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() first error = %v", err)
+	}
+	second, err := w.CreateCharacterWithAppearance("test", "second", "wizard", 0, 0, mapID, x, y+1)
+	if err != nil {
+		t.Fatalf("CreateCharacter() second error = %v", err)
+	}
+	caster.AttackMode = 1
+	caster.Skills = storage.SkillStates{{ID: "治愈术", Level: 0, Train: 0}}
+	first.HP = 30
+	second.HP = 20
+	first.MaxHP = 100
+	second.MaxHP = 100
+	players := []storage.Character{caster, first, second}
+	updated, err := w.CastSkillWithPlayers(caster, "治愈术", second.X, second.Y, CharacterActorID(second), players)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if len(updated.AffectedCharacters) != 1 {
+		t.Fatalf("AffectedCharacters = %d, want 1", len(updated.AffectedCharacters))
+	}
+	if updated.AffectedCharacters[0].ID != second.ID {
+		t.Fatalf("affected target = %s, want %s", updated.AffectedCharacters[0].ID, second.ID)
+	}
+	if updated.AffectedCharacters[0].HP <= 20 {
+		t.Fatalf("second HP = %d, want healed", updated.AffectedCharacters[0].HP)
+	}
+}
+
+func TestCastSkillHealRejectsHostileTarget(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	mapID, x, y := caster.MapID, caster.X, caster.Y
+	enemy, err := w.CreateCharacterWithAppearance("test", "enemy", "warrior", 0, 0, mapID, x+1, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() enemy error = %v", err)
+	}
+	caster.AttackMode = 2
+	caster.Skills = storage.SkillStates{{ID: "治愈术", Level: 0, Train: 0}}
+	caster.HP = 20
+	caster.MaxHP = 100
+	players := []storage.Character{caster, enemy}
+	updated, err := w.CastSkillWithPlayers(caster, "治愈术", enemy.X, enemy.Y, CharacterActorID(enemy), players)
+	if err == nil {
+		t.Fatal("CastSkillWithPlayers() error = nil, want hostile target rejected")
+	}
+	if updated.Character.ID != "" {
+		t.Fatalf("updated character = %+v, want zero value on rejection", updated.Character)
+	}
+}
+
+func TestCastSkillProtectionBuffsApplyToGroupMembers(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	mapID, x, y := caster.MapID, caster.X, caster.Y
+	friend, err := w.CreateCharacterWithAppearance("test", "friend", "wizard", 0, 0, mapID, x+1, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() friend error = %v", err)
+	}
+	caster.AllowGroup = true
+	friend.AllowGroup = true
+	caster, friend, err = w.CreateGroup(caster, friend, 2)
+	if err != nil {
+		t.Fatalf("CreateGroup() error = %v", err)
+	}
+	caster.Skills = storage.SkillStates{
+		{ID: "神圣战甲术", Level: 0, Train: 0},
+		{ID: "幽灵盾", Level: 0, Train: 0},
+	}
+	players := []storage.Character{caster, friend}
+	result, err := w.CastSkillWithPlayers(caster, "神圣战甲术", x, y, 0, players)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() armour error = %v", err)
+	}
+	if len(result.AffectedCharacters) != 2 {
+		t.Fatalf("armour affected = %d, want 2", len(result.AffectedCharacters))
+	}
+	if result.Character.DefenceUpUntil == 0 {
+		t.Fatal("armour buff did not set expiry")
+	}
+	result, err = w.CastSkillWithPlayers(result.Character, "幽灵盾", x, y, 0, players)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() shield error = %v", err)
+	}
+	if len(result.AffectedCharacters) != 2 {
+		t.Fatalf("shield affected = %d, want 2", len(result.AffectedCharacters))
+	}
+	if result.Character.MagDefenceUpUntil == 0 {
+		t.Fatal("shield buff did not set expiry")
+	}
+}
+
+func TestCastSkillProtectionBuffsApplyToFriendlySummon(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	caster.Dir = 2
+	caster.MP = 100
+	caster.Skills = storage.SkillStates{
+		{ID: "召唤骷髅", Level: 0, Train: 0},
+		{ID: "神圣战甲术", Level: 0, Train: 0},
+	}
+	summonedResult, err := w.CastSkillWithPlayers(caster, "召唤骷髅", caster.X, caster.Y, 0, nil)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() summon error = %v", err)
+	}
+	updated, err := w.CastSkillWithPlayers(summonedResult.Character, "神圣战甲术", summonedResult.Character.X, summonedResult.Character.Y, 0, nil)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() armour error = %v", err)
+	}
+	if len(updated.AffectedMonsters) != 1 {
+		t.Fatalf("AffectedMonsters = %d, want 1", len(updated.AffectedMonsters))
+	}
+	if updated.AffectedMonsters[0].DefenceUpUntil == 0 {
+		t.Fatal("summon armour buff did not set expiry")
+	}
+}
+
+func TestCastSkillProtectionBuffDurationGrowsWithSpirit(t *testing.T) {
+	plainW, plainCaster := newTestWorldCharacter(t)
+	plainW.mu.Lock()
+	plainW.rand = rand.New(rand.NewSource(1))
+	plainW.mu.Unlock()
+	plainCaster.Skills = storage.SkillStates{{ID: "神圣战甲术", Level: 0, Train: 0}}
+	plainPlayers := []storage.Character{plainCaster}
+	plainResult, err := plainW.CastSkillWithPlayers(plainCaster, "神圣战甲术", plainCaster.X, plainCaster.Y, 0, plainPlayers)
+	if err != nil {
+		t.Fatalf("plain CastSkillWithPlayers() error = %v", err)
+	}
+	plainRemaining := time.Until(time.Unix(0, plainResult.Character.DefenceUpUntil))
+
+	buffedW, buffedCaster := newTestWorldCharacter(t)
+	buffedW.mu.Lock()
+	buffedW.rand = rand.New(rand.NewSource(1))
+	buffedW.mu.Unlock()
+	buffedCaster.Skills = storage.SkillStates{{ID: "神圣战甲术", Level: 0, Train: 0}}
+	buffedCaster.EquippedItems = map[int]storage.UserItem{
+		SlotWeapon:   {ItemID: "无极棍"},
+		SlotDress:    {ItemID: "天尊道袍"},
+		SlotNecklace: {ItemID: "天尊项链"},
+		SlotRingL:    {ItemID: "泰坦戒指"},
+	}
+	buffedPlayers := []storage.Character{buffedCaster}
+	buffedResult, err := buffedW.CastSkillWithPlayers(buffedCaster, "神圣战甲术", buffedCaster.X, buffedCaster.Y, 0, buffedPlayers)
+	if err != nil {
+		t.Fatalf("buffed CastSkillWithPlayers() error = %v", err)
+	}
+	buffedRemaining := time.Until(time.Unix(0, buffedResult.Character.DefenceUpUntil))
+	if buffedRemaining <= plainRemaining+10*time.Second {
+		t.Fatalf("buffed duration = %v, plain duration = %v, want spirit gear to extend it", buffedRemaining, plainRemaining)
+	}
+}
+
+func TestCastSkillStealthMarksCasterTransparent(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	caster.Skills = storage.SkillStates{{ID: "隐身术", Level: 0, Train: 0}}
+	updated, err := w.CastSkillWithPlayers(caster, "隐身术", caster.X, caster.Y, 0, nil)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if updated.Character.TransparentUntil == 0 {
+		t.Fatal("TransparentUntil = 0, want active stealth")
+	}
+}
+
+func TestCastSkillStealthBreaksMonsterTarget(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	caster.Skills = storage.SkillStates{{ID: "隐身术", Level: 0, Train: 0}}
+	mapID := caster.MapID
+	x, y := caster.X+3, caster.Y
+	created, err := spawnMonsterForTest(t, w, mapID, x, y, testMonsterID, 1)
+	if err != nil {
+		t.Fatalf("spawnMonsterForTest() error = %v", err)
+	}
+	mon := w.monsters[created.Monsters[0].ID]
+	mon.TargetCharacterID = caster.ID
+	mon.TargetFocusAt = time.Now()
+	updated, err := w.CastSkillWithPlayers(caster, "隐身术", caster.X, caster.Y, 0, nil)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if updated.Character.TransparentUntil == 0 {
+		t.Fatal("TransparentUntil = 0, want active stealth")
+	}
+	if mon.TargetCharacterID != "" {
+		t.Fatalf("monster TargetCharacterID = %q, want cleared", mon.TargetCharacterID)
+	}
+}
+
+func TestCastSkillGroupStealthMarksGroupMembersTransparent(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	mapID, x, y := caster.MapID, caster.X, caster.Y
+	friend, err := w.CreateCharacterWithAppearance("test", "friend", "wizard", 0, 0, mapID, x+1, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() friend error = %v", err)
+	}
+	caster.AllowGroup = true
+	friend.AllowGroup = true
+	caster, friend, err = w.CreateGroup(caster, friend, 2)
+	if err != nil {
+		t.Fatalf("CreateGroup() error = %v", err)
+	}
+	caster.Skills = storage.SkillStates{{ID: "集体隐身术", Level: 0, Train: 0}}
+	players := []storage.Character{caster, friend}
+	updated, err := w.CastSkillWithPlayers(caster, "集体隐身术", x, y, 0, players)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if len(updated.AffectedCharacters) != 2 {
+		t.Fatalf("AffectedCharacters = %d, want 2", len(updated.AffectedCharacters))
+	}
+	seenCaster := false
+	seenFriend := false
+	for _, ch := range updated.AffectedCharacters {
+		if ch.TransparentUntil == 0 {
+			t.Fatalf("affected character = %+v, want transparent", ch)
+		}
+		switch ch.ID {
+		case caster.ID:
+			seenCaster = true
+		case friend.ID:
+			seenFriend = true
+		}
+	}
+	if !seenCaster || !seenFriend {
+		t.Fatalf("affected set missing caster or friend: caster=%v friend=%v", seenCaster, seenFriend)
+	}
+}
+
+func TestCastSkillIceStormHitsMultipleMonsters(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	mapID, x, y := caster.MapID, caster.X, caster.Y
+	mp := w.data.Maps[mapID]
+	targetX, targetY := -1, -1
+	for dx := 6; dx < 24 && targetX < 0; dx++ {
+		for dy := -4; dy <= 4; dy++ {
+			tx := x + dx
+			ty := y + dy
+			if !mp.Walkable(tx, ty) {
+				continue
+			}
+			clear := true
+			w.mu.Lock()
+			for _, mon := range w.monsters {
+				if mon != nil && mon.Alive && mon.MapID == mapID && abs(mon.X-tx) <= 1 && abs(mon.Y-ty) <= 1 {
+					clear = false
+					break
+				}
+			}
+			w.mu.Unlock()
+			if clear {
+				targetX, targetY = tx, ty
+				break
+			}
+		}
+	}
+	if targetX < 0 {
+		t.Fatal("could not find clear tile for ice storm test")
+	}
+	result, err := w.SpawnMonsterByNameAt(mapID, targetX, targetY, "鸡", 2)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
+	}
+	if len(result.Monsters) != 2 {
+		t.Fatalf("SpawnMonsterByNameAt() monsters = %d, want 2", len(result.Monsters))
+	}
+	caster.Skills = storage.SkillStates{{ID: "冰咆哮", Level: 0, Train: 0}}
+	caster.MP = 50
+	updated, err := w.CastSkillWithPlayers(caster, "冰咆哮", targetX, targetY, 0, nil)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if len(updated.MonsterHits) != 2 {
+		t.Fatalf("MonsterHits = %d, want 2", len(updated.MonsterHits))
+	}
+	for _, hit := range updated.MonsterHits {
+		if hit.Damage <= 0 {
+			t.Fatalf("hit = %+v, want positive damage", hit)
+		}
+		if hit.MonsterHP >= hit.MonsterMaxHP {
+			t.Fatalf("hit = %+v, want reduced monster hp", hit)
+		}
+	}
+}
+
+func TestCastSkillLightningHitsCharacterTarget(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	w.mu.Lock()
+	w.monsters = map[string]*Monster{}
+	w.occupied = map[monsterPosition]string{}
+	w.mu.Unlock()
+	mapID := caster.MapID
+	mp := w.data.Maps[mapID]
+	targetX, targetY := -1, -1
+	for dx := 2; dx < 10 && targetX < 0; dx++ {
+		for dy := -2; dy <= 2; dy++ {
+			tx := caster.X + dx
+			ty := caster.Y + dy
+			if !mp.Walkable(tx, ty) {
+				continue
+			}
+			targetX, targetY = tx, ty
+			break
+		}
+	}
+	if targetX < 0 {
+		t.Fatal("could not find clear tile for lightning test")
+	}
+	target, err := w.CreateCharacterWithAppearance("test2", "target", "warrior", 0, 0, mapID, targetX, targetY)
+	if err != nil {
+		t.Fatalf("CreateCharacterWithAppearance() error = %v", err)
+	}
+	caster.Skills = storage.SkillStates{{ID: "雷电术", Level: 0, Train: 0}}
+	caster.MP = 100
+	updated, err := w.CastSkillWithPlayers(caster, "雷电术", targetX, targetY, CharacterActorID(target), []storage.Character{target})
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if len(updated.CharacterHits) != 1 {
+		t.Fatalf("CharacterHits = %d, want 1", len(updated.CharacterHits))
+	}
+	hit := updated.CharacterHits[0]
+	if hit.Character.ID != target.ID {
+		t.Fatalf("hit.Character.ID = %q, want %q", hit.Character.ID, target.ID)
+	}
+	if hit.Damage <= 0 {
+		t.Fatalf("hit = %+v, want positive damage", hit)
+	}
+}
+
+func TestCastSkillSpiritFireHitsMonsterTarget(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	w.mu.Lock()
+	w.monsters = map[string]*Monster{}
+	w.occupied = map[monsterPosition]string{}
+	w.mu.Unlock()
+	mapID := caster.MapID
+	targetX, targetY := caster.X+1, caster.Y
+	if !w.data.Maps[mapID].Walkable(targetX, targetY) {
+		t.Fatal("expected walkable tile for spirit fire test")
+	}
+	result, err := w.SpawnMonsterByNameAt(mapID, targetX, targetY, "鸡", 1)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
+	}
+	if len(result.Monsters) != 1 {
+		t.Fatalf("SpawnMonsterByNameAt() monsters = %d, want 1", len(result.Monsters))
+	}
+	caster.Skills = storage.SkillStates{{ID: "灵魂火符", Level: 0, Train: 0}}
+	caster.MP = 100
+	updated, err := w.CastSkillWithPlayers(caster, "灵魂火符", targetX, targetY, 0, nil)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if updated.MonsterHit == nil || updated.MonsterHit.Damage <= 0 {
+		t.Fatalf("MonsterHit = %+v, want positive damage", updated.MonsterHit)
+	}
+}
+
+func TestCastSkillSpiritFireCanBeResistedByMagicDefense(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	w.mu.Lock()
+	w.monsters = map[string]*Monster{}
+	w.occupied = map[monsterPosition]string{}
+	w.mu.Unlock()
+	mapID := caster.MapID
+	targetX, targetY := caster.X+1, caster.Y
+	if !w.data.Maps[mapID].Walkable(targetX, targetY) {
+		t.Fatal("expected walkable tile for spirit fire resistance test")
+	}
+	result, err := w.SpawnMonsterByNameAt(mapID, targetX, targetY, "鸡", 1)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
+	}
+	if len(result.Monsters) != 1 {
+		t.Fatalf("SpawnMonsterByNameAt() monsters = %d, want 1", len(result.Monsters))
+	}
+	monsterID := result.Monsters[0].ID
+	w.mu.Lock()
+	if mon := w.monsters[monsterID]; mon != nil {
+		mon.MagicDefense = 10
+	}
+	w.mu.Unlock()
+	caster.Skills = storage.SkillStates{{ID: "灵魂火符", Level: 0, Train: 0}}
+	caster.MP = 100
+	updated, err := w.CastSkillWithPlayers(caster, "灵魂火符", targetX, targetY, 0, nil)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if updated.MonsterHit != nil {
+		t.Fatalf("MonsterHit = %+v, want nil when magic defense resists", updated.MonsterHit)
+	}
+}
+
+func TestCastSkillSpiritFireHitsCharacterTarget(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	w.mu.Lock()
+	w.monsters = map[string]*Monster{}
+	w.occupied = map[monsterPosition]string{}
+	w.mu.Unlock()
+	mapID := caster.MapID
+	mp := w.data.Maps[mapID]
+	targetX, targetY := -1, -1
+	for dx := 2; dx < 10 && targetX < 0; dx++ {
+		for dy := -2; dy <= 2; dy++ {
+			tx := caster.X + dx
+			ty := caster.Y + dy
+			if !mp.Walkable(tx, ty) {
+				continue
+			}
+			targetX, targetY = tx, ty
+			break
+		}
+	}
+	if targetX < 0 {
+		t.Fatal("could not find clear tile for spirit fire test")
+	}
+	target, err := w.CreateCharacterWithAppearance("test2", "target", "warrior", 0, 0, mapID, targetX, targetY)
+	if err != nil {
+		t.Fatalf("CreateCharacterWithAppearance() error = %v", err)
+	}
+	caster.Skills = storage.SkillStates{{ID: "灵魂火符", Level: 0, Train: 0}}
+	caster.MP = 100
+	updated, err := w.CastSkillWithPlayers(caster, "灵魂火符", targetX, targetY, CharacterActorID(target), []storage.Character{target})
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if len(updated.CharacterHits) != 1 {
+		t.Fatalf("CharacterHits = %d, want 1", len(updated.CharacterHits))
+	}
+	hit := updated.CharacterHits[0]
+	if hit.Character.ID != target.ID {
+		t.Fatalf("hit.Character.ID = %q, want %q", hit.Character.ID, target.ID)
+	}
+	if hit.Damage <= 0 {
+		t.Fatalf("hit = %+v, want positive damage", hit)
+	}
+}
+
+func TestCastSkillMindRevelationSelectsTarget(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	mapID, x, y := caster.MapID, caster.X, caster.Y
+	target, err := w.CreateCharacterWithAppearance("test2", "target", "warrior", 0, 0, mapID, x+1, y)
+	if err != nil {
+		t.Fatalf("CreateCharacterWithAppearance() error = %v", err)
+	}
+	caster.Skills = storage.SkillStates{{ID: "心灵启示", Level: 0, Train: 0}}
+	updated, err := w.CastSkillWithPlayers(caster, "心灵启示", x+1, y, CharacterActorID(target), []storage.Character{target})
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if len(updated.AffectedCharacters) != 1 {
+		t.Fatalf("AffectedCharacters = %d, want 1", len(updated.AffectedCharacters))
+	}
+	if updated.AffectedCharacters[0].ID != target.ID {
+		t.Fatalf("AffectedCharacters[0].ID = %q, want %q", updated.AffectedCharacters[0].ID, target.ID)
+	}
+	if updated.AffectedCharacters[0].ShowHPUntil <= 0 {
+		t.Fatal("ShowHPUntil = 0, want future expiration")
+	}
+	if updated.AffectedCharacters[0].ShowHPOpenAt <= 0 {
+		t.Fatal("ShowHPOpenAt = 0, want delayed open time")
+	}
+	if updated.AffectedCharacters[0].ShowHPOpenAt <= time.Now().Add(time.Second).UnixNano() {
+		t.Fatalf("ShowHPOpenAt = %d, want roughly 1.5s delay", updated.AffectedCharacters[0].ShowHPOpenAt)
+	}
+	if updated.AffectedCharacters[0].ShowHPUntil <= updated.AffectedCharacters[0].ShowHPOpenAt {
+		t.Fatalf("ShowHPUntil = %d, want after ShowHPOpenAt = %d", updated.AffectedCharacters[0].ShowHPUntil, updated.AffectedCharacters[0].ShowHPOpenAt)
+	}
+}
+
+func TestCastSkillHellfireHitsLineTargets(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	w.mu.Lock()
+	w.monsters = map[string]*Monster{}
+	w.occupied = map[monsterPosition]string{}
+	w.mu.Unlock()
+	mapID := caster.MapID
+	mp := w.data.Maps[mapID]
+	targetX, targetY := -1, -1
+	for dx := 5; dx < 14 && targetX < 0; dx++ {
+		tx := caster.X + dx
+		ty := caster.Y
+		clear := true
+		if !mp.Walkable(tx, ty) {
+			continue
+		}
+		for step := 1; step <= 5; step++ {
+			if !mp.Walkable(caster.X+step, caster.Y) {
+				clear = false
+				break
+			}
+		}
+		if clear {
+			targetX, targetY = tx, ty
+			break
+		}
+	}
+	if targetX < 0 {
+		t.Fatal("could not find clear line for hellfire test")
+	}
+	result, err := w.SpawnMonsterByNameAt(mapID, caster.X+1, caster.Y, "鸡", 1)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
+	}
+	if len(result.Monsters) != 1 {
+		t.Fatalf("SpawnMonsterByNameAt() monsters = %d, want 1", len(result.Monsters))
+	}
+	second, err := w.SpawnMonsterByNameAt(mapID, caster.X+4, caster.Y, "鸡", 1)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() second error = %v", err)
+	}
+	if len(second.Monsters) != 1 {
+		t.Fatalf("SpawnMonsterByNameAt() second monsters = %d, want 1", len(second.Monsters))
+	}
+	caster.Skills = storage.SkillStates{{ID: "地狱火", Level: 0, Train: 0}}
+	caster.MP = 100
+	updated, err := w.CastSkillWithPlayers(caster, "地狱火", targetX, targetY, 0, nil)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if len(updated.MonsterHits) != 2 {
+		t.Fatalf("MonsterHits = %d, want 2", len(updated.MonsterHits))
+	}
+	for _, hit := range updated.MonsterHits {
+		if hit.Damage <= 0 {
+			t.Fatalf("hit = %+v, want positive damage", hit)
+		}
+	}
+}
+
+func TestCastSkillExplosionHitsMultipleMonsters(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	w.mu.Lock()
+	w.monsters = map[string]*Monster{}
+	w.occupied = map[monsterPosition]string{}
+	w.mu.Unlock()
+	mapID := caster.MapID
+	mp := w.data.Maps[mapID]
+	targetX, targetY := -1, -1
+	for dx := 4; dx < 12 && targetX < 0; dx++ {
+		tx := caster.X + dx
+		ty := caster.Y
+		if !mp.Walkable(tx, ty) || !mp.Walkable(tx-1, ty) || !mp.Walkable(tx, ty+1) {
+			continue
+		}
+		targetX, targetY = tx, ty
+	}
+	if targetX < 0 {
+		t.Fatal("could not find clear tile for explosion test")
+	}
+	left, err := w.SpawnMonsterByNameAt(mapID, targetX-1, targetY, "鸡", 1)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() left error = %v", err)
+	}
+	if len(left.Monsters) != 1 {
+		t.Fatalf("SpawnMonsterByNameAt() left monsters = %d, want 1", len(left.Monsters))
+	}
+	bottom, err := w.SpawnMonsterByNameAt(mapID, targetX, targetY+1, "鸡", 1)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() bottom error = %v", err)
+	}
+	if len(bottom.Monsters) != 1 {
+		t.Fatalf("SpawnMonsterByNameAt() bottom monsters = %d, want 1", len(bottom.Monsters))
+	}
+	caster.Skills = storage.SkillStates{{ID: "爆裂火焰", Level: 0, Train: 0}}
+	caster.MP = 100
+	updated, err := w.CastSkillWithPlayers(caster, "爆裂火焰", targetX, targetY, 0, nil)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if len(updated.MonsterHits) != 2 {
+		t.Fatalf("MonsterHits = %d, want 2", len(updated.MonsterHits))
+	}
+	for _, hit := range updated.MonsterHits {
+		if hit.Damage <= 0 {
+			t.Fatalf("hit = %+v, want positive damage", hit)
+		}
+	}
+}
+
+func TestCastSkillLightningLineHitsMonstersAndCharacter(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	w.mu.Lock()
+	w.monsters = map[string]*Monster{}
+	w.occupied = map[monsterPosition]string{}
+	w.mu.Unlock()
+	mapID := caster.MapID
+	mp := w.data.Maps[mapID]
+	targetX, targetY := -1, -1
+	for dx := 8; dx < 16 && targetX < 0; dx++ {
+		tx := caster.X + dx
+		ty := caster.Y
+		clear := true
+		for step := 1; step <= skillLightningRange; step++ {
+			if !mp.Walkable(caster.X+step, caster.Y) {
+				clear = false
+				break
+			}
+		}
+		if !clear || !mp.Walkable(tx, ty) {
+			continue
+		}
+		targetX, targetY = tx, ty
+	}
+	if targetX < 0 {
+		t.Fatal("could not find clear line for lightning test")
+	}
+	first, err := w.SpawnMonsterByNameAt(mapID, caster.X+1, caster.Y, "鸡", 1)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() first error = %v", err)
+	}
+	if len(first.Monsters) != 1 {
+		t.Fatalf("SpawnMonsterByNameAt() first monsters = %d, want 1", len(first.Monsters))
+	}
+	second, err := w.SpawnMonsterByNameAt(mapID, caster.X+4, caster.Y, "鸡", 1)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() second error = %v", err)
+	}
+	if len(second.Monsters) != 1 {
+		t.Fatalf("SpawnMonsterByNameAt() second monsters = %d, want 1", len(second.Monsters))
+	}
+	target, err := w.CreateCharacterWithAppearance("test2", "target", "warrior", 0, 0, mapID, caster.X+6, caster.Y)
+	if err != nil {
+		t.Fatalf("CreateCharacterWithAppearance() error = %v", err)
+	}
+	caster.Skills = storage.SkillStates{{ID: "疾光电影", Level: 0, Train: 0}}
+	caster.MP = 100
+	updated, err := w.CastSkillWithPlayers(caster, "疾光电影", targetX, targetY, CharacterActorID(target), []storage.Character{target})
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if len(updated.MonsterHits) != 2 {
+		t.Fatalf("MonsterHits = %d, want 2", len(updated.MonsterHits))
+	}
+	if len(updated.CharacterHits) != 1 {
+		t.Fatalf("CharacterHits = %d, want 1", len(updated.CharacterHits))
+	}
+	for _, hit := range updated.MonsterHits {
+		if hit.Damage <= 0 {
+			t.Fatalf("monster hit = %+v, want positive damage", hit)
+		}
+	}
+	if updated.CharacterHits[0].Damage <= 0 {
+		t.Fatalf("character hit = %+v, want positive damage", updated.CharacterHits[0])
+	}
+}
+
+func TestCastSkillElectricBlizzardHitsCenterArea(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	w.mu.Lock()
+	w.monsters = map[string]*Monster{}
+	w.occupied = map[monsterPosition]string{}
+	w.mu.Unlock()
+	mapID := caster.MapID
+	mp := w.data.Maps[mapID]
+	if !mp.Walkable(caster.X+1, caster.Y) || !mp.Walkable(caster.X-1, caster.Y) || !mp.Walkable(caster.X, caster.Y+1) {
+		t.Fatal("expected walkable tiles around caster for blizzard test")
+	}
+	undead, err := w.SpawnMonsterByNameAt(mapID, caster.X+1, caster.Y, "僵尸", 1)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() undead error = %v", err)
+	}
+	if len(undead.Monsters) != 1 {
+		t.Fatalf("SpawnMonsterByNameAt() undead monsters = %d, want 1", len(undead.Monsters))
+	}
+	normal, err := w.SpawnMonsterByNameAt(mapID, caster.X-1, caster.Y, "鸡", 1)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() normal error = %v", err)
+	}
+	if len(normal.Monsters) != 1 {
+		t.Fatalf("SpawnMonsterByNameAt() normal monsters = %d, want 1", len(normal.Monsters))
+	}
+	target, err := w.CreateCharacterWithAppearance("test2", "target", "warrior", 0, 0, mapID, caster.X, caster.Y+1)
+	if err != nil {
+		t.Fatalf("CreateCharacterWithAppearance() error = %v", err)
+	}
+	caster.Level = 100
+	caster.Skills = storage.SkillStates{{ID: "地狱雷光", Level: 10, Train: 0}}
+	caster.MP = 500
+	updated, err := w.CastSkillWithPlayers(caster, "地狱雷光", caster.X, caster.Y, CharacterActorID(target), []storage.Character{target})
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if len(updated.MonsterHits) != 2 {
+		t.Fatalf("MonsterHits = %d, want 2", len(updated.MonsterHits))
+	}
+	if len(updated.CharacterHits) != 1 {
+		t.Fatalf("CharacterHits = %d, want 1", len(updated.CharacterHits))
+	}
+	var undeadHit, normalHit *AttackResult
+	for i := range updated.MonsterHits {
+		hit := &updated.MonsterHits[i]
+		if hit.MonsterMaxHP > 100 {
+			undeadHit = hit
+		} else {
+			normalHit = hit
+		}
+	}
+	if undeadHit == nil || normalHit == nil {
+		t.Fatalf("monster hits = %+v, want both undead and normal targets", updated.MonsterHits)
+	}
+	if undeadHit.Damage <= normalHit.Damage {
+		t.Fatalf("monster hits = %+v, want undead target to take more damage than normal target", updated.MonsterHits)
+	}
+	if updated.CharacterHits[0].Damage <= 0 {
+		t.Fatalf("character hit = %+v, want positive damage", updated.CharacterHits[0])
+	}
+}
+
+func TestCastSkillFireWallCreatesRingAndTicksDamage(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	w.mu.Lock()
+	w.monsters = map[string]*Monster{}
+	w.occupied = map[monsterPosition]string{}
+	w.mu.Unlock()
+	mapID := caster.MapID
+	mp := w.data.Maps[mapID]
+	targetX, targetY := -1, -1
+	offsets := [][2]int{
+		{-1, -2}, {1, -2}, {-2, -1}, {2, -1},
+		{-2, 1}, {2, 1}, {-1, 2}, {1, 2},
+	}
+	for dx := 4; dx < 12 && targetX < 0; dx++ {
+		tx := caster.X + dx
+		ty := caster.Y
+		ok := true
+		for _, off := range offsets {
+			if !mp.Walkable(tx+off[0], ty+off[1]) {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			targetX, targetY = tx, ty
+		}
+	}
+	if targetX < 0 {
+		t.Fatal("could not find clear tile for fire wall test")
+	}
+	monsterResult, err := w.SpawnMonsterByNameAt(mapID, targetX+1, targetY+2, "半兽人", 1)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() monster error = %v", err)
+	}
+	if len(monsterResult.Monsters) != 1 {
+		t.Fatalf("SpawnMonsterByNameAt() monsters = %d, want 1", len(monsterResult.Monsters))
+	}
+	target, err := w.CreateCharacterWithAppearance("test2", "target", "warrior", 0, 0, mapID, targetX-1, targetY-2)
+	if err != nil {
+		t.Fatalf("CreateCharacterWithAppearance() error = %v", err)
+	}
+	caster.Level = 100
+	caster.Skills = storage.SkillStates{{ID: "火墙", Level: 10, Train: 0}}
+	caster.MP = 500
+	updated, err := w.CastSkillWithPlayers(caster, "火墙", targetX, targetY, CharacterActorID(target), []storage.Character{target})
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if len(w.fireFields) != 8 {
+		t.Fatalf("fireFields = %d, want 8", len(w.fireFields))
+	}
+	if got := len(w.monstersInRadiusLocked(mapID, targetX+1, targetY+2, 0)); got != 1 {
+		t.Fatalf("monster coverage = %d, want 1 at fire wall ring", got)
+	}
+	if got := len(w.charactersInRadiusLocked([]storage.Character{updated.Character, target}, mapID, target.X, target.Y, 0)); got != 1 {
+		t.Fatalf("character coverage = %d, want 1 at fire wall ring", got)
+	}
+	fireTickAt := time.Now().Add(250 * time.Millisecond)
+	result, err := w.Tick([]PlayerSnapshot{{Character: updated.Character}, {Character: target}}, fireTickAt)
+	if err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	if len(result.MonsterHits) == 0 {
+		t.Fatal("MonsterHits = 0, want fire wall to damage monster")
+	}
+	if len(result.CharacterHits) == 0 {
+		t.Fatal("CharacterHits = 0, want fire wall to damage character")
+	}
+	if len(w.fireFields) != 8 {
+		t.Fatalf("fireFields after tick = %d, want 8 while still active", len(w.fireFields))
+	}
+	result, err = w.Tick([]PlayerSnapshot{{Character: updated.Character}, {Character: target}}, time.Now().Add(2*time.Minute))
+	if err != nil {
+		t.Fatalf("final Tick() error = %v", err)
+	}
+	if len(w.fireFields) != 0 {
+		t.Fatalf("fireFields after expiry = %d, want 0", len(w.fireFields))
+	}
+	if len(result.MonsterHits) != 0 && len(result.CharacterHits) != 0 {
+		t.Fatalf("unexpected hits after expiry: monsters=%d characters=%d", len(result.MonsterHits), len(result.CharacterHits))
+	}
+}
+
+func TestCastSkillRepelPushesNearbyTargets(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	w.mu.Lock()
+	w.monsters = map[string]*Monster{}
+	w.occupied = map[monsterPosition]string{}
+	w.mu.Unlock()
+	mapID := caster.MapID
+	mp := w.data.Maps[mapID]
+	if !mp.Walkable(caster.X+1, caster.Y) || !mp.Walkable(caster.X, caster.Y+1) || !mp.Walkable(caster.X+2, caster.Y) || !mp.Walkable(caster.X, caster.Y+2) {
+		t.Fatal("expected walkable tiles around caster for repel test")
+	}
+	target, err := w.CreateCharacterWithAppearance("test2", "target", "warrior", 0, 0, mapID, caster.X+1, caster.Y)
+	if err != nil {
+		t.Fatalf("CreateCharacterWithAppearance() error = %v", err)
+	}
+	monsterResult, err := w.SpawnMonsterByNameAt(mapID, caster.X, caster.Y+1, "鸡", 1)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
+	}
+	if len(monsterResult.Monsters) != 1 {
+		t.Fatalf("SpawnMonsterByNameAt() monsters = %d, want 1", len(monsterResult.Monsters))
+	}
+	caster.Level = 100
+	caster.Skills = storage.SkillStates{{ID: "抗拒火环", Level: 10, Train: 0}}
+	caster.MP = 500
+	updated, err := w.CastSkillWithPlayers(caster, "抗拒火环", caster.X, caster.Y, CharacterActorID(target), []storage.Character{target})
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if len(updated.AffectedCharacters) != 1 {
+		t.Fatalf("AffectedCharacters = %d, want 1", len(updated.AffectedCharacters))
+	}
+	if updated.AffectedCharacters[0].X <= target.X {
+		t.Fatalf("affected character = %+v, want pushed away to the east", updated.AffectedCharacters[0])
+	}
+	if len(updated.MonsterActions) != 1 {
+		t.Fatalf("MonsterActions = %d, want 1", len(updated.MonsterActions))
+	}
+	if updated.MonsterActions[0].X != caster.X || updated.MonsterActions[0].Y <= caster.Y+1 {
+		t.Fatalf("monster action = %+v, want pushed farther south", updated.MonsterActions[0])
+	}
+}
+
+func TestCastSkillChargeMovesCasterAndPushesTarget(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	w.mu.Lock()
+	w.monsters = map[string]*Monster{}
+	w.occupied = map[monsterPosition]string{}
+	w.mu.Unlock()
+	mapID := caster.MapID
+	mp := w.data.Maps[mapID]
+	if !mp.Walkable(caster.X+1, caster.Y) || !mp.Walkable(caster.X+2, caster.Y) || !mp.Walkable(caster.X+3, caster.Y) {
+		t.Fatal("expected walkable tiles east of caster for charge test")
+	}
+	target, err := w.CreateCharacterWithAppearance("test2", "target", "warrior", 0, 0, mapID, caster.X+1, caster.Y)
+	if err != nil {
+		t.Fatalf("CreateCharacterWithAppearance() error = %v", err)
+	}
+	caster.Level = 100
+	caster.Skills = storage.SkillStates{{ID: "野蛮冲撞", Level: 0, Train: 0}}
+	caster.MP = 500
+	updated, err := w.CastSkillWithPlayers(caster, "野蛮冲撞", caster.X+2, caster.Y, 0, []storage.Character{target})
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if updated.Character.X != caster.X+2 || updated.Character.Y != caster.Y {
+		t.Fatalf("caster = %+v, want moved two tiles east", updated.Character)
+	}
+	if len(updated.AffectedCharacters) != 1 {
+		t.Fatalf("AffectedCharacters = %d, want 1", len(updated.AffectedCharacters))
+	}
+	if updated.AffectedCharacters[0].X != caster.X+3 {
+		t.Fatalf("affected character = %+v, want pushed farther east", updated.AffectedCharacters[0])
+	}
+}
+
+func TestCastSkillMagicShieldReducesMonsterDamageAndConsumesShieldTime(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	caster.Skills = storage.SkillStates{{ID: "魔法盾", Level: 25, Train: 0}}
+	caster.MP = 100
+	updated, err := w.CastSkillWithPlayers(caster, "魔法盾", caster.X, caster.Y, 0, nil)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if updated.Character.BubbleDefenceUntil == 0 {
+		t.Fatal("BubbleDefenceUntil = 0, want active shield")
+	}
+	mon := &Monster{
+		ID:        "mon-shield",
+		MapID:     caster.MapID,
+		X:         caster.X + 1,
+		Y:         caster.Y,
+		Alive:     true,
+		HP:        999,
+		MaxHP:     999,
+		MinAttack: 1,
+		MaxAttack: 1,
+	}
+	next, hit, err := w.monsterAttackCharacterWithDamageLocked(mon, updated.Character, 100)
+	if err != nil {
+		t.Fatalf("monsterAttackCharacterWithDamageLocked() error = %v", err)
+	}
+	if hit.Damage != 216 {
+		t.Fatalf("hit.Damage = %d, want 216 after magic shield reduction", hit.Damage)
+	}
+	if next.BubbleDefenceUntil >= updated.Character.BubbleDefenceUntil {
+		t.Fatalf("BubbleDefenceUntil = %d, want reduced below %d", next.BubbleDefenceUntil, updated.Character.BubbleDefenceUntil)
+	}
+}
+
+func TestCastSkillMagicShieldRejectsRecastWhileActive(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	caster.Skills = storage.SkillStates{{ID: "魔法盾", Level: 0, Train: 0}}
+	updated, err := w.CastSkillWithPlayers(caster, "魔法盾", caster.X, caster.Y, 0, nil)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() first cast error = %v", err)
+	}
+	if _, err := w.CastSkillWithPlayers(updated.Character, "魔法盾", updated.Character.X, updated.Character.Y, 0, nil); err == nil {
+		t.Fatal("CastSkillWithPlayers() expected active shield recast to fail")
+	}
+}
+
+func TestCastSkillTurnUndeadKillsUndeadMonster(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	mapID, x, y := caster.MapID, caster.X, caster.Y
+	mp := w.data.Maps[mapID]
+	targetX, targetY := -1, -1
+	for dx := 6; dx < 24 && targetX < 0; dx++ {
+		for dy := -4; dy <= 4; dy++ {
+			tx := x + dx
+			ty := y + dy
+			if !mp.Walkable(tx, ty) {
+				continue
+			}
+			clear := true
+			w.mu.Lock()
+			for _, mon := range w.monsters {
+				if mon != nil && mon.Alive && mon.MapID == mapID && abs(mon.X-tx) <= 1 && abs(mon.Y-ty) <= 1 {
+					clear = false
+					break
+				}
+			}
+			w.mu.Unlock()
+			if clear {
+				targetX, targetY = tx, ty
+				break
+			}
+		}
+	}
+	if targetX < 0 {
+		t.Fatal("could not find clear tile for turn undead test")
+	}
+	result, err := w.SpawnMonsterByNameAt(mapID, targetX, targetY, "僵尸", 1)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
+	}
+	if len(result.Monsters) != 1 {
+		t.Fatalf("SpawnMonsterByNameAt() monsters = %d, want 1", len(result.Monsters))
+	}
+	caster.Level = 100
+	caster.MP = 500
+	caster.Skills = storage.SkillStates{{ID: "圣言术", Level: 0, Train: 0}}
+	updated, err := w.CastSkillWithPlayers(caster, "圣言术", targetX, targetY, 0, nil)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if updated.MonsterHit == nil {
+		t.Fatal("MonsterHit = nil, want undead monster hit")
+	}
+	if !updated.MonsterHit.Dead {
+		t.Fatalf("MonsterHit = %+v, want dead monster", updated.MonsterHit)
+	}
+	if updated.MonsterHit.MonsterID == "" {
+		t.Fatal("MonsterHit.MonsterID = empty, want target monster id")
+	}
+}
+
+func TestCastSkillTurnUndeadRejectsHighLevelUndeadMonster(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	mapID, x, y := caster.MapID, caster.X, caster.Y
+	mp := w.data.Maps[mapID]
+	targetX, targetY := -1, -1
+	for dx := 6; dx < 24 && targetX < 0; dx++ {
+		for dy := -4; dy <= 4; dy++ {
+			tx := x + dx
+			ty := y + dy
+			if !mp.Walkable(tx, ty) {
+				continue
+			}
+			clear := true
+			w.mu.Lock()
+			for _, mon := range w.monsters {
+				if mon != nil && mon.Alive && mon.MapID == mapID && abs(mon.X-tx) <= 1 && abs(mon.Y-ty) <= 1 {
+					clear = false
+					break
+				}
+			}
+			w.mu.Unlock()
+			if clear {
+				targetX, targetY = tx, ty
+				break
+			}
+		}
+	}
+	if targetX < 0 {
+		t.Fatal("could not find clear tile for turn undead test")
+	}
+	result, err := w.SpawnMonsterByNameAt(mapID, targetX, targetY, "僵尸", 1)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
+	}
+	if len(result.Monsters) != 1 {
+		t.Fatalf("SpawnMonsterByNameAt() monsters = %d, want 1", len(result.Monsters))
+	}
+	monID := result.Monsters[0].ID
+	w.mu.Lock()
+	if mon := w.monsters[monID]; mon != nil {
+		mon.Level = caster.Level + 20
+	}
+	w.mu.Unlock()
+	caster.Level = 1
+	caster.MP = 500
+	caster.Skills = storage.SkillStates{{ID: "圣言术", Level: 0, Train: 0}}
+	updated, err := w.CastSkillWithPlayers(caster, "圣言术", targetX, targetY, 0, nil)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if updated.MonsterHit != nil {
+		t.Fatalf("MonsterHit = %+v, want nil for high-level undead", updated.MonsterHit)
+	}
+}
+
+func TestCastSkillSummonSkeletonCreatesOwnedMonsterAndExpires(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	mapID := caster.MapID
+	mp := w.data.Maps[mapID]
+	targetX, targetY := -1, -1
+	for dx := 1; dx < 8 && targetX < 0; dx++ {
+		for dy := -2; dy <= 2; dy++ {
+			tx := caster.X + dx
+			ty := caster.Y + dy
+			if !mp.Walkable(tx, ty) {
+				continue
+			}
+			clear := true
+			w.mu.Lock()
+			for _, mon := range w.monsters {
+				if mon != nil && mon.Alive && mon.MapID == mapID && abs(mon.X-tx) <= 1 && abs(mon.Y-ty) <= 1 {
+					clear = false
+					break
+				}
+			}
+			w.mu.Unlock()
+			if clear {
+				targetX, targetY = tx, ty
+				break
+			}
+		}
+	}
+	if targetX < 0 {
+		t.Fatal("could not find clear tile for summon test")
+	}
+	caster.X = targetX
+	caster.Y = targetY
+	caster.Dir = 2
+	caster.MP = 100
+	caster.Skills = storage.SkillStates{{ID: "召唤骷髅", Level: 0, Train: 0}}
+	result, err := w.CastSkillWithPlayers(caster, "召唤骷髅", caster.X, caster.Y, 0, nil)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if len(result.SummonedMonsters) != 1 {
+		t.Fatalf("SummonedMonsters = %d, want 1", len(result.SummonedMonsters))
+	}
+	summoned := result.SummonedMonsters[0]
+	if summoned.X != caster.X+1 || summoned.Y != caster.Y {
+		t.Fatalf("summoned position = (%d,%d), want front tile (%d,%d)", summoned.X, summoned.Y, caster.X+1, caster.Y)
+	}
+	if summoned.MasterID != caster.ID {
+		t.Fatalf("summoned.MasterID = %q, want %q", summoned.MasterID, caster.ID)
+	}
+	if summoned.TemplateID != "骷髅" {
+		t.Fatalf("summoned.TemplateID = %q, want 骷髅", summoned.TemplateID)
+	}
+	if summoned.Alive != true {
+		t.Fatalf("summoned.Alive = false, want true")
+	}
+	if summoned.MasterExpiresAt.IsZero() {
+		t.Fatal("summoned.MasterExpiresAt = zero, want active expiry")
+	}
+	if _, err := w.CastSkillWithPlayers(result.Character, "召唤骷髅", result.Character.X, result.Character.Y, 0, nil); err == nil {
+		t.Fatal("CastSkillWithPlayers() expected duplicate summon to fail")
+	}
+	w.mu.Lock()
+	if mon, ok := w.monsters[summoned.ID]; ok {
+		mon.MasterExpiresAt = time.Now().Add(-time.Second)
+	}
+	w.mu.Unlock()
+	if _, err := w.Tick([]PlayerSnapshot{{Character: result.Character}}, time.Now()); err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	monsters, _ := w.SnapshotAround(result.Character.MapID, result.Character.X, result.Character.Y, 10)
+	for _, mon := range monsters {
+		if mon.ID == summoned.ID {
+			t.Fatalf("summoned monster %s still visible after expiry", summoned.ID)
+		}
+	}
+}
+
+func TestCastSkillSummonSkeletonFailsWhenFrontTileBlocked(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	mapID, x, y := caster.MapID, caster.X, caster.Y
+	caster.Dir = 2
+	blocker, err := w.CreateCharacterWithAppearance("test", "blocker", "wizard", 0, 0, mapID, x+1, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() blocker error = %v", err)
+	}
+	caster.Level = 100
+	caster.MP = 100
+	caster.Skills = storage.SkillStates{{ID: "召唤骷髅", Level: 0, Train: 0}}
+	players := []storage.Character{blocker}
+	_, err = w.CastSkillWithPlayers(caster, "召唤骷髅", caster.X, caster.Y, 0, players)
+	if err == nil {
+		t.Fatal("CastSkillWithPlayers() error = nil, want front-blocked summon to fail")
+	}
+}
+
+func TestCastSkillSummonBeastCreatesOwnedMonsterAndExpires(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	mapID := caster.MapID
+	mp := w.data.Maps[mapID]
+	targetX, targetY := -1, -1
+	for dx := 1; dx < 8 && targetX < 0; dx++ {
+		for dy := -2; dy <= 2; dy++ {
+			tx := caster.X + dx
+			ty := caster.Y + dy
+			if !mp.Walkable(tx, ty) {
+				continue
+			}
+			clear := true
+			w.mu.Lock()
+			for _, mon := range w.monsters {
+				if mon != nil && mon.Alive && mon.MapID == mapID && abs(mon.X-tx) <= 1 && abs(mon.Y-ty) <= 1 {
+					clear = false
+					break
+				}
+			}
+			w.mu.Unlock()
+			if clear {
+				targetX, targetY = tx, ty
+				break
+			}
+		}
+	}
+	if targetX < 0 {
+		t.Fatal("could not find clear tile for summon beast test")
+	}
+	caster.X = targetX
+	caster.Y = targetY
+	caster.Dir = 2
+	caster.MP = 100
+	caster.Skills = storage.SkillStates{{ID: "召唤神兽", Level: 0, Train: 0}}
+	result, err := w.CastSkillWithPlayers(caster, "召唤神兽", caster.X, caster.Y, 0, nil)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if len(result.SummonedMonsters) != 1 {
+		t.Fatalf("SummonedMonsters = %d, want 1", len(result.SummonedMonsters))
+	}
+	summoned := result.SummonedMonsters[0]
+	if summoned.MasterID != caster.ID {
+		t.Fatalf("summoned.MasterID = %q, want %q", summoned.MasterID, caster.ID)
+	}
+	if summoned.TemplateID != "神兽" {
+		t.Fatalf("summoned.TemplateID = %q, want 神兽", summoned.TemplateID)
+	}
+	if summoned.Alive != true {
+		t.Fatalf("summoned.Alive = false, want true")
+	}
+	if summoned.MasterExpiresAt.IsZero() {
+		t.Fatal("summoned.MasterExpiresAt = zero, want active expiry")
+	}
+	if _, err := w.CastSkillWithPlayers(result.Character, "召唤神兽", result.Character.X, result.Character.Y, 0, nil); err == nil {
+		t.Fatal("CastSkillWithPlayers() expected duplicate summon to fail")
+	}
+	w.mu.Lock()
+	if mon, ok := w.monsters[summoned.ID]; ok {
+		mon.MasterExpiresAt = time.Now().Add(-time.Second)
+	}
+	w.mu.Unlock()
+	if _, err := w.Tick([]PlayerSnapshot{{Character: result.Character}}, time.Now()); err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	monsters, _ := w.SnapshotAround(result.Character.MapID, result.Character.X, result.Character.Y, 10)
+	for _, mon := range monsters {
+		if mon.ID == summoned.ID {
+			t.Fatalf("summoned beast %s still visible after expiry", summoned.ID)
+		}
+	}
+}
+
+func TestCastSkillSummonSkeletonBlocksBeastWhileActive(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	mapID := caster.MapID
+	mp := w.data.Maps[mapID]
+	targetX, targetY := -1, -1
+	for dx := 1; dx < 8 && targetX < 0; dx++ {
+		for dy := -2; dy <= 2; dy++ {
+			tx := caster.X + dx
+			ty := caster.Y + dy
+			if !mp.Walkable(tx, ty) {
+				continue
+			}
+			clear := true
+			w.mu.Lock()
+			for _, mon := range w.monsters {
+				if mon != nil && mon.Alive && mon.MapID == mapID && abs(mon.X-tx) <= 1 && abs(mon.Y-ty) <= 1 {
+					clear = false
+					break
+				}
+			}
+			w.mu.Unlock()
+			if clear {
+				targetX, targetY = tx, ty
+				break
+			}
+		}
+	}
+	if targetX < 0 {
+		t.Fatal("could not find clear tile for coexist summon test")
+	}
+	caster.X = targetX
+	caster.Y = targetY
+	caster.Dir = 2
+	caster.MP = 100
+	caster.Skills = storage.SkillStates{{ID: "召唤骷髅", Level: 0, Train: 0}, {ID: "召唤神兽", Level: 0, Train: 0}}
+	skeletonResult, err := w.CastSkillWithPlayers(caster, "召唤骷髅", caster.X, caster.Y, 0, nil)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() skeleton error = %v", err)
+	}
+	beastCaster := skeletonResult.Character
+	beastCaster.Dir = 0
+	if _, err := w.CastSkillWithPlayers(beastCaster, "召唤神兽", beastCaster.X, beastCaster.Y, 0, nil); err == nil {
+		t.Fatal("CastSkillWithPlayers() expected beast summon to fail while skeleton is active")
+	}
+}
+
+func TestCastSkillPoisonAppliesMonsterStatusAndTickDamage(t *testing.T) {
+	cases := []struct {
+		name         string
+		powderItemID string
+		powderSlot   int
+		wantHealth   bool
+		wantArmor    bool
+	}{
+		{
+			name:         "gray",
+			powderItemID: "灰色药粉(少量)",
+			powderSlot:   SlotBujuk,
+			wantHealth:   true,
+		},
+		{
+			name:         "yellow",
+			powderItemID: "黄色药粉(少量)",
+			powderSlot:   SlotArmRingL,
+			wantArmor:    true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w, caster := newTestWorldCharacter(t)
+			w.mu.Lock()
+			w.monsters = map[string]*Monster{}
+			w.occupied = map[monsterPosition]string{}
+			w.mu.Unlock()
+			mapID := caster.MapID
+			mp := w.data.Maps[mapID]
+			baseX, baseY := -1, -1
+			for dx := 6; dx < 18 && baseX < 0; dx++ {
+				for dy := -2; dy <= 2; dy++ {
+					tx := caster.X + dx
+					ty := caster.Y + dy
+					if !mp.Walkable(tx, ty) || !mp.Walkable(tx+1, ty) {
+						continue
+					}
+					baseX, baseY = tx, ty
+					break
+				}
+			}
+			if baseX < 0 {
+				t.Fatal("could not find clear tile for poison test")
+			}
+			caster.X = baseX
+			caster.Y = baseY
+			caster.Dir = 2
+			skill, ok := w.Skill("施毒术")
+			if !ok {
+				t.Fatalf("skill 施毒术 missing from config")
+			}
+			cost := w.SpellCost(skill, storage.SkillState{ID: "施毒术", Level: 0, Train: 0})
+			caster.Level = 14
+			caster.MP = cost + 20
+			caster.Skills = storage.SkillStates{{ID: "施毒术", Level: 0, Train: 0}}
+			caster.EquippedItems = map[int]storage.UserItem{
+				tc.powderSlot: {ItemID: tc.powderItemID, Dura: 5000},
+			}
+			result, err := w.SpawnMonsterByNameAt(mapID, baseX+1, baseY, "鸡", 1)
+			if err != nil {
+				t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
+			}
+			if len(result.Monsters) != 1 {
+				t.Fatalf("SpawnMonsterByNameAt() monsters = %d, want 1", len(result.Monsters))
+			}
+			monsterID := result.Monsters[0].ID
+			w.mu.Lock()
+			if mon := w.monsters[monsterID]; mon != nil {
+				mon.HP = 1000
+				mon.MaxHP = 1000
+			}
+			w.mu.Unlock()
+			beforeDura := caster.EquippedItems[tc.powderSlot].Dura
+			updated, err := w.CastSkillWithPlayers(caster, "施毒术", baseX+1, baseY, 0, nil)
+			if err != nil {
+				t.Fatalf("CastSkillWithPlayers() error = %v", err)
+			}
+			if got := updated.Character.MP; got != caster.MP-cost {
+				t.Fatalf("MP = %d, want %d after poison", got, caster.MP-cost)
+			}
+			if got := updated.Character.EquippedItems[tc.powderSlot].Dura; got != beforeDura-100 {
+				t.Fatalf("poison powder dura = %d, want %d", got, beforeDura-100)
+			}
+			w.mu.Lock()
+			mon := w.monsters[monsterID]
+			w.mu.Unlock()
+			if mon == nil {
+				t.Fatalf("monster %s missing after poison cast", monsterID)
+			}
+			if tc.wantHealth {
+				if mon.PoisonHealthLevel == 0 || mon.PoisonHealthUntil.IsZero() || mon.PoisonHealthStartAt.IsZero() {
+					t.Fatalf("monster poison health = %+v, want active health poison", mon)
+				}
+				if !mon.PoisonHealthStartAt.After(time.Now()) {
+					t.Fatalf("monster poison health start = %s, want future start", mon.PoisonHealthStartAt)
+				}
+			}
+			if tc.wantArmor {
+				if mon.PoisonArmorLevel == 0 || mon.PoisonArmorUntil.IsZero() || mon.PoisonArmorStartAt.IsZero() {
+					t.Fatalf("monster poison armor = %+v, want active armor poison", mon)
+				}
+				if !mon.PoisonArmorStartAt.After(time.Now()) {
+					t.Fatalf("monster poison armor start = %s, want future start", mon.PoisonArmorStartAt)
+				}
+			}
+			beforeHP := mon.HP
+			tickAt := time.Now().Add(5 * time.Second)
+			if _, err := w.Tick([]PlayerSnapshot{{Character: updated.Character}}, tickAt); err != nil {
+				t.Fatalf("Tick() error = %v", err)
+			}
+			w.mu.Lock()
+			mon = w.monsters[monsterID]
+			w.mu.Unlock()
+			if tc.wantHealth && mon.HP >= beforeHP {
+				t.Fatalf("monster HP = %d, want reduced from %d after poison tick", mon.HP, beforeHP)
+			}
+		})
+	}
+}
+
+func TestCastSkillPoisonAppliesCharacterStatusAndDamageReduction(t *testing.T) {
+	cases := []struct {
+		name         string
+		powderItemID string
+		powderSlot   int
+		wantHealth   bool
+		wantArmor    bool
+	}{
+		{
+			name:         "gray",
+			powderItemID: "灰色药粉(少量)",
+			powderSlot:   SlotBujuk,
+			wantHealth:   true,
+		},
+		{
+			name:         "yellow",
+			powderItemID: "黄色药粉(少量)",
+			powderSlot:   SlotArmRingL,
+			wantArmor:    true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w, caster := newTestWorldCharacter(t)
+			w.mu.Lock()
+			w.monsters = map[string]*Monster{}
+			w.occupied = map[monsterPosition]string{}
+			w.mu.Unlock()
+			mapID := caster.MapID
+			mp := w.data.Maps[mapID]
+			baseX, baseY := -1, -1
+			for dx := 6; dx < 18 && baseX < 0; dx++ {
+				for dy := -2; dy <= 2; dy++ {
+					tx := caster.X + dx
+					ty := caster.Y + dy
+					if !mp.Walkable(tx, ty) {
+						continue
+					}
+					baseX, baseY = tx, ty
+					break
+				}
+			}
+			if baseX < 0 {
+				t.Fatal("could not find clear tile for poison character test")
+			}
+			caster.X = baseX
+			caster.Y = baseY
+			caster.Dir = 2
+			skill, ok := w.Skill("施毒术")
+			if !ok {
+				t.Fatalf("skill 施毒术 missing from config")
+			}
+			cost := w.SpellCost(skill, storage.SkillState{ID: "施毒术", Level: 0, Train: 0})
+			caster.Level = 14
+			caster.MP = cost + 20
+			caster.Skills = storage.SkillStates{{ID: "施毒术", Level: 0, Train: 0}}
+			caster.EquippedItems = map[int]storage.UserItem{
+				tc.powderSlot: {ItemID: tc.powderItemID, Dura: 5000},
+			}
+			target, err := w.CreateCharacterWithAppearance("test2", "target", "wizard", 0, 0, mapID, baseX+1, baseY)
+			if err != nil {
+				t.Fatalf("CreateCharacter() target error = %v", err)
+			}
+			target.HP = 1000
+			target.MaxHP = 1000
+			beforeDura := caster.EquippedItems[tc.powderSlot].Dura
+			updated, err := w.CastSkillWithPlayers(caster, "施毒术", baseX+1, baseY, 0, []storage.Character{target})
+			if err != nil {
+				t.Fatalf("CastSkillWithPlayers() error = %v", err)
+			}
+			if got := updated.Character.MP; got != caster.MP-cost {
+				t.Fatalf("MP = %d, want %d after poison", got, caster.MP-cost)
+			}
+			if got := updated.Character.EquippedItems[tc.powderSlot].Dura; got != beforeDura-100 {
+				t.Fatalf("poison powder dura = %d, want %d", got, beforeDura-100)
+			}
+			if len(updated.AffectedCharacters) != 1 {
+				t.Fatalf("AffectedCharacters = %d, want 1", len(updated.AffectedCharacters))
+			}
+			poisoned := updated.AffectedCharacters[0]
+			if tc.wantHealth {
+				if poisoned.PoisonHealthLevel == 0 || poisoned.PoisonHealthUntil == 0 || poisoned.PoisonHealthTickAt == 0 || poisoned.PoisonHealthStartAt == 0 {
+					t.Fatalf("character poison health = %+v, want active health poison", poisoned)
+				}
+				if !time.Unix(0, poisoned.PoisonHealthStartAt).After(time.Now()) {
+					t.Fatalf("character poison health start = %d, want future start", poisoned.PoisonHealthStartAt)
+				}
+				beforeHP := poisoned.HP
+				tickResult, err := w.Tick([]PlayerSnapshot{{Character: poisoned}}, time.Now().Add(5*time.Second))
+				if err != nil {
+					t.Fatalf("Tick() error = %v", err)
+				}
+				if len(tickResult.Characters) != 1 {
+					t.Fatalf("Tick() characters = %d, want 1", len(tickResult.Characters))
+				}
+				updatedTarget := tickResult.Characters[0]
+				if updatedTarget.HP >= beforeHP {
+					t.Fatalf("character HP = %d, want reduced from %d after poison tick", updatedTarget.HP, beforeHP)
+				}
+			}
+			if tc.wantArmor {
+				if poisoned.PoisonArmorLevel == 0 || poisoned.PoisonArmorUntil == 0 || poisoned.PoisonArmorStartAt == 0 {
+					t.Fatalf("character poison armor = %+v, want active armor poison", poisoned)
+				}
+				if !time.Unix(0, poisoned.PoisonArmorStartAt).After(time.Now()) {
+					t.Fatalf("character poison armor start = %d, want future start", poisoned.PoisonArmorStartAt)
+				}
+				mon := &Monster{ID: "毒测试怪", MinAttack: 10, MaxAttack: 10}
+				_, baseHit, err := w.monsterAttackCharacterLocked(mon, target)
+				if err != nil {
+					t.Fatalf("monsterAttackCharacterLocked() baseline error = %v", err)
+				}
+				active := poisoned
+				active.PoisonArmorStartAt = time.Now().Add(-time.Second).UnixNano()
+				_, poisonHit, err := w.monsterAttackCharacterLocked(mon, active)
+				if err != nil {
+					t.Fatalf("monsterAttackCharacterLocked() poison error = %v", err)
+				}
+				if poisonHit.Damage <= baseHit.Damage {
+					t.Fatalf("poison damage = %d, want greater than baseline %d", poisonHit.Damage, baseHit.Damage)
+				}
+			}
+		})
+	}
+}
+
+func TestCastSkillTamingMonsterCreatesTimedMasterRelation(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	w.mu.Lock()
+	w.monsters = map[string]*Monster{}
+	w.occupied = map[monsterPosition]string{}
+	w.mu.Unlock()
+	mapID := caster.MapID
+	mp := w.data.Maps[mapID]
+	targetX, targetY := -1, -1
+	for dx := 1; dx < 8 && targetX < 0; dx++ {
+		for dy := -2; dy <= 2; dy++ {
+			tx := caster.X + dx
+			ty := caster.Y + dy
+			if !mp.Walkable(tx, ty) {
+				continue
+			}
+			clear := true
+			w.mu.Lock()
+			for _, mon := range w.monsters {
+				if mon != nil && mon.Alive && mon.MapID == mapID && abs(mon.X-tx) <= 1 && abs(mon.Y-ty) <= 1 {
+					clear = false
+					break
+				}
+			}
+			w.mu.Unlock()
+			if clear {
+				targetX, targetY = tx, ty
+				break
+			}
+		}
+	}
+	if targetX < 0 {
+		t.Fatal("could not find clear tile for taming test")
+	}
+	result, err := w.SpawnMonsterByNameAt(mapID, targetX, targetY, "鸡", 1)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
+	}
+	if len(result.Monsters) != 1 {
+		t.Fatalf("SpawnMonsterByNameAt() monsters = %d, want 1", len(result.Monsters))
+	}
+	spawned := result.Monsters[0]
+	targetX, targetY = spawned.X, spawned.Y
+	caster.Level = 100
+	caster.MP = 100
+	caster.Skills = storage.SkillStates{{ID: "诱惑之光", Level: 10, Train: 0}}
+	w.mu.Lock()
+	src := &seqSource{vals: []int64{0, 0, 0}}
+	w.rand = rand.New(src)
+	w.mu.Unlock()
+	updated, err := w.CastSkillWithPlayers(caster, "诱惑之光", targetX, targetY, 0, nil)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if len(updated.AffectedMonsters) != 1 {
+		t.Fatalf("AffectedMonsters = %d, want 1", len(updated.AffectedMonsters))
+	}
+	controlled := updated.AffectedMonsters[0]
+	if controlled.MasterID != caster.ID {
+		t.Fatalf("controlled.MasterID = %q, want %q", controlled.MasterID, caster.ID)
+	}
+	if controlled.MasterExpiresAt.IsZero() {
+		t.Fatal("controlled.MasterExpiresAt = zero, want active expiry")
+	}
+	w.mu.Lock()
+	if mon, ok := w.monsters[controlled.ID]; ok {
+		mon.MasterExpiresAt = time.Now().Add(-time.Second)
+	}
+	w.mu.Unlock()
+	if _, err := w.Tick([]PlayerSnapshot{{Character: updated.Character}}, time.Now()); err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	monsters, _ := w.SnapshotAround(updated.Character.MapID, updated.Character.X, updated.Character.Y, 10)
+	for _, mon := range monsters {
+		if mon.ID == controlled.ID {
+			t.Fatalf("controlled monster %s still visible after expiry", controlled.ID)
+		}
+	}
+}
+
+func TestCastSkillTamingMonsterLimitsControlledCountToFive(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	mapID, x, y := caster.MapID, caster.X, caster.Y
+	caster.Level = 100
+	caster.MP = 100
+	caster.Skills = storage.SkillStates{{ID: "诱惑之光", Level: 10, Train: 0}}
+	w.mu.Lock()
+	tpl, ok := w.data.Monsters["鸡"]
+	if !ok {
+		w.mu.Unlock()
+		t.Fatal("monster 鸡 missing from configs")
+	}
+	for i := 0; i < defaultTamingCount; i++ {
+		id := fmt.Sprintf("tamed-%d", i)
+		mon := newMonster(w, id, tpl, mapID, x+i+2, y, data.StdSpawn{MapID: mapID, MonsterID: tpl.ID, X: x + i + 2, Y: y})
+		mon.MasterID = caster.ID
+		mon.MasterExpiresAt = time.Now().Add(time.Hour)
+		w.monsters[id] = mon
+	}
+	w.mu.Unlock()
+	targetX, targetY := x+8, y
+	result, err := w.SpawnMonsterByNameAt(mapID, targetX, targetY, "鸡", 1)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
+	}
+	if len(result.Monsters) != 1 {
+		t.Fatalf("SpawnMonsterByNameAt() monsters = %d, want 1", len(result.Monsters))
+	}
+	_, err = w.CastSkillWithPlayers(caster, "诱惑之光", targetX, targetY, 0, nil)
+	if err == nil {
+		t.Fatal("CastSkillWithPlayers() error = nil, want controlled monster limit rejection")
+	}
+}
+
+func TestCastSkillTamingMonsterUsesCasterLevelInSuccessCheck(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	w.mu.Lock()
+	w.monsters = map[string]*Monster{}
+	w.occupied = map[monsterPosition]string{}
+	w.mu.Unlock()
+	mapID, x, y := caster.MapID, caster.X, caster.Y
+	caster.Level = 80
+	caster.MP = 100
+	caster.Skills = storage.SkillStates{{ID: "诱惑之光", Level: 0, Train: 0}}
+	targetX, targetY := x+8, y
+	result, err := w.SpawnMonsterByNameAt(mapID, targetX, targetY, "鸡", 1)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
+	}
+	if len(result.Monsters) != 1 {
+		t.Fatalf("SpawnMonsterByNameAt() monsters = %d, want 1", len(result.Monsters))
+	}
+	spawned := result.Monsters[0]
+	targetX, targetY = spawned.X, spawned.Y
+	w.mu.Lock()
+	mon := w.monsters[spawned.ID]
+	mon.Level = 40
+	src := &seqSource{vals: []int64{0, 0, 0}}
+	w.rand = rand.New(src)
+	w.mu.Unlock()
+	updated, err := w.CastSkillWithPlayers(caster, "诱惑之光", targetX, targetY, 0, nil)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if len(updated.AffectedMonsters) != 1 {
+		t.Fatalf("AffectedMonsters = %d, want 1", len(updated.AffectedMonsters))
+	}
+	if updated.AffectedMonsters[0].MasterID != caster.ID {
+		t.Fatalf("controlled.MasterID = %q, want %q", updated.AffectedMonsters[0].MasterID, caster.ID)
+	}
+}
+
+func TestCastSkillTamingMonsterRespectsMonsterHpGate(t *testing.T) {
+	prepare := func(maxHP int, seed int64) (*World, storage.Character, int, int) {
+		w, caster := newTestWorldCharacter(t)
+		w.mu.Lock()
+		w.monsters = map[string]*Monster{}
+		w.occupied = map[monsterPosition]string{}
+		w.mu.Unlock()
+		mapID, x, y := caster.MapID, caster.X, caster.Y
+		caster.Level = 100
+		caster.MP = 100
+		caster.Skills = storage.SkillStates{{ID: "诱惑之光", Level: 3, Train: 0}}
+		targetX, targetY := x+8, y
+		result, err := w.SpawnMonsterByNameAt(mapID, targetX, targetY, "鸡", 1)
+		if err != nil {
+			t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
+		}
+		if len(result.Monsters) != 1 {
+			t.Fatalf("SpawnMonsterByNameAt() monsters = %d, want 1", len(result.Monsters))
+		}
+		spawned := result.Monsters[0]
+		targetX, targetY = spawned.X, spawned.Y
+		w.mu.Lock()
+		mon := w.monsters[spawned.ID]
+		mon.MaxHP = maxHP
+		mon.HP = maxHP
+		w.rand = rand.New(rand.NewSource(seed))
+		w.mu.Unlock()
+		return w, caster, targetX, targetY
+	}
+
+	seed := int64(-1)
+	lowOK := false
+	highFail := false
+	var lowW *World
+	var lowCaster storage.Character
+	var lowX, lowY int
+	for s := int64(0); s < 1000; s++ {
+		lowW, lowCaster, lowX, lowY = prepare(100, s)
+		lowUpdated, err := lowW.CastSkillWithPlayers(lowCaster, "诱惑之光", lowX, lowY, 0, nil)
+		if err != nil {
+			continue
+		}
+		if len(lowUpdated.AffectedMonsters) != 1 {
+			continue
+		}
+		highW, highCaster, highX, highY := prepare(500, s)
+		highUpdated, err := highW.CastSkillWithPlayers(highCaster, "诱惑之光", highX, highY, 0, nil)
+		if err != nil {
+			continue
+		}
+		if len(highUpdated.AffectedMonsters) == 0 {
+			seed = s
+			lowOK = true
+			highFail = true
+			break
+		}
+	}
+	if !lowOK || !highFail {
+		t.Fatal("could not find a seed that distinguishes low and high HP taming")
+	}
+	lowW, lowCaster, lowX, lowY = prepare(100, seed)
+	lowUpdated, err := lowW.CastSkillWithPlayers(lowCaster, "诱惑之光", lowX, lowY, 0, nil)
+	if err != nil {
+		t.Fatalf("low HP CastSkillWithPlayers() error = %v", err)
+	}
+	if len(lowUpdated.AffectedMonsters) != 1 {
+		t.Fatalf("low HP affected monsters = %d, want 1", len(lowUpdated.AffectedMonsters))
+	}
+
+	highW, highCaster, highX, highY := prepare(500, seed)
+	highUpdated, err := highW.CastSkillWithPlayers(highCaster, "诱惑之光", highX, highY, 0, nil)
+	if err != nil {
+		t.Fatalf("high HP CastSkillWithPlayers() error = %v", err)
+	}
+	if len(highUpdated.AffectedMonsters) != 0 {
+		t.Fatalf("high HP affected monsters = %d, want 0", len(highUpdated.AffectedMonsters))
+	}
+}
+
+func TestCastSkillTrapDamagesMultipleMonsters(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	w.mu.Lock()
+	w.monsters = map[string]*Monster{}
+	w.occupied = map[monsterPosition]string{}
+	w.mu.Unlock()
+	mapID := caster.MapID
+	mp := w.data.Maps[mapID]
+	targetX, targetY := -1, -1
+	for dx := 2; dx < 8 && targetX < 0; dx++ {
+		for dy := -2; dy <= 2; dy++ {
+			tx := caster.X + dx
+			ty := caster.Y + dy
+			if !mp.Walkable(tx, ty) {
+				continue
+			}
+			clear := true
+			w.mu.Lock()
+			for _, mon := range w.monsters {
+				if mon != nil && mon.Alive && mon.MapID == mapID && abs(mon.X-tx) <= 1 && abs(mon.Y-ty) <= 1 {
+					clear = false
+					break
+				}
+			}
+			w.mu.Unlock()
+			if clear {
+				targetX, targetY = tx, ty
+				break
+			}
+		}
+	}
+	if targetX < 0 {
+		t.Fatal("could not find clear tile for trap test")
+	}
+	result, err := w.SpawnMonsterByNameAt(mapID, targetX, targetY, "鸡", 2)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
+	}
+	if len(result.Monsters) != 2 {
+		t.Fatalf("SpawnMonsterByNameAt() monsters = %d, want 2", len(result.Monsters))
+	}
+	caster.Level = 100
+	caster.MP = 100
+	caster.Skills = storage.SkillStates{{ID: "困魔咒", Level: 5, Train: 0}}
+	updated, err := w.CastSkillWithPlayers(caster, "困魔咒", targetX, targetY, 0, nil)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if len(updated.MonsterHits) != 2 {
+		t.Fatalf("MonsterHits = %d, want 2", len(updated.MonsterHits))
+	}
+	for _, hit := range updated.MonsterHits {
+		if hit.Damage <= 0 {
+			t.Fatalf("hit = %+v, want positive damage", hit)
+		}
 	}
 }
 
@@ -2782,9 +5089,10 @@ func TestNormalizeCharacterBagItemsRemovesInvalidAndDuplicates(t *testing.T) {
 		{ItemID: testHPItemID, MakeIndex: 10},
 	}
 
-	normalized, changed := w.NormalizeCharacterBagItems(ch)
+	normalized := ch
+	changed := w.normalizeBagItemMakeIndexesLocked(&normalized)
 	if !changed {
-		t.Fatal("NormalizeCharacterBagItems() changed = false, want true")
+		t.Fatal("normalizeBagItemMakeIndexesLocked() changed = false, want true")
 	}
 	if countBagItems(normalized.BagItems) != 2 {
 		t.Fatalf("normalized bag len = %d, want 2", countBagItems(normalized.BagItems))
@@ -3015,6 +5323,199 @@ func TestSetGroupModeWithResultReturnsResponseParam(t *testing.T) {
 	}
 }
 
+func TestSetSkillHotkeyPersistsChange(t *testing.T) {
+	bundle := loadTestBundle(t)
+	storePath := filepath.Join(t.TempDir(), "state.json")
+	store, err := storage.Open(storePath)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	w := New(bundle, store)
+	mapID, x, y := defaultSpawn(bundle)
+	ch, err := w.CreateCharacterWithAppearance("test", "tester", "taoist", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacterWithAppearance() error = %v", err)
+	}
+	ch.Skills = storage.SkillStates{{ID: "精神力战法"}}
+	if err := w.store.SaveCharacter(ch); err != nil {
+		t.Fatalf("SaveCharacter() error = %v", err)
+	}
+	updated, changed, err := w.SetSkillHotkey(ch, "精神力战法", '3')
+	if err != nil {
+		t.Fatalf("SetSkillHotkey() error = %v", err)
+	}
+	if !changed {
+		t.Fatalf("SetSkillHotkey() changed = false, want true")
+	}
+	if updated.Skills[0].Hotkey != '3' {
+		t.Fatalf("updated hotkey = %d, want '3'", updated.Skills[0].Hotkey)
+	}
+	reopened, err := storage.Open(storePath)
+	if err != nil {
+		t.Fatalf("reopen Open() error = %v", err)
+	}
+	saved, ok := reopened.Character(ch.ID)
+	if !ok {
+		t.Fatalf("saved character not found")
+	}
+	if saved.Skills[0].Hotkey != '3' {
+		t.Fatalf("saved hotkey = %d, want '3'", saved.Skills[0].Hotkey)
+	}
+}
+
+func TestTickClearsExpiredStealthAndQueuesStateRefresh(t *testing.T) {
+	bundle := loadTestBundle(t)
+	store, err := storage.Open(filepath.Join(t.TempDir(), "state.json"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	w := New(bundle, store)
+	mapID, x, y := defaultSpawn(bundle)
+	ch, err := w.CreateCharacterWithAppearance("test", "tester", "taoist", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacterWithAppearance() error = %v", err)
+	}
+	ch.TransparentUntil = time.Now().Add(-time.Second).UnixNano()
+	if err := w.store.SaveCharacter(ch); err != nil {
+		t.Fatalf("SaveCharacter() error = %v", err)
+	}
+	result, err := w.Tick([]PlayerSnapshot{{Character: ch}}, time.Now())
+	if err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	if len(result.StateRefreshCharacters) != 1 {
+		t.Fatalf("StateRefreshCharacters = %+v, want 1", result.StateRefreshCharacters)
+	}
+	if result.StateRefreshCharacters[0].ID != ch.ID {
+		t.Fatalf("StateRefreshCharacters[0].ID = %q, want %q", result.StateRefreshCharacters[0].ID, ch.ID)
+	}
+	if len(result.Characters) != 1 {
+		t.Fatalf("Characters = %+v, want 1", result.Characters)
+	}
+	if result.Characters[0].TransparentUntil != 0 {
+		t.Fatalf("TransparentUntil = %d, want 0", result.Characters[0].TransparentUntil)
+	}
+}
+
+func TestTickClearsExpiredProtectionAndQueuesAbilityRefresh(t *testing.T) {
+	bundle := loadTestBundle(t)
+	store, err := storage.Open(filepath.Join(t.TempDir(), "state.json"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	w := New(bundle, store)
+	mapID, x, y := defaultSpawn(bundle)
+	ch, err := w.CreateCharacterWithAppearance("test", "tester", "wizard", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacterWithAppearance() error = %v", err)
+	}
+	ch.DefenceUpUntil = time.Now().Add(-time.Second).UnixNano()
+	ch.MagDefenceUpUntil = time.Now().Add(-time.Second).UnixNano()
+	ch.BubbleDefenceUntil = time.Now().Add(-time.Second).UnixNano()
+	ch.BubbleDefenceLevel = 3
+	if err := w.store.SaveCharacter(ch); err != nil {
+		t.Fatalf("SaveCharacter() error = %v", err)
+	}
+	result, err := w.Tick([]PlayerSnapshot{{Character: ch}}, time.Now())
+	if err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	if len(result.AbilityRefreshCharacters) != 1 {
+		t.Fatalf("AbilityRefreshCharacters = %+v, want 1", result.AbilityRefreshCharacters)
+	}
+	if result.AbilityRefreshCharacters[0].ID != ch.ID {
+		t.Fatalf("AbilityRefreshCharacters[0].ID = %q, want %q", result.AbilityRefreshCharacters[0].ID, ch.ID)
+	}
+	if len(result.Characters) != 1 {
+		t.Fatalf("Characters = %+v, want 1", result.Characters)
+	}
+	got := result.Characters[0]
+	if got.DefenceUpUntil != 0 || got.MagDefenceUpUntil != 0 || got.BubbleDefenceUntil != 0 || got.BubbleDefenceLevel != 0 {
+		t.Fatalf("expired protection not cleared: %+v", got)
+	}
+}
+
+func TestTickOpensAndClosesShowHPAtScheduledTimes(t *testing.T) {
+	bundle := loadTestBundle(t)
+	store, err := storage.Open(filepath.Join(t.TempDir(), "state.json"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	w := New(bundle, store)
+	mapID, x, y := defaultSpawn(bundle)
+	ch, err := w.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacterWithAppearance() error = %v", err)
+	}
+	now := time.Now()
+	ch.ShowHPOpenAt = now.Add(-time.Second).UnixNano()
+	ch.ShowHPUntil = now.Add(time.Second).UnixNano()
+	if err := w.store.SaveCharacter(ch); err != nil {
+		t.Fatalf("SaveCharacter() error = %v", err)
+	}
+	result, err := w.Tick([]PlayerSnapshot{{Character: ch}}, now)
+	if err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	if len(result.ShowHPOpenedCharacters) != 1 {
+		t.Fatalf("ShowHPOpenedCharacters = %+v, want 1", result.ShowHPOpenedCharacters)
+	}
+	if result.ShowHPOpenedCharacters[0].ID != ch.ID {
+		t.Fatalf("ShowHPOpenedCharacters[0].ID = %q, want %q", result.ShowHPOpenedCharacters[0].ID, ch.ID)
+	}
+	if result.ShowHPOpenedCharacters[0].ShowHPOpenAt != 0 {
+		t.Fatalf("opened ShowHPOpenAt = %d, want 0", result.ShowHPOpenedCharacters[0].ShowHPOpenAt)
+	}
+	result, err = w.Tick([]PlayerSnapshot{{Character: result.ShowHPOpenedCharacters[0]}}, now.Add(2*time.Second))
+	if err != nil {
+		t.Fatalf("second Tick() error = %v", err)
+	}
+	if len(result.ShowHPExpiredCharacters) != 1 {
+		t.Fatalf("ShowHPExpiredCharacters = %+v, want 1", result.ShowHPExpiredCharacters)
+	}
+	if result.ShowHPExpiredCharacters[0].ID != ch.ID {
+		t.Fatalf("ShowHPExpiredCharacters[0].ID = %q, want %q", result.ShowHPExpiredCharacters[0].ID, ch.ID)
+	}
+	if result.ShowHPExpiredCharacters[0].ShowHPUntil != 0 {
+		t.Fatalf("expired ShowHPUntil = %d, want 0", result.ShowHPExpiredCharacters[0].ShowHPUntil)
+	}
+}
+
+func TestTickClearsExpiredTemporaryAbilitiesAndQueuesAbilityRefresh(t *testing.T) {
+	bundle := loadTestBundle(t)
+	store, err := storage.Open(filepath.Join(t.TempDir(), "state.json"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	w := New(bundle, store)
+	mapID, x, y := defaultSpawn(bundle)
+	ch, err := w.CreateCharacterWithAppearance("test", "tester", "wizard", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacterWithAppearance() error = %v", err)
+	}
+	ch.ExtraAbil[0] = 3
+	ch.ExtraAbil[4] = 7
+	ch.ExtraAbilTimes[0] = time.Now().Add(-time.Second).UnixNano()
+	ch.ExtraAbilTimes[4] = time.Now().Add(-time.Second).UnixNano()
+	if err := w.store.SaveCharacter(ch); err != nil {
+		t.Fatalf("SaveCharacter() error = %v", err)
+	}
+	result, err := w.Tick([]PlayerSnapshot{{Character: ch}}, time.Now())
+	if err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	if len(result.AbilityRefreshCharacters) != 1 {
+		t.Fatalf("AbilityRefreshCharacters = %+v, want 1", result.AbilityRefreshCharacters)
+	}
+	if len(result.Characters) != 1 {
+		t.Fatalf("Characters = %+v, want 1", result.Characters)
+	}
+	got := result.Characters[0]
+	if got.ExtraAbil[0] != 0 || got.ExtraAbil[4] != 0 || got.ExtraAbilTimes[0] != 0 || got.ExtraAbilTimes[4] != 0 {
+		t.Fatalf("expired temporary abilities not cleared: %+v", got)
+	}
+}
+
 func TestAbilitiesMatchesBaseWithNothingEquipped(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
 	base := Base(ch.Class, ch.Level)
@@ -3052,7 +5553,7 @@ func TestAbilitiesSumsCarriedItemWeightIntoBagWeight(t *testing.T) {
 func TestLevelUpRecomputesMaxHPFromLevelAndHealsToFull(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
 	ch.Experience = w.RequiredExperience(ch.Level) - 1
-	monsters, _ := w.Snapshot(ch.MapID)
+	monsters, _ := w.SnapshotAround(ch.MapID, 0, 0, 99999)
 	if len(monsters) == 0 {
 		t.Fatalf("expected monsters")
 	}
@@ -3092,12 +5593,12 @@ func TestGameplaySettingsControlRequiredExperience(t *testing.T) {
 	settings := config.DefaultGameplay()
 	settings.Progression.RequiredExperiencePerLevel = 5
 	w := New(bundle, store, settings)
-	mapID, x, y := w.DefaultSpawn()
-	ch, err := w.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	mapID, x, y := defaultSpawn(bundle)
+	ch, err := w.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
 	if err != nil {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
-	monsters, _ := w.Snapshot(ch.MapID)
+	monsters, _ := w.SnapshotAround(ch.MapID, 0, 0, 99999)
 	if len(monsters) == 0 {
 		t.Fatalf("expected monsters")
 	}
@@ -3262,8 +5763,8 @@ func TestTeleportRandomInMapPersistsCharacterPosition(t *testing.T) {
 		t.Fatalf("Open() error = %v", err)
 	}
 	w := New(bundle, store)
-	mapID, x, y := w.DefaultSpawn()
-	ch, err := w.CreateCharacter("test", "tester", "warrior", mapID, x, y)
+	mapID, x, y := defaultSpawn(bundle)
+	ch, err := w.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
 	if err != nil {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
@@ -3278,5 +5779,29 @@ func TestTeleportRandomInMapPersistsCharacterPosition(t *testing.T) {
 	}
 	if saved.MapID != targetMap || saved.X != updated.X || saved.Y != updated.Y {
 		t.Fatalf("saved character = %s (%d,%d), want %s (%d,%d)", saved.MapID, saved.X, saved.Y, targetMap, updated.X, updated.Y)
+	}
+}
+
+func TestCastSkillInstantTeleportMovesCasterWithinHomeMap(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	ch.Skills = storage.SkillStates{{ID: "瞬息移动", Level: 5, Train: 0}}
+	skill, ok := w.Skill("瞬息移动")
+	if !ok {
+		t.Fatalf("skill 瞬息移动 missing from config")
+	}
+	cost := w.SpellCost(skill, ch.Skills[0])
+	ch.MP = cost + 10
+	updated, err := w.CastSkillWithPlayers(ch, "瞬息移动", ch.X, ch.Y, 0, nil)
+	if err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+	if updated.Character.MapID != ch.MapID {
+		t.Fatalf("MapID = %q, want %q", updated.Character.MapID, ch.MapID)
+	}
+	if updated.Character.X == ch.X && updated.Character.Y == ch.Y {
+		t.Fatalf("teleport did not move character")
+	}
+	if updated.Character.MP != ch.MP-cost {
+		t.Fatalf("MP = %d, want %d after teleport", updated.Character.MP, ch.MP-cost)
 	}
 }

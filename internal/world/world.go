@@ -3,6 +3,7 @@ package world
 import (
 	"math/rand"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,9 +20,11 @@ type World struct {
 	monsters       map[string]*Monster
 	occupied       map[monsterPosition]string
 	drops          map[string]GroundDrop
+	fireFields     map[fireFieldKey]fireField
 	spawns         map[string]*spawnState
 	npcActors      map[string]int32
-	merchantStocks map[string][]npc.MerchantStockItem
+	merchantStocks map[string][]storage.UserItem
+	merchantNextID map[string]int32
 	nextID         int
 	nextNPCID      int32
 	rand           *rand.Rand
@@ -103,6 +106,18 @@ type Monster struct {
 	WalkWaitTick       time.Time
 	WalkWaitLocked     bool
 	NextSearchAt       time.Time
+	PoisonHealthLevel  byte
+	PoisonHealthStartAt time.Time
+	PoisonHealthUntil  time.Time
+	PoisonHealthTickAt time.Time
+	PoisonArmorLevel   byte
+	PoisonArmorStartAt time.Time
+	PoisonArmorUntil   time.Time
+	PoisonSourceID     string
+	DefenceUpUntil     int64
+	MagDefenceUpUntil  int64
+	MasterID           string
+	MasterExpiresAt    time.Time
 }
 
 type GroundDrop struct {
@@ -125,7 +140,9 @@ type ItemUseResult struct {
 	Consumed       bool
 	Teleport       *TeleportEvent
 	AbilityChanged bool
+	SkillChanged   bool
 	HealthChanged  bool
+	RemovedItems   []storage.UserItem
 	AddedItems     []storage.UserItem
 	Experience     int
 	CurrentExp     int
@@ -159,7 +176,9 @@ type AttackResult struct {
 	Experience     int
 	CurrentExp     int
 	LevelUp        bool
+	SkillChanged   bool
 	Drops          []GroundDrop
+	CharacterHits  []CharacterHit
 	Character      storage.Character
 }
 
@@ -172,9 +191,14 @@ type PlayerSnapshot struct {
 }
 
 type TickResult struct {
-	MonsterActions []MonsterAction
-	CharacterHits  []CharacterHit
-	Characters     []storage.Character
+	MonsterActions           []MonsterAction
+	CharacterHits            []CharacterHit
+	MonsterHits              []AttackResult
+	StateRefreshCharacters   []storage.Character
+	AbilityRefreshCharacters []storage.Character
+	ShowHPOpenedCharacters   []storage.Character
+	ShowHPExpiredCharacters  []storage.Character
+	Characters               []storage.Character
 }
 
 type MonsterAction struct {
@@ -223,9 +247,11 @@ func New(bundle data.StdBundle, store *storage.Store, gameplayConfig ...config.G
 		monsters:       map[string]*Monster{},
 		occupied:       map[monsterPosition]string{},
 		drops:          map[string]GroundDrop{},
+		fireFields:     map[fireFieldKey]fireField{},
 		spawns:         map[string]*spawnState{},
 		npcActors:      map[string]int32{},
-		merchantStocks: map[string][]npc.MerchantStockItem{},
+		merchantStocks: map[string][]storage.UserItem{},
+		merchantNextID: map[string]int32{},
 		nextID:         1,
 		nextNPCID:      300000,
 		rand:           rand.New(rand.NewSource(1)),
@@ -245,11 +271,7 @@ func (w *World) initNPCActors() {
 	for _, id := range ids {
 		w.npcActors[id] = w.nextNPCID
 		w.nextNPCID++
-		if entity, ok := w.data.NPCs.Entities[id]; ok && len(entity.Merchant.Stock) > 0 {
-			stocks := make([]npc.MerchantStockItem, len(entity.Merchant.Stock))
-			copy(stocks, entity.Merchant.Stock)
-			w.merchantStocks[id] = stocks
-		}
+		w.initMerchantStockLocked(id)
 	}
 }
 
@@ -296,31 +318,6 @@ func normalizeStdBundle(bundle data.StdBundle) data.StdBundle {
 	return bundle
 }
 
-func (w *World) ItemIndex(itemID string) (int, bool) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	for i, id := range w.data.ItemOrder {
-		if id == itemID {
-			return i + 1, true
-		}
-	}
-	return 0, false
-}
-
-func (w *World) ItemByIndex(index int) (data.StdItem, bool) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if index <= 0 || index > len(w.data.ItemOrder) {
-		return data.StdItem{}, false
-	}
-	itemID := w.data.ItemOrder[index-1]
-	item, ok := w.data.Items[itemID]
-	if !ok {
-		return data.StdItem{}, false
-	}
-	return item, true
-}
-
 func (w *World) NPCActorID(id string) int32 {
 	if actorID, ok := w.npcActors[id]; ok {
 		return actorID
@@ -328,73 +325,100 @@ func (w *World) NPCActorID(id string) int32 {
 	return 300000
 }
 
-func (w *World) MerchantStock(npcID string) []npc.MerchantStockItem {
+func (w *World) initMerchantStockLocked(npcID string) []storage.UserItem {
+	stocks, ok := w.merchantStocks[npcID]
+	if ok {
+		return stocks
+	}
+	entity, ok := w.data.NPCs.Entities[npcID]
+	if !ok || len(entity.Merchant.Stock) == 0 {
+		w.merchantStocks[npcID] = nil
+		w.merchantNextID[npcID] = 1
+		return nil
+	}
+	stocks = make([]storage.UserItem, 0, len(entity.Merchant.Stock))
+	nextID := int32(1)
+	for _, stock := range entity.Merchant.Stock {
+		if stock.Count <= 0 {
+			continue
+		}
+		item, ok := w.data.Items[stock.ItemID]
+		if !ok {
+			continue
+		}
+		duraMax := itemDuraMax(item)
+		for i := 0; i < stock.Count; i++ {
+			entry := storage.UserItem{ItemID: stock.ItemID, MakeIndex: nextID, DuraMax: duraMax, Dura: duraMax}
+			stocks = append(stocks, entry)
+			nextID++
+		}
+	}
+	w.merchantStocks[npcID] = stocks
+	w.merchantNextID[npcID] = nextID
+	return stocks
+}
+
+func (w *World) nextMerchantStockIndexLocked(npcID string) int32 {
+	nextID, ok := w.merchantNextID[npcID]
+	if !ok || nextID <= 0 {
+		nextID = int32(len(w.merchantStocks[npcID])) + 1
+		if nextID <= 0 {
+			nextID = 1
+		}
+	}
+	w.merchantNextID[npcID] = nextID + 1
+	return nextID
+}
+
+func (w *World) MerchantStock(npcID string) []storage.UserItem {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	stocks, ok := w.merchantStocks[npcID]
-	if !ok {
-		entity, ok := w.data.NPCs.Entities[npcID]
-		if !ok || len(entity.Merchant.Stock) == 0 {
-			return nil
-		}
-		stocks = make([]npc.MerchantStockItem, len(entity.Merchant.Stock))
-		copy(stocks, entity.Merchant.Stock)
-		w.merchantStocks[npcID] = stocks
-	}
-	out := make([]npc.MerchantStockItem, len(stocks))
+	stocks := w.initMerchantStockLocked(npcID)
+	out := make([]storage.UserItem, len(stocks))
 	copy(out, stocks)
 	return out
 }
 
-func (w *World) ConsumeMerchantStock(npcID, itemID string) bool {
+func (w *World) ConsumeMerchantStock(npcID string, makeIndex int32, itemID string) bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	stocks, ok := w.merchantStocks[npcID]
-	if !ok {
-		entity, ok := w.data.NPCs.Entities[npcID]
-		if !ok {
-			return false
-		}
-		stocks = make([]npc.MerchantStockItem, len(entity.Merchant.Stock))
-		copy(stocks, entity.Merchant.Stock)
-	}
+	stocks := w.initMerchantStockLocked(npcID)
 	for i := range stocks {
-		if stocks[i].ItemID != itemID || stocks[i].Count <= 0 {
+		if makeIndex > 0 && stocks[i].MakeIndex != makeIndex {
 			continue
 		}
-		stocks[i].Count--
-		if stocks[i].Count <= 0 {
-			stocks = append(stocks[:i], stocks[i+1:]...)
+		if itemID != "" && !sameItemID(stocks[i].ItemID, itemID) {
+			continue
 		}
+		stocks = append(stocks[:i], stocks[i+1:]...)
 		w.merchantStocks[npcID] = stocks
 		return true
 	}
 	return false
 }
 
-func (w *World) AddMerchantStock(npcID, itemID string, count int) {
-	if count <= 0 {
+func (w *World) AddMerchantStock(npcID string, item storage.UserItem) {
+	if item.ItemID == "" {
 		return
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	stocks, ok := w.merchantStocks[npcID]
-	if !ok {
-		entity, ok := w.data.NPCs.Entities[npcID]
-		if ok && len(entity.Merchant.Stock) > 0 {
-			stocks = make([]npc.MerchantStockItem, len(entity.Merchant.Stock))
-			copy(stocks, entity.Merchant.Stock)
+	stocks := w.initMerchantStockLocked(npcID)
+	if item.DuraMax == 0 {
+		if std, ok := w.data.Items[item.ItemID]; ok {
+			item.DuraMax = itemDuraMax(std)
 		}
 	}
-	for i := range stocks {
-		if stocks[i].ItemID == itemID {
-			stocks[i].Count += count
-			w.merchantStocks[npcID] = stocks
-			return
-		}
+	if item.Dura == 0 && item.DuraMax > 0 {
+		item.Dura = item.DuraMax
 	}
-	stocks = append(stocks, npc.MerchantStockItem{ItemID: itemID, Count: count})
+	item.MakeIndex = w.nextMerchantStockIndexLocked(npcID)
+	stocks = append(stocks, item)
 	w.merchantStocks[npcID] = stocks
+}
+
+func sameItemID(a, b string) bool {
+	return strings.EqualFold(a, b)
 }
 
 func (w *World) NPCByActorID(actorID int32) (npc.Entity, bool) {

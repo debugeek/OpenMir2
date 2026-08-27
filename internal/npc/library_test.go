@@ -34,7 +34,7 @@ func TestLoadLibraryReadsEntitiesAndScripts(t *testing.T) {
     },
     "item_types": ["consumable"],
     "stock": [
-      {"item_id": "wood_sword", "count": 3, "refill_minutes": 15}
+      {"item_id": "wood_sword", "count": 3}
     ]
   },
   "labels": {

@@ -8,7 +8,9 @@ type AttackSyncer interface {
 	SendWinExp(int, int)
 	SendLevelUp(storage.Character)
 	SendHealthSpellChanged(storage.Character)
+	SendUseMagic(storage.Character)
 	BroadcastCharacterHit(storage.Character, uint16)
+	BroadcastCharacterStruck(CharacterHit)
 	BroadcastHitImpact(AttackResult)
 }
 
@@ -23,7 +25,13 @@ func ApplyAttackSync(syncer AttackSyncer, result AttackResult, attackIdent uint1
 		syncer.SendHealthSpellChanged(result.Character)
 	}
 	syncer.BroadcastCharacterHit(result.Character, attackIdent)
+	for _, hit := range result.CharacterHits {
+		syncer.BroadcastCharacterStruck(hit)
+	}
 	if result.MonsterID != "" {
 		syncer.BroadcastHitImpact(result)
+	}
+	if result.SkillChanged {
+		syncer.SendUseMagic(result.Character)
 	}
 }

@@ -162,6 +162,13 @@ func (w *World) Abilities(ch storage.Character) Abilities {
 	dc = addHighByte(dc, int(extra[0]))
 	mc = addHighByte(mc, int(extra[1]))
 	sc = addHighByte(sc, int(extra[2]))
+	defenceBonus, magicDefenceBonus, _, _ := activeProtectionBuffs(ch, time.Now())
+	if defenceBonus > 0 {
+		ac = addHighByte(ac, defenceBonus)
+	}
+	if magicDefenceBonus > 0 {
+		mac = addHighByte(mac, magicDefenceBonus)
+	}
 	if extra[4] > 0 {
 		base.MaxHP = minInt(65535, base.MaxHP+int(extra[4]))
 	}
@@ -236,6 +243,13 @@ func (w *World) AbilityStats(ch storage.Character) AbilityStats {
 	dc = addHighByte(dc, int(extra[0]))
 	mc = addHighByte(mc, int(extra[1]))
 	sc = addHighByte(sc, int(extra[2]))
+	defenceBonus, magicDefenceBonus, _, _ := activeProtectionBuffs(ch, time.Now())
+	if defenceBonus > 0 {
+		ac = addHighByte(ac, defenceBonus)
+	}
+	if magicDefenceBonus > 0 {
+		mac = addHighByte(mac, magicDefenceBonus)
+	}
 	if extra[4] > 0 {
 		base.MaxHP = minInt(65535, base.MaxHP+int(extra[4]))
 	}
@@ -312,6 +326,16 @@ func (w *World) combatStatsLocked(ch storage.Character) CombatStats {
 		stats.SC += int(byte(item.Stats.ScMin))
 		stats.SCMax += int(byte(item.Stats.ScMin >> 8))
 	}
+	if state, _, ok := ch.Skills.Get("基本剑术"); ok {
+		bonus := int(state.Level) + 1
+		stats.DC += bonus
+		stats.DCMax += bonus
+	}
+	if state, _, ok := ch.Skills.Get("精神力战法"); ok {
+		bonus := int(state.Level) + 1
+		stats.SC += bonus
+		stats.SCMax += bonus
+	}
 	return stats
 }
 
@@ -372,4 +396,39 @@ func activeTemporaryAbilities(ch storage.Character, now time.Time) [tempAbilityC
 		out[i] = ch.ExtraAbil[i]
 	}
 	return out
+}
+
+func activeProtectionBuffs(ch storage.Character, now time.Time) (defenceBonus, magicDefenceBonus int, bubbleLevel byte, bubbleActive bool) {
+	if now.IsZero() {
+		now = time.Now()
+	}
+	expires := now.UnixNano()
+	if ch.DefenceUpUntil > 0 && ch.DefenceUpUntil > expires {
+		defenceBonus = 2 + maxInt(ch.Level, 1)/7
+	}
+	if ch.MagDefenceUpUntil > 0 && ch.MagDefenceUpUntil > expires {
+		magicDefenceBonus = 2 + maxInt(ch.Level, 1)/7
+	}
+	if ch.BubbleDefenceUntil > 0 && ch.BubbleDefenceUntil > expires {
+		bubbleLevel = ch.BubbleDefenceLevel
+		bubbleActive = true
+	}
+	return
+}
+
+func activeMonsterProtectionBuffs(mon *Monster, now time.Time) (defenceBonus, magicDefenceBonus int) {
+	if mon == nil {
+		return 0, 0
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	expires := now.UnixNano()
+	if mon.DefenceUpUntil > 0 && mon.DefenceUpUntil > expires {
+		defenceBonus = 2 + maxInt(mon.Level, 1)/7
+	}
+	if mon.MagDefenceUpUntil > 0 && mon.MagDefenceUpUntil > expires {
+		magicDefenceBonus = 2 + maxInt(mon.Level, 1)/7
+	}
+	return
 }

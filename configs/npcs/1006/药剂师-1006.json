@@ -14,10 +14,10 @@
       "sell": true
     },
     "stock": [
-      { "item_id": "灰色药粉(少量)", "count": 10, "refill_minutes": 10 },
-      { "item_id": "灰色药粉(中量)", "count": 10, "refill_minutes": 10 },
-      { "item_id": "黄色药粉(少量)", "count": 10, "refill_minutes": 10 },
-      { "item_id": "黄色药粉(中量)", "count": 10, "refill_minutes": 10 }
+      { "item_id": "灰色药粉(少量)", "count": 10 },
+      { "item_id": "灰色药粉(中量)", "count": 10 },
+      { "item_id": "黄色药粉(少量)", "count": 10 },
+      { "item_id": "黄色药粉(中量)", "count": 10 }
     ]
   },
   "labels": {

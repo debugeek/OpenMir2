@@ -12,16 +12,6 @@ import (
 	"openmir2/internal/npc"
 )
 
-func Load(dir string) (StdBundle, error) {
-	bundle, _, err := LoadConfigsWithReport(dir)
-	return bundle, err
-}
-
-func LoadConfigs(dir string) (StdBundle, error) {
-	bundle, _, err := LoadConfigsWithReport(dir)
-	return bundle, err
-}
-
 func LoadConfigsWithReport(dir string) (StdBundle, StdLoadReport, error) {
 	var report StdLoadReport
 	items, itemOrder, err := loadConfigItems(filepath.Join(dir, "items"))
@@ -135,31 +125,11 @@ type monsterAttributesConfig struct {
 	Drops              []dropEntryConfig `json:"drops"`
 }
 
-type dropTableConfig struct {
-	MonsterID string            `json:"monster_id"`
-	Entries   []dropEntryConfig `json:"entries"`
-}
-
 type dropEntryConfig struct {
 	ItemID   string `json:"item_id"`
 	Chance   string `json:"chance"`
 	MinCount int    `json:"min_count"`
 	MaxCount int    `json:"max_count"`
-}
-
-type mapSpawnsConfig struct {
-	MapID  string        `json:"map_id"`
-	Spawns []spawnConfig `json:"spawns"`
-}
-
-type spawnConfig struct {
-	MonsterID      string `json:"monster_id"`
-	X              int    `json:"x"`
-	Y              int    `json:"y"`
-	Range          int    `json:"range"`
-	Count          int    `json:"count"`
-	RespawnSeconds int    `json:"respawn_seconds"`
-	MissionGenRate int    `json:"mission_gen_rate"`
 }
 
 type spawnRecord struct {

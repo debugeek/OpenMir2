@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"openmir2/internal/data"
+	"openmir2/internal/storage"
 )
 
 func (w *World) monsterTemplateByIDLocked(id string) (data.StdMonster, bool) {
@@ -100,14 +101,6 @@ func idSeq(id string) int {
 	return n
 }
 
-func (w *World) SpawnMonsterByName(mapID string, x, y int, name string, count int) (SpawnResult, error) {
-	return w.spawnMonsterByName(mapID, x, y, name, count, -1, -1)
-}
-
-func (w *World) SpawnMonsterByNameAvoid(mapID string, x, y int, name string, count, avoidX, avoidY int) (SpawnResult, error) {
-	return w.spawnMonsterByName(mapID, x, y, name, count, avoidX, avoidY)
-}
-
 func (w *World) SpawnMonsterByNameAt(mapID string, x, y int, name string, count int) (SpawnResult, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -195,4 +188,50 @@ func (w *World) spawnMonsterByName(mapID string, x, y int, name string, count, a
 		return SpawnResult{}, fmt.Errorf("no available spawn position for monster %s", name)
 	}
 	return result, nil
+}
+
+func (w *World) summonMonsterNearCharacterLocked(master storage.Character, players []storage.Character, name string, duration time.Duration) (*Monster, error) {
+	mp, ok := w.data.Maps[master.MapID]
+	if !ok {
+		return nil, fmt.Errorf("map %s not found", master.MapID)
+	}
+	playerMap := make(map[string]storage.Character, len(players))
+	for _, ch := range players {
+		if ch.ID == "" {
+			continue
+		}
+		playerMap[ch.ID] = ch
+	}
+	tpl, ok := w.monsterTemplateByIDLocked(name)
+	if !ok {
+		return nil, fmt.Errorf("monster %s not found", name)
+	}
+	now := time.Now()
+	dir := master.Dir
+	if dir < 0 || dir >= len(dirOffsets) {
+		dir = 0
+	}
+	off := dirOffsets[dir]
+	x, y := master.X+off[0], master.Y+off[1]
+	if !mp.Walkable(x, y) || w.monsterAtLocked(master.MapID, x, y, "") || w.playerAtLocked(playerMap, master.MapID, x, y) {
+		return nil, fmt.Errorf("no available spawn position for monster %s", name)
+	}
+	id := fmt.Sprintf("mon-%d", w.nextID)
+	w.nextID++
+	spawn := data.StdSpawn{
+		MapID:          master.MapID,
+		MonsterID:      tpl.ID,
+		X:              x,
+		Y:              y,
+		Count:          1,
+		RespawnSeconds: 0,
+	}
+	mon := newMonster(w, id, tpl, master.MapID, x, y, spawn)
+	mon.MasterID = master.ID
+	if duration > 0 {
+		mon.MasterExpiresAt = now.Add(duration)
+	}
+	w.monsters[id] = mon
+	w.occupyMonsterLocked(mon)
+	return mon, nil
 }

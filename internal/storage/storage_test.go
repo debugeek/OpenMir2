@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -78,5 +79,28 @@ func TestInsertCharacterPersistsCharacterFields(t *testing.T) {
 	}
 	if ch.MP != 15 || ch.MaxMP != 15 {
 		t.Fatalf("MP/MaxMP = %d/%d, want 15/15", ch.MP, ch.MaxMP)
+	}
+}
+
+func TestCharacterSkillsAcceptLegacyStringArray(t *testing.T) {
+	var ch Character
+	if err := json.Unmarshal([]byte(`{"skills":["火球术","治愈术"]}`), &ch); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if got, want := len(ch.Skills), 2; got != want {
+		t.Fatalf("len(Skills) = %d, want %d", got, want)
+	}
+	if ch.Skills[0].ID != "火球术" || ch.Skills[1].ID != "治愈术" {
+		t.Fatalf("Skills = %+v, want legacy IDs preserved", ch.Skills)
+	}
+	if ch.Skills[0].Level != 0 || ch.Skills[0].Train != 0 || ch.Skills[0].Hotkey != 0 {
+		t.Fatalf("legacy skill defaults = %+v, want zeroed state", ch.Skills[0])
+	}
+	b, err := json.Marshal(ch.Skills)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	if string(b) != `[{"id":"火球术"},{"id":"治愈术"}]` {
+		t.Fatalf("json.Marshal() = %s, want object array", string(b))
 	}
 }

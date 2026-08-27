@@ -15,8 +15,8 @@
       "repair": true
     },
     "stock": [
-      { "item_id": "青铜头盔", "count": 3, "refill_minutes": 10 },
-      { "item_id": "魔法头盔", "count": 3, "refill_minutes": 10 }
+      { "item_id": "青铜头盔", "count": 3 },
+      { "item_id": "魔法头盔", "count": 3 }
     ]
   },
   "labels": {

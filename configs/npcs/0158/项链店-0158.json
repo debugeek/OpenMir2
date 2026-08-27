@@ -15,17 +15,17 @@
       "repair": true
     },
     "stock": [
-      { "item_id": "金项链", "count": 3, "refill_minutes": 10 },
-      { "item_id": "黑檀项链", "count": 3, "refill_minutes": 10 },
-      { "item_id": "黄色水晶项链", "count": 3, "refill_minutes": 10 },
-      { "item_id": "黑色水晶项链", "count": 3, "refill_minutes": 10 },
-      { "item_id": "灯笼项链", "count": 3, "refill_minutes": 10 },
-      { "item_id": "白色虎齿项链", "count": 3, "refill_minutes": 10 },
-      { "item_id": "白金项链", "count": 3, "refill_minutes": 10 },
-      { "item_id": "传统项链", "count": 3, "refill_minutes": 10 },
-      { "item_id": "魔鬼项链", "count": 3, "refill_minutes": 10 },
-      { "item_id": "凤凰明珠", "count": 3, "refill_minutes": 10 },
-      { "item_id": "琥珀项链", "count": 3, "refill_minutes": 10 }
+      { "item_id": "金项链", "count": 3 },
+      { "item_id": "黑檀项链", "count": 3 },
+      { "item_id": "黄色水晶项链", "count": 3 },
+      { "item_id": "黑色水晶项链", "count": 3 },
+      { "item_id": "灯笼项链", "count": 3 },
+      { "item_id": "白色虎齿项链", "count": 3 },
+      { "item_id": "白金项链", "count": 3 },
+      { "item_id": "传统项链", "count": 3 },
+      { "item_id": "魔鬼项链", "count": 3 },
+      { "item_id": "凤凰明珠", "count": 3 },
+      { "item_id": "琥珀项链", "count": 3 }
     ]
   },
   "labels": {

@@ -3,9 +3,9 @@ package data
 import "testing"
 
 func TestLoadConfigsReadsRuntimeConfigs(t *testing.T) {
-	b, err := Load("../../configs")
+	b, _, err := LoadConfigsWithReport("../../configs")
 	if err != nil {
-		t.Fatalf("Load() error = %v", err)
+		t.Fatalf("LoadConfigsWithReport() error = %v", err)
 	}
 	if _, ok := b.Items["木剑"]; !ok {
 		t.Fatalf("expected 木剑 item in runtime configs")

@@ -51,20 +51,3 @@ func TeleportRandomInMap(ch storage.Character, mp data.StdMap, rng *rand.Rand) (
 	ch.Y = pick[1]
 	return ch, nil
 }
-
-func findRandomWalkableNear(rng *rand.Rand, mp data.StdMap, x, y, searchRadius int) (int, int, bool) {
-	if searchRadius < 0 {
-		searchRadius = 0
-	}
-	for attempt := 0; attempt < 31; attempt++ {
-		xx, yy := x, y
-		if searchRadius > 0 {
-			xx = x - searchRadius + rng.Intn(searchRadius*2+1)
-			yy = y - searchRadius + rng.Intn(searchRadius*2+1)
-		}
-		if mp.Walkable(xx, yy) {
-			return xx, yy, true
-		}
-	}
-	return 0, 0, false
-}

@@ -13,9 +13,9 @@
       "buy": true
     },
     "stock": [
-      { "item_id": "超级金创药", "count": 200, "refill_minutes": 10 },
-      { "item_id": "超级魔法药", "count": 200, "refill_minutes": 10 },
-      { "item_id": "强效太阳水", "count": 200, "refill_minutes": 10 }
+      { "item_id": "超级金创药", "count": 200 },
+      { "item_id": "超级魔法药", "count": 200 },
+      { "item_id": "强效太阳水", "count": 200 }
     ]
   },
   "labels": {

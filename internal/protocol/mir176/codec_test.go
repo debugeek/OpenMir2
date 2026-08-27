@@ -2,39 +2,40 @@ package mir176
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 )
 
-func TestPayloadRoundTrip(t *testing.T) {
-	cases := [][]byte{
-		nil,
-		{0},
-		{1, 2},
-		{1, 2, 3},
-		[]byte("test/test"),
-		[]byte("127.0.0.1/7100/12345"),
+func encodeClientMessage(cmd Command, text []byte) []byte {
+	payload := append(MarshalCommand(cmd), text...)
+	return WrapFrame(payload)
+}
+
+func decodeClientMessage(frame []byte) (Command, []byte, error) {
+	encoded, err := UnwrapFrame(frame)
+	if err != nil {
+		return Command{}, nil, err
 	}
-	for _, tc := range cases {
-		encoded := EncodePayload(tc)
-		decoded, err := DecodePayload(encoded)
-		if err != nil {
-			t.Fatalf("DecodePayload(%q) error = %v", encoded, err)
-		}
-		if !bytes.Equal(decoded, tc) {
-			t.Fatalf("roundtrip = %v, want %v", decoded, tc)
-		}
+	if len(encoded) > 0 && encoded[0] >= '1' && encoded[0] <= '9' {
+		encoded = encoded[1:]
 	}
+	if len(encoded) < CommandLen {
+		return Command{}, nil, fmt.Errorf("encoded message too short: %d", len(encoded))
+	}
+	cmd, err := UnmarshalCommand(encoded[:CommandLen])
+	if err != nil {
+		return Command{}, nil, err
+	}
+	text := encoded[CommandLen:]
+	return cmd, text, nil
 }
 
 func TestCommandRoundTrip(t *testing.T) {
 	want := Command{Recog: 12345, Ident: CMIDPassword, Param: 2, Tag: 3, Series: 4}
-	encoded := EncodeCommand(want)
-	if len(encoded) != 16 {
-		t.Fatalf("encoded command length = %d", len(encoded))
-	}
-	got, err := DecodeCommand(encoded)
+	encoded := MarshalCommand(want)
+	got, err := UnmarshalCommand(encoded)
 	if err != nil {
-		t.Fatalf("DecodeCommand() error = %v", err)
+		t.Fatalf("UnmarshalCommand() error = %v", err)
 	}
 	if got != want {
 		t.Fatalf("command = %#v, want %#v", got, want)
@@ -44,11 +45,11 @@ func TestCommandRoundTrip(t *testing.T) {
 func TestClientMessageRoundTrip(t *testing.T) {
 	wantCmd := Command{Ident: CMSelectServer}
 	wantText := []byte("OpenMir2")
-	frame := EncodeClientMessage(wantCmd, wantText)
+	frame := encodeClientMessage(wantCmd, wantText)
 	if frame[0] != FrameStart || frame[len(frame)-1] != FrameEnd {
 		t.Fatalf("frame delimiters missing: %q", frame)
 	}
-	gotCmd, gotText, err := DecodeClientMessage(frame)
+	gotCmd, gotText, err := decodeClientMessage(frame)
 	if err != nil {
 		t.Fatalf("DecodeClientMessage() error = %v", err)
 	}
@@ -63,9 +64,9 @@ func TestClientMessageRoundTrip(t *testing.T) {
 func TestClientMessageRoundTripWithSequenceDigit(t *testing.T) {
 	wantCmd := Command{Ident: CMIDPassword}
 	wantText := []byte("test/test")
-	frame := EncodeClientMessage(wantCmd, wantText)
+	frame := encodeClientMessage(wantCmd, wantText)
 	withSequence := append([]byte{FrameStart, '1'}, frame[1:]...)
-	gotCmd, gotText, err := DecodeClientMessage(withSequence)
+	gotCmd, gotText, err := decodeClientMessage(withSequence)
 	if err != nil {
 		t.Fatalf("DecodeClientMessage() error = %v", err)
 	}
@@ -110,7 +111,7 @@ func TestPlain6CapturedHandshakeFrameDecodesPlausibly(t *testing.T) {
 
 func TestServerMessageRoundTrip(t *testing.T) {
 	wantCmd := Command{Ident: SMCertificationOK}
-	response := EncodeServerMessage(wantCmd, nil)
+	response := append(encodeClientMessage(wantCmd, nil), FrameTrailer)
 	if response[len(response)-1] != FrameTrailer {
 		t.Fatalf("server response trailer = %q, want %q", response[len(response)-1], FrameTrailer)
 	}
@@ -121,7 +122,7 @@ func TestServerMessageRoundTrip(t *testing.T) {
 	if len(tail) != 0 {
 		t.Fatalf("tail = %q, want empty", tail)
 	}
-	gotCmd, gotText, err := DecodeClientMessage(frames[0])
+	gotCmd, gotText, err := decodeClientMessage(frames[0])
 	if err != nil {
 		t.Fatalf("DecodeClientMessage() error = %v", err)
 	}
@@ -140,8 +141,8 @@ func TestUnwrapFrameRejectsBadFrame(t *testing.T) {
 }
 
 func TestSplitFrames(t *testing.T) {
-	first := EncodeClientMessage(Command{Ident: CMProtocol}, nil)
-	second := EncodeClientMessage(Command{Ident: CMIDPassword}, []byte("test/test"))
+	first := encodeClientMessage(Command{Ident: CMProtocol}, nil)
+	second := encodeClientMessage(Command{Ident: CMIDPassword}, []byte("test/test"))
 	buffer := append([]byte("noise"), first...)
 	buffer = append(buffer, second[:len(second)-2]...)
 	frames, tail := SplitFrames(buffer)

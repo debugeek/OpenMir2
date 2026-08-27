@@ -4,6 +4,7 @@ import "openmir2/internal/storage"
 
 type ItemUseSyncer interface {
 	TeleportSyncer
+	SendDelItems([]storage.UserItem)
 	SendBagAddItem(storage.Character, storage.UserItem)
 	SendAbilityOnly(storage.Character)
 	SendWinExp(int, int)
@@ -11,6 +12,7 @@ type ItemUseSyncer interface {
 	SendHealthSpellChanged(storage.Character)
 	SendEquippedItems(storage.Character)
 	SendWeightChanged(storage.Character)
+	SendUseMagic(storage.Character)
 }
 
 func ApplyItemUseSync(syncer ItemUseSyncer, result ItemUseResult) {
@@ -19,6 +21,9 @@ func ApplyItemUseSync(syncer ItemUseSyncer, result ItemUseResult) {
 	}
 	if result.Teleport != nil {
 		ApplyTeleportSync(syncer, *result.Teleport)
+	}
+	if len(result.RemovedItems) > 0 {
+		syncer.SendDelItems(result.RemovedItems)
 	}
 	for _, added := range result.AddedItems {
 		syncer.SendBagAddItem(result.Character, added)
@@ -34,6 +39,9 @@ func ApplyItemUseSync(syncer ItemUseSyncer, result ItemUseResult) {
 		syncer.SendHealthSpellChanged(result.Character)
 	} else if result.HealthChanged {
 		syncer.SendHealthSpellChanged(result.Character)
+	}
+	if result.SkillChanged {
+		syncer.SendUseMagic(result.Character)
 	}
 	syncer.SendEquippedItems(result.Character)
 	syncer.SendWeightChanged(result.Character)

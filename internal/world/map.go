@@ -17,15 +17,3 @@ func (w *World) MapLight(mapID string) int {
 	}
 	return 0
 }
-
-func (w *World) SetMapLight(mapID string, light int) bool {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	mp, ok := w.data.Maps[mapID]
-	if !ok {
-		return false
-	}
-	mp.Light = light
-	w.data.Maps[mapID] = mp
-	return true
-}

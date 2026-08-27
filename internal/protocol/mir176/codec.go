@@ -56,6 +56,7 @@ const (
 	CMUserStorageItem         = 1031
 	CMUserTakeBackStorageItem = 1032
 	CMUserMakeDrugItem        = 1034
+	CMMagicKeyChange          = 1008
 
 	CMTakeOnItem     = 1003
 	CMTakeOffItem    = 1004
@@ -146,6 +147,8 @@ const (
 	SMBagItems                   = 201
 	SMSystemMessage              = 100
 	SMHealthSpellChanged         = 53
+	SMOpenHealth                 = 1100
+	SMCloseHealth                = 1101
 	SMWeightChanged              = 622
 	SMSendMyMagic                = 211
 	SMAttackMode                 = 213
@@ -190,80 +193,6 @@ type Command struct {
 	Series uint16
 }
 
-func EncodePayload(src []byte) []byte {
-	out := make([]byte, 0, encodedLen(len(src)))
-	no := byte(2)
-	remainder := byte(0)
-	for _, raw := range src {
-		c := raw ^ 0xAC
-		if no == 6 {
-			out = append(out, (c&0x3F)+0x3C)
-			remainder |= (c >> 2) & 0x30
-			out = append(out, remainder+0x3C)
-			remainder = 0
-		} else {
-			temp := c >> 2
-			out = append(out, ((temp&0x3C)|(c&0x03))+0x3C)
-			remainder = (remainder << 2) | (temp & 0x03)
-		}
-		no = no%6 + 2
-	}
-	if no != 2 {
-		out = append(out, remainder+0x3C)
-	}
-	return out
-}
-
-func DecodePayload(src []byte) ([]byte, error) {
-	if len(src)%4 == 1 {
-		return nil, fmt.Errorf("invalid encoded payload length %d", len(src))
-	}
-	out := make([]byte, decodedLen(len(src)))
-	dst := 0
-	cycles := len(src) / 4
-	for i := 0; i < cycles; i++ {
-		base := i * 4
-		remainder := src[base+3] - 0x3C
-		temp := src[base] - 0x3C
-		out[dst] = (((temp << 2) & 0xF0) | (remainder & 0x0C) | (temp & 0x03)) ^ 0xAC
-		dst++
-		temp = src[base+1] - 0x3C
-		out[dst] = (((temp << 2) & 0xF0) | ((remainder << 2) & 0x0C) | (temp & 0x03)) ^ 0xAC
-		dst++
-		temp = src[base+2] - 0x3C
-		out[dst] = (temp | ((remainder << 2) & 0xC0)) ^ 0xAC
-		dst++
-	}
-	switch len(src) % 4 {
-	case 2:
-		remainder := src[len(src)-1] - 0x3C
-		temp := src[len(src)-2] - 0x3C
-		out[dst] = (((temp << 2) & 0xF0) | ((remainder << 2) & 0x0C) | (temp & 0x03)) ^ 0xAC
-	case 3:
-		remainder := src[len(src)-1] - 0x3C
-		temp := src[len(src)-3] - 0x3C
-		out[dst] = (((temp << 2) & 0xF0) | (remainder & 0x0C) | (temp & 0x03)) ^ 0xAC
-		dst++
-		temp = src[len(src)-2] - 0x3C
-		out[dst] = (((temp << 2) & 0xF0) | ((remainder << 2) & 0x0C) | (temp & 0x03)) ^ 0xAC
-	}
-	return out, nil
-}
-
-func EncodeAppleM2Payload(src []byte) []byte {
-	out := make([]byte, 0, encodedLen(len(src)))
-	restCount := byte(0)
-	rest := byte(0)
-	for i, raw := range src {
-		ch := raw ^ byte(0xAA+i)
-		out, restCount, rest = appendPlain6Byte(out, ch, restCount, rest)
-	}
-	if restCount > 0 {
-		out = append(out, rest+0x3C)
-	}
-	return out
-}
-
 func EncodePlain6Payload(src []byte) []byte {
 	out := make([]byte, 0, encodedLen(len(src)))
 	restCount := byte(0)
@@ -286,10 +215,6 @@ func appendPlain6Byte(out []byte, ch byte, restCount byte, rest byte) ([]byte, b
 	}
 	out = append(out, made+0x3C, rest+0x3C)
 	return out, 0, 0
-}
-
-func DecodeAppleM2Payload(src []byte) ([]byte, error) {
-	return decodePlain6Payload(src, true)
 }
 
 func DecodePlain6Payload(src []byte) ([]byte, error) {
@@ -348,30 +273,6 @@ func UnmarshalCommand(data []byte) (Command, error) {
 		Tag:    binary.LittleEndian.Uint16(data[8:10]),
 		Series: binary.LittleEndian.Uint16(data[10:12]),
 	}, nil
-}
-
-func EncodeCommand(cmd Command) []byte {
-	return EncodePayload(MarshalCommand(cmd))
-}
-
-func DecodeCommand(encoded []byte) (Command, error) {
-	payload, err := DecodePayload(encoded)
-	if err != nil {
-		return Command{}, err
-	}
-	return UnmarshalCommand(payload)
-}
-
-func EncodeAppleM2Command(cmd Command) []byte {
-	return EncodeAppleM2Payload(MarshalCommand(cmd))
-}
-
-func DecodeAppleM2Command(encoded []byte) (Command, error) {
-	payload, err := DecodeAppleM2Payload(encoded)
-	if err != nil {
-		return Command{}, err
-	}
-	return UnmarshalCommand(payload)
 }
 
 func EncodePlain6Command(cmd Command) []byte {
@@ -437,68 +338,9 @@ func SplitFrames(buffer []byte) ([][]byte, []byte) {
 	}
 }
 
-func EncodeClientMessage(cmd Command, text []byte) []byte {
-	payload := append(EncodeCommand(cmd), EncodePayload(text)...)
-	return WrapFrame(payload)
-}
-
-func EncodeAppleM2ClientMessage(cmd Command, text []byte) []byte {
-	payload := append(EncodeAppleM2Command(cmd), EncodeAppleM2Payload(text)...)
-	return WrapFrame(payload)
-}
-
 func EncodePlain6ClientMessage(cmd Command, text []byte) []byte {
 	payload := append(EncodePlain6Command(cmd), EncodePlain6Payload(text)...)
 	return WrapFrame(payload)
-}
-
-func EncodeServerMessage(cmd Command, text []byte) []byte {
-	frame := EncodeClientMessage(cmd, text)
-	return append(frame, FrameTrailer)
-}
-
-func DecodeClientMessage(frame []byte) (Command, []byte, error) {
-	encoded, err := UnwrapFrame(frame)
-	if err != nil {
-		return Command{}, nil, err
-	}
-	if len(encoded) > 0 && encoded[0] >= '1' && encoded[0] <= '9' {
-		encoded = encoded[1:]
-	}
-	if len(encoded) < encodedLen(CommandLen) {
-		return Command{}, nil, fmt.Errorf("encoded message too short: %d", len(encoded))
-	}
-	cmd, err := DecodeCommand(encoded[:encodedLen(CommandLen)])
-	if err != nil {
-		return Command{}, nil, err
-	}
-	text, err := DecodePayload(encoded[encodedLen(CommandLen):])
-	if err != nil {
-		return Command{}, nil, err
-	}
-	return cmd, text, nil
-}
-
-func DecodeAppleM2ClientMessage(frame []byte) (Command, []byte, error) {
-	encoded, err := UnwrapFrame(frame)
-	if err != nil {
-		return Command{}, nil, err
-	}
-	if len(encoded) > 0 && encoded[0] >= '1' && encoded[0] <= '9' {
-		encoded = encoded[1:]
-	}
-	if len(encoded) < encodedLen(CommandLen) {
-		return Command{}, nil, fmt.Errorf("encoded applem2 message too short: %d", len(encoded))
-	}
-	cmd, err := DecodeAppleM2Command(encoded[:encodedLen(CommandLen)])
-	if err != nil {
-		return Command{}, nil, err
-	}
-	text, err := DecodeAppleM2Payload(encoded[encodedLen(CommandLen):])
-	if err != nil {
-		return Command{}, nil, err
-	}
-	return cmd, text, nil
 }
 
 func DecodePlain6ClientMessage(frame []byte) (Command, []byte, error) {

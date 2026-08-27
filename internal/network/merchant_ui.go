@@ -59,46 +59,57 @@ func (s *Server) sendMerchantBuyList(conn net.Conn, merchantID int32, entity npc
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendGoodsList, Recog: merchantID, Param: uint16(count)}, EncodeString(body))
 }
 
-func merchantDetailGoodsListBody(w *world.World, stocks []npc.MerchantStockItem, itemName string, page, rate int) ([]byte, int, int) {
+func merchantDetailGoodsListBody(w *world.World, stocks []storage.UserItem, itemName string, page, rate int) ([]byte, int, int) {
 	var body bytes.Buffer
-	count := 0
 	if len(stocks) == 0 {
 		return nil, 0, 0
 	}
-	if page >= len(stocks) {
-		page = len(stocks) - 10
+	matches := make([]storage.UserItem, 0, len(stocks))
+	for _, stock := range stocks {
+		item, ok := w.Item(stock.ItemID)
+		if !ok || !strings.EqualFold(item.Name, itemName) {
+			continue
+		}
+		matches = append(matches, stock)
+	}
+	if len(matches) == 0 {
+		return nil, 0, 0
+	}
+	if page < 0 {
+		page = 0
+	}
+	if page >= len(matches) {
+		page = len(matches) - 10
 		if page < 0 {
 			page = 0
 		}
 	}
-	for _, stock := range stocks {
-		item, ok := w.Item(stock.ItemID)
+	end := len(matches) - page
+	if end > len(matches) {
+		end = len(matches)
+	}
+	start := end - 10
+	if start < 0 {
+		start = 0
+	}
+	count := 0
+	for i := end - 1; i >= start; i-- {
+		entry := matches[i]
+		item, ok := w.Item(entry.ItemID)
 		if !ok {
 			continue
 		}
-		if !strings.EqualFold(item.Name, itemName) {
-			continue
-		}
-		price := merchantPrice(item, rate)
+		base := merchantUserItemPrice(item, entry)
+		price := merchantPriceValue(base, rate)
 		if price <= 0 {
 			continue
 		}
-		repeat := stock.Count
-		if repeat > 10 {
-			repeat = 10
-		}
-		dura := uint16(item.DuraMax)
-		if dura == 0 {
-			dura = uint16(price)
-		}
-		for i := repeat - 1; i >= 0; i-- {
-			display := item
-			display.Price = price
-			body.Write(EncodeBuffer(ClientItemBody(display, [14]byte{}, int32(i+1), dura, uint16(price))))
-			body.WriteByte('/')
-			count++
-		}
-		break
+		display := world.UpgradeClientItemForDisplay(item, entry, false)
+		dura, _ := bagItemDurability(display, entry)
+		display.Price = price
+		body.Write(EncodeBuffer(ClientItemBody(display, entry.Desc, entry.MakeIndex, dura, uint16(price))))
+		body.WriteByte('/')
+		count++
 	}
 	return body.Bytes(), count, page
 }
@@ -129,7 +140,7 @@ func (s *Server) sendMerchantMakeDrugList(conn net.Conn, merchantID int32, entit
 	return true
 }
 
-func merchantMakeDrugListBody(w *world.World, stocks []npc.MerchantStockItem) (string, int) {
+func merchantMakeDrugListBody(w *world.World, stocks []storage.UserItem) (string, int) {
 	var b strings.Builder
 	count := 0
 	for _, stock := range stocks {
@@ -143,23 +154,39 @@ func merchantMakeDrugListBody(w *world.World, stocks []npc.MerchantStockItem) (s
 	return b.String(), count
 }
 
-func merchantGoodsListBody(w *world.World, stocks []npc.MerchantStockItem, entity npc.Entity) (string, int) {
+func merchantGoodsListBody(w *world.World, stocks []storage.UserItem, entity npc.Entity) (string, int) {
+	type summary struct {
+		item  data.StdItem
+		count int
+	}
 	var b strings.Builder
-	count := 0
+	summaries := map[string]summary{}
+	order := make([]string, 0, len(stocks))
 	for _, stock := range stocks {
 		item, ok := w.Item(stock.ItemID)
 		if !ok {
 			continue
 		}
-		price := merchantPrice(item, entity.Merchant.PriceRate)
+		sum, ok := summaries[stock.ItemID]
+		if !ok {
+			order = append(order, stock.ItemID)
+			sum.item = item
+		}
+		sum.count++
+		summaries[stock.ItemID] = sum
+	}
+	count := 0
+	for _, itemID := range order {
+		sum := summaries[itemID]
+		price := merchantPrice(sum.item, entity.Merchant.PriceRate)
 		if price <= 0 {
 			continue
 		}
 		subMenu := 1
-		if item.StdMode <= 4 || item.StdMode == 31 || item.StdMode == 42 {
+		if sum.item.StdMode <= 4 || sum.item.StdMode == 31 || sum.item.StdMode == 42 {
 			subMenu = 0
 		}
-		fmt.Fprintf(&b, "%s/%d/%d/%d/", item.Name, subMenu, price, stock.Count)
+		fmt.Fprintf(&b, "%s/%d/%d/%d/", sum.item.Name, subMenu, price, sum.count)
 		count++
 	}
 	return b.String(), count

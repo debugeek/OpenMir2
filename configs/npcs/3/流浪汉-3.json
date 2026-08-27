@@ -15,21 +15,21 @@
       "repair": true
     },
     "stock": [
-      { "item_id": "随机传送卷", "count": 110, "refill_minutes": 10 },
-      { "item_id": "地牢逃脱卷", "count": 110, "refill_minutes": 10 },
-      { "item_id": "随机传送卷包", "count": 110, "refill_minutes": 10 },
-      { "item_id": "地牢逃脱卷包", "count": 110, "refill_minutes": 10 },
-      { "item_id": "护身符", "count": 110, "refill_minutes": 10 },
-      { "item_id": "护身符(大)", "count": 110, "refill_minutes": 10 },
-      { "item_id": "修复油", "count": 110, "refill_minutes": 10 },
-      { "item_id": "行会回城卷", "count": 110, "refill_minutes": 10 },
-      { "item_id": "回城卷", "count": 30, "refill_minutes": 10 },
-      { "item_id": "心心相印包", "count": 10, "refill_minutes": 10 },
-      { "item_id": "一心一意包", "count": 10, "refill_minutes": 10 },
-      { "item_id": "飞火流星包", "count": 10, "refill_minutes": 10 },
-      { "item_id": "浪漫星雨包", "count": 10, "refill_minutes": 10 },
-      { "item_id": "绮梦幻想包", "count": 10, "refill_minutes": 10 },
-      { "item_id": "如雾似梦包", "count": 10, "refill_minutes": 10 }
+      { "item_id": "随机传送卷", "count": 110 },
+      { "item_id": "地牢逃脱卷", "count": 110 },
+      { "item_id": "随机传送卷包", "count": 110 },
+      { "item_id": "地牢逃脱卷包", "count": 110 },
+      { "item_id": "护身符", "count": 110 },
+      { "item_id": "护身符(大)", "count": 110 },
+      { "item_id": "修复油", "count": 110 },
+      { "item_id": "行会回城卷", "count": 110 },
+      { "item_id": "回城卷", "count": 30 },
+      { "item_id": "心心相印包", "count": 10 },
+      { "item_id": "一心一意包", "count": 10 },
+      { "item_id": "飞火流星包", "count": 10 },
+      { "item_id": "浪漫星雨包", "count": 10 },
+      { "item_id": "绮梦幻想包", "count": 10 },
+      { "item_id": "如雾似梦包", "count": 10 }
     ]
   },
   "labels": {

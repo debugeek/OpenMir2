@@ -7,17 +7,9 @@ import (
 	"openmir2/internal/storage"
 )
 
-func (w *World) DropItem(ch storage.Character, itemID string) (storage.Character, GroundDrop, error) {
-	return w.DropItemCount(ch, itemID, 0)
-}
-
-func (w *World) DropItemCount(ch storage.Character, itemID string, count int, blockers ...storage.Character) (storage.Character, GroundDrop, error) {
-	return w.DropItemCountByBagIndex(ch, 0, itemID, count, blockers...)
-}
-
 // DropItemCountByBagIndex removes an item entry from the bag using the
 // reference-style MakeIndex identity before placing it on the ground.
-func (w *World) DropItemCountByBagIndex(ch storage.Character, bagIndex int, itemID string, count int, blockers ...storage.Character) (storage.Character, GroundDrop, error) {
+func (w *World) DropItemCountByBagIndex(ch storage.Character, bagIndex int, itemID string, blockers ...storage.Character) (storage.Character, GroundDrop, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.normalizeBagItemMakeIndexesLocked(&ch) {

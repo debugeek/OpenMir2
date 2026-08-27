@@ -200,20 +200,6 @@ func IsAccessoryStdMode(stdMode int) bool {
 	}
 }
 
-func ItemDuraForDrop(item data.StdItem, drop GroundDrop) uint16 {
-	dura := drop.DuraMax
-	if dura <= 0 {
-		dura = uint16(item.DuraMax)
-	}
-	if dura <= 0 {
-		dura = 1000
-	}
-	if dura > 0xFFFF {
-		dura = 0xFFFF
-	}
-	return uint16(dura)
-}
-
 func ItemDuraForEquip(item data.StdItem) uint16 {
 	dura := item.DuraMax
 	if dura <= 0 {

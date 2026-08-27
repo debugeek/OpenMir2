@@ -6,22 +6,6 @@ import (
 	"openmir2/internal/storage"
 )
 
-func (w *World) UseItem(ch storage.Character, itemID string) (storage.Character, ItemUseResult, error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if w.normalizeBagItemMakeIndexesLocked(&ch) {
-		if err := w.store.SaveCharacter(ch); err != nil {
-			return ch, ItemUseResult{}, err
-		}
-	}
-	w.normalizeEquippedItemsLocked(&ch)
-	idx := w.findBagItemSlotLocked(ch, itemID, 0)
-	if idx < 0 {
-		return ch, ItemUseResult{}, fmt.Errorf("item %s not in bag", itemID)
-	}
-	return w.useBagItemEntryLocked(ch, idx)
-}
-
 func (w *World) UseItemByBagIndex(ch storage.Character, bagIndex int) (storage.Character, ItemUseResult, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -47,25 +31,30 @@ func (w *World) useBagItemEntryLocked(ch storage.Character, idx int) (storage.Ch
 	result := ItemUseResult{Character: ch}
 	prev := ch
 	prevLevel := ch.Level
+	consumedItem := ch.BagItems[idx]
 	switch {
 	case itemID == "金币":
 		ch.Gold++
 		w.clearBagItemLocked(&ch, idx)
+		result.RemovedItems = append(result.RemovedItems, consumedItem)
 	case itemID == "祝福油":
 		if err := w.useBlessingOilLocked(&ch); err != nil {
 			return ch, ItemUseResult{}, err
 		}
 		w.clearBagItemLocked(&ch, idx)
+		result.RemovedItems = append(result.RemovedItems, consumedItem)
 	case itemID == "修复油":
 		if err := w.repairWeaponLocked(&ch, false); err != nil {
 			return ch, ItemUseResult{}, err
 		}
 		w.clearBagItemLocked(&ch, idx)
+		result.RemovedItems = append(result.RemovedItems, consumedItem)
 	case itemID == "战神油":
 		if err := w.repairWeaponLocked(&ch, true); err != nil {
 			return ch, ItemUseResult{}, err
 		}
 		w.clearBagItemLocked(&ch, idx)
+		result.RemovedItems = append(result.RemovedItems, consumedItem)
 	case item.StdMode == 0:
 		next, err := applyStdMode0Use(ch, ch.BagItems[idx], item)
 		if err != nil {
@@ -73,10 +62,12 @@ func (w *World) useBagItemEntryLocked(ch storage.Character, idx int) (storage.Ch
 		}
 		ch = next
 		w.clearBagItemLocked(&ch, idx)
+		result.RemovedItems = append(result.RemovedItems, consumedItem)
 	case item.StdMode == 1:
 		return ch, ItemUseResult{}, fmt.Errorf("item %s cannot be used", itemID)
 	case item.StdMode == 2:
 		w.clearBagItemLocked(&ch, idx)
+		result.RemovedItems = append(result.RemovedItems, consumedItem)
 	case item.StdMode == 3:
 		next, extra, exp, abilityChanged, err := applyStdMode3Use(w, ch, ch.BagItems[idx], item)
 		if err != nil {
@@ -107,6 +98,7 @@ func (w *World) useBagItemEntryLocked(ch storage.Character, idx int) (storage.Ch
 			}
 		}
 		w.clearBagItemLocked(&ch, idx)
+		result.RemovedItems = append(result.RemovedItems, consumedItem)
 	case item.StdMode == 31:
 		extra, err := unpackBundleItem(item)
 		if err != nil {
@@ -128,11 +120,16 @@ func (w *World) useBagItemEntryLocked(ch storage.Character, idx int) (storage.Ch
 			result.AddedItems = append(result.AddedItems, entry)
 		}
 		w.clearBagItemLocked(&ch, idx)
+		result.RemovedItems = append(result.RemovedItems, consumedItem)
 	case item.Kind == "book" || item.StdMode == 4:
 		if skill, ok := w.data.Skills[item.Name]; ok {
 			if canLearnSkill(ch, skill) && !hasSkill(ch, skill.ID) {
-				ch.Skills = append(ch.Skills, skill.ID)
+				if !learnSkill(&ch, skill.ID) {
+					return ch, ItemUseResult{}, fmt.Errorf("item %s cannot be used", itemID)
+				}
+				result.SkillChanged = true
 				w.clearBagItemLocked(&ch, idx)
+				result.RemovedItems = append(result.RemovedItems, consumedItem)
 			} else {
 				return ch, ItemUseResult{}, fmt.Errorf("item %s cannot be used", itemID)
 			}

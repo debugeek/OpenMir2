@@ -199,10 +199,6 @@ func (w *World) spawnPositionForSpawnLocked(spawn data.StdSpawn, exceptID string
 	return w.findRandomSpawnPositionLocked(spawn.MapID, spawn.X, spawn.Y, spawn.Range, exceptID)
 }
 
-func (w *World) findSpawnPositionLocked(mapID string, x, y, searchRadius int, exceptID string) (int, int, bool) {
-	return w.findSpawnPositionAvoidLocked(mapID, x, y, searchRadius, exceptID, -1, -1)
-}
-
 func (w *World) findSpawnPositionAvoidLocked(mapID string, x, y, searchRadius int, exceptID string, avoidX, avoidY int) (int, int, bool) {
 	mp, ok := w.data.Maps[mapID]
 	if !ok {

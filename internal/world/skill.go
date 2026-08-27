@@ -1,7 +1,10 @@
 package world
 
 import (
+	"fmt"
+
 	"openmir2/internal/data"
+	"openmir2/internal/storage"
 )
 
 var skillIDs = map[string]uint16{
@@ -40,6 +43,14 @@ var skillIDs = map[string]uint16{
 	"冰咆哮":   33,
 }
 
+var magicNames = func() map[uint16]string {
+	out := make(map[uint16]string, len(skillIDs))
+	for name, id := range skillIDs {
+		out[id] = name
+	}
+	return out
+}()
+
 func (w *World) Skill(skillID string) (data.StdSkill, bool) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -53,4 +64,28 @@ func (w *World) Skill(skillID string) (data.StdSkill, bool) {
 func (w *World) MagicIDByName(name string) (uint16, bool) {
 	id, ok := skillIDs[name]
 	return id, ok
+}
+
+func (w *World) SkillIDByMagicID(magicID uint16) (string, bool) {
+	name, ok := magicNames[magicID]
+	return name, ok
+}
+
+func (w *World) SetSkillHotkey(ch storage.Character, skillID string, hotkey byte) (storage.Character, bool, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for i := range ch.Skills {
+		if ch.Skills[i].ID != skillID {
+			continue
+		}
+		if ch.Skills[i].Hotkey == hotkey {
+			return ch, false, nil
+		}
+		ch.Skills[i].Hotkey = hotkey
+		if err := w.store.SaveCharacter(ch); err != nil {
+			return ch, false, err
+		}
+		return ch, true, nil
+	}
+	return ch, false, fmt.Errorf("skill %s not learned", skillID)
 }

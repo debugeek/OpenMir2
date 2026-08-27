@@ -133,11 +133,6 @@ func (w *World) UnequipItemByItemID(ch storage.Character, slot int, itemID strin
 	return updated, err
 }
 
-func (w *World) UnequipItemByMakeIndex(ch storage.Character, slot int, makeIndex int, itemID string) (storage.Character, error) {
-	updated, _, err := w.UnequipItemByMakeIndexWithResult(ch, slot, makeIndex, itemID)
-	return updated, err
-}
-
 func (w *World) UnequipItemByItemIDWithResult(ch storage.Character, slot int, itemID string) (storage.Character, UnequipResult, error) {
 	return w.unequipByIdentityWithResult(ch, slot, 0, itemID)
 }

@@ -25,10 +25,61 @@ func (w *World) Tick(players []PlayerSnapshot, now time.Time) (TickResult, error
 			ch = next
 			updated[ch.ID] = ch
 		}
+		next, changed = w.applyCharacterPoisonTickLocked(ch, now)
+		if changed {
+			ch = next
+			updated[ch.ID] = ch
+		}
+		next, changed = w.applyCharacterStealthTickLocked(ch, now)
+		if changed {
+			ch = next
+			updated[ch.ID] = ch
+			result.StateRefreshCharacters = append(result.StateRefreshCharacters, ch)
+		}
+		next, changed = w.applyCharacterProtectionTickLocked(ch, now)
+		if changed {
+			ch = next
+			updated[ch.ID] = ch
+			result.AbilityRefreshCharacters = append(result.AbilityRefreshCharacters, ch)
+		}
+		next, changed = w.applyCharacterShowHPOpenTickLocked(ch, now)
+		if changed {
+			ch = next
+			updated[ch.ID] = ch
+			result.ShowHPOpenedCharacters = append(result.ShowHPOpenedCharacters, ch)
+		}
+		next, changed = w.applyCharacterShowHPTickLocked(ch, now)
+		if changed {
+			ch = next
+			updated[ch.ID] = ch
+			result.ShowHPExpiredCharacters = append(result.ShowHPExpiredCharacters, ch)
+		}
+		next, changed = w.applyCharacterTemporaryAbilityTickLocked(ch, now)
+		if changed {
+			ch = next
+			updated[ch.ID] = ch
+			result.AbilityRefreshCharacters = append(result.AbilityRefreshCharacters, ch)
+		}
 		playersByID[ch.ID] = ch
+	}
+	fireMonsterHits, fireCharacterHits, fireUpdated := w.applyFireWallTickLocked(playersByID, now)
+	result.MonsterHits = append(result.MonsterHits, fireMonsterHits...)
+	result.CharacterHits = append(result.CharacterHits, fireCharacterHits...)
+	for _, ch := range fireUpdated {
+		playersByID[ch.ID] = ch
+		updated[ch.ID] = ch
 	}
 	for _, mon := range w.monsters {
 		if !mon.Alive {
+			continue
+		}
+		w.applyMonsterProtectionTickLocked(mon, now)
+		poisonHits, killed, err := w.applyMonsterPoisonTickLocked(mon, playersByID, now)
+		if err != nil {
+			return TickResult{}, err
+		}
+		result.MonsterHits = append(result.MonsterHits, poisonHits...)
+		if killed {
 			continue
 		}
 		events, hits, chars, err := w.tickMonsterLocked(mon, playersByID, now)
@@ -51,6 +102,9 @@ func (w *World) Tick(players []PlayerSnapshot, now time.Time) (TickResult, error
 func (w *World) tickMonsterLocked(mon *Monster, players map[string]storage.Character, now time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
 	if now.Year() >= 2000 && mon.Spawn.MapID != "" && mon.NextSearchAt.IsZero() {
 		mon.NextSearchAt = now.Add(time.Duration(2000+w.rand.Intn(2000)) * time.Millisecond)
+	}
+	if mon.MasterID != "" {
+		return w.tickSummonedMonsterLocked(mon, players, now)
 	}
 	w.clearInvalidMonsterTargetLocked(mon, players, now)
 	actions := []MonsterAction{}

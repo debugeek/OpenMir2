@@ -13,7 +13,7 @@
       "buy": true
     },
     "stock": [
-      { "item_id": "彩票", "count": 1000, "refill_minutes": 10 }
+      { "item_id": "彩票", "count": 1000 }
     ]
   },
   "labels": {

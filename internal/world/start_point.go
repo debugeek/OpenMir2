@@ -8,16 +8,6 @@ import (
 	"openmir2/internal/storage"
 )
 
-func (w *World) DefaultSpawn() (string, int, int) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	sp, ok := w.firstStartPointLocked()
-	if !ok {
-		return "0", 0, 0
-	}
-	return sp.MapID, sp.X, sp.Y
-}
-
 func (w *World) RandomNewCharacterSpawn() (string, int, int) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -38,14 +28,6 @@ func (w *World) SyncCharacterHomeFromStartPoint(ch storage.Character) (storage.C
 		return ch, false, err
 	}
 	return ch, true, nil
-}
-
-func (w *World) firstStartPointLocked() (data.StdStartPoint, bool) {
-	points := w.allStartPointsLocked()
-	if len(points) == 0 {
-		return data.StdStartPoint{}, false
-	}
-	return points[0], true
 }
 
 func (w *World) randomNewCharacterStartPointLocked() (data.StdStartPoint, bool) {

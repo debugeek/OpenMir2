@@ -7,35 +7,6 @@ import (
 	"openmir2/internal/storage"
 )
 
-func (w *World) takeOnSlotForItemLocked(item data.StdItem) int {
-	switch item.StdMode {
-	case 5, 6:
-		return SlotWeapon
-	case 10, 11:
-		return SlotDress
-	case 15:
-		return SlotHelmet
-	case 19, 20, 21:
-		return SlotNecklace
-	case 22, 23:
-		return SlotRingL
-	case 24, 26:
-		return SlotArmRingL
-	case 28, 29, 30:
-		return SlotRightHand
-	case 25, 51:
-		return SlotBujuk
-	case 52, 62:
-		return SlotBoots
-	case 53, 63:
-		return SlotCharm
-	case 54, 64:
-		return SlotBelt
-	default:
-		return -1
-	}
-}
-
 func (w *World) canWearInSlotLocked(item data.StdItem, slot int) bool {
 	switch slot {
 	case SlotWeapon:

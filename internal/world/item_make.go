@@ -8,16 +8,6 @@ import (
 	"openmir2/internal/storage"
 )
 
-func (w *World) MakeRecipe(itemName string) ([]data.StdMakeIngredient, bool) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	recipe, ok := w.data.MakeItems[itemName]
-	if !ok {
-		return nil, false
-	}
-	return append([]data.StdMakeIngredient(nil), recipe...), true
-}
-
 func (w *World) MakeItemsByName(ch storage.Character, itemName string, count int) (storage.Character, []storage.UserItem, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()

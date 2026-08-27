@@ -62,9 +62,6 @@ func (m MerchantProfile) Validate(id string) error {
 		if stock.Count <= 0 {
 			return fmt.Errorf("npc %s merchant stock count must be positive", id)
 		}
-		if stock.RefillMinutes < 0 {
-			return fmt.Errorf("npc %s merchant refill_minutes must be >= 0", id)
-		}
 	}
 	return nil
 }

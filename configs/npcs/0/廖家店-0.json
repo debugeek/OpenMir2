@@ -15,12 +15,12 @@
       "repair": true
     },
     "stock": [
-      { "item_id": "金创药(小)包", "count": 100, "refill_minutes": 3 },
-      { "item_id": "魔法药(小)包", "count": 100, "refill_minutes": 3 },
-      { "item_id": "金创药(中)包", "count": 300, "refill_minutes": 3 },
-      { "item_id": "魔法药(中)包", "count": 300, "refill_minutes": 3 },
-      { "item_id": "超级金创药", "count": 600, "refill_minutes": 3 },
-      { "item_id": "超级魔法药", "count": 600, "refill_minutes": 3 }
+      { "item_id": "金创药(小)包", "count": 100 },
+      { "item_id": "魔法药(小)包", "count": 100 },
+      { "item_id": "金创药(中)包", "count": 300 },
+      { "item_id": "魔法药(中)包", "count": 300 },
+      { "item_id": "超级金创药", "count": 600 },
+      { "item_id": "超级魔法药", "count": 600 }
     ]
   },
   "labels": {

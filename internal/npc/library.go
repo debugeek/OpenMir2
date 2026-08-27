@@ -40,26 +40,20 @@ type Entity struct {
 type MerchantProfile struct {
 	PriceRate    int                  `json:"price_rate,omitempty"`
 	Capabilities MerchantCapabilities `json:"capabilities,omitempty"`
-	ItemTypes    []string             `json:"item_types,omitempty"`
 	Stock        []MerchantStockItem  `json:"stock,omitempty"`
 }
 
 type MerchantCapabilities struct {
-	Buy         bool `json:"buy,omitempty"`
-	Sell        bool `json:"sell,omitempty"`
-	Storage     bool `json:"storage,omitempty"`
-	GetBack     bool `json:"get_back,omitempty"`
-	Repair      bool `json:"repair,omitempty"`
-	SendMsg     bool `json:"send_msg,omitempty"`
-	UseItemName bool `json:"use_item_name,omitempty"`
-	OffLineMsg  bool `json:"offline_msg,omitempty"`
-	YBDeal      bool `json:"yb_deal,omitempty"`
+	Buy     bool `json:"buy,omitempty"`
+	Sell    bool `json:"sell,omitempty"`
+	Storage bool `json:"storage,omitempty"`
+	GetBack bool `json:"get_back,omitempty"`
+	Repair  bool `json:"repair,omitempty"`
 }
 
 type MerchantStockItem struct {
-	ItemID        string `json:"item_id"`
-	Count         int    `json:"count"`
-	RefillMinutes int    `json:"refill_minutes,omitempty"`
+	ItemID string `json:"item_id"`
+	Count  int    `json:"count"`
 }
 
 type Script struct {

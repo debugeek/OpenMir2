@@ -1,6 +1,8 @@
 package world
 
 import (
+	"time"
+
 	"openmir2/internal/storage"
 )
 
@@ -38,35 +40,6 @@ func SubAbilitySpeed(class string) byte {
 	return 15
 }
 
-func HumanFeature(ch storage.Character, dressShape, weaponShape int) int32 {
-	sex := ch.Sex
-	if sex != 0 {
-		sex = 1
-	}
-	hair := ch.Hair
-	if hair < 0 {
-		hair = 0
-	}
-	if dressShape < 0 {
-		dressShape = 0
-	}
-	if weaponShape < 0 {
-		weaponShape = 0
-	}
-	dress := dressShape*2 + sex
-	weapon := weaponShape*2 + sex
-	hairFeature := hair*2 + sex
-	return int32(uint32(0) | uint32(weapon)<<8 | uint32(hairFeature)<<16 | uint32(dress)<<24)
-}
-
-func (w *World) CreateCharacter(account, name, class, mapID string, x, y int) (storage.Character, error) {
-	return w.CreateCharacterWithAppearance(account, name, class, 0, 0, mapID, x, y)
-}
-
-func (w *World) CreateCharacterAtRandomStartPoint(account, name, class string) (storage.Character, error) {
-	return w.CreateCharacterWithAppearanceAtRandomStartPoint(account, name, class, 0, 0)
-}
-
 func (w *World) CreateCharacterWithAppearanceAtRandomStartPoint(account, name, class string, hair, sex int) (storage.Character, error) {
 	mapID, x, y := w.RandomNewCharacterSpawn()
 	return w.CreateCharacterWithAppearance(account, name, class, hair, sex, mapID, x, y)
@@ -94,16 +67,6 @@ func (w *World) CreateCharacterWithAppearance(account, name, class string, hair,
 		BagItems: []storage.UserItem{{ItemID: "木剑"}},
 	}
 	return w.store.InsertCharacter(ch)
-}
-
-func (w *World) NormalizeCharacterBagItems(ch storage.Character) (storage.Character, bool) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	changed := w.normalizeBagItemMakeIndexesLocked(&ch)
-	if changed {
-		_ = w.store.SaveCharacter(ch)
-	}
-	return ch, changed
 }
 
 func (w *World) NormalizeCharacterState(ch storage.Character) (storage.Character, bool) {
@@ -176,19 +139,19 @@ func (w *World) CharacterNameColor(ch storage.Character) uint16 {
 	return 255
 }
 
-func (w *World) CharacterAttackMode(ch storage.Character) byte {
-	return byte(ch.AttackMode)
-}
-
 func (w *World) CharacterAreaState(ch storage.Character) int32 {
 	return 0
 }
 
 func (w *World) CharacterStatus(ch storage.Character) int32 {
+	status := int32(0)
 	if ch.Sitting {
-		return 1
+		status |= 1
 	}
-	return 0
+	if characterTransparentActive(ch, time.Now()) {
+		status |= 2
+	}
+	return status
 }
 
 func (w *World) CharacterFeatureEx(ch storage.Character) int32 {

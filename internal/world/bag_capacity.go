@@ -2,10 +2,6 @@ package world
 
 import "openmir2/internal/storage"
 
-func (w *World) canCarryLocked(ch storage.Character) bool {
-	return w.canCarryWeightLocked(ch, 0)
-}
-
 func (w *World) canCarryWeightLocked(ch storage.Character, addWeight int) bool {
 	level := ch.Level
 	if level <= 0 {

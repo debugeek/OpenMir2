@@ -1,10 +1,8 @@
 package network
 
 import (
-	"fmt"
 	"net"
 	"strconv"
-	"strings"
 
 	"openmir2/internal/data"
 	"openmir2/internal/protocol/mir176"
@@ -74,53 +72,6 @@ func EquippedItemsBody(w *world.World, ch storage.Character) []byte {
 	return itemEntries
 }
 
-func EquippedItemAt(ch storage.Character, slot int) string {
-	item, ok := equippedItem(ch, slot)
-	if !ok {
-		return ""
-	}
-	return item.ItemID
-}
-
-func EquippedItemMakeIndex(ch storage.Character, slot int) int32 {
-	item, ok := equippedItem(ch, slot)
-	if !ok {
-		return 0
-	}
-	return item.MakeIndex
-}
-
-func BagSummary(ch storage.Character) string {
-	parts := make([]string, 0, len(ch.BagItems))
-	for slot, entry := range ch.BagItems {
-		parts = append(parts, fmt.Sprintf("%d:%s#%d", slot, entry.ItemID, entry.MakeIndex))
-	}
-	return strings.Join(parts, ", ")
-}
-
-func EquippedItemSummaryFromEntries(entries []storage.UserItem) string {
-	parts := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		parts = append(parts, fmt.Sprintf("%s#%d", entry.ItemID, entry.MakeIndex))
-	}
-	return strings.Join(parts, ", ")
-}
-
-func EquippedItemEntries(ch storage.Character) []storage.UserItem {
-	entries := make([]storage.UserItem, 0, 13)
-	for slot := 0; slot < 13; slot++ {
-		if entry, ok := equippedItem(ch, slot); ok {
-			entries = append(entries, storage.UserItem{ItemID: entry.ItemID, MakeIndex: entry.MakeIndex, Desc: entry.Desc, Dura: entry.Dura, DuraMax: entry.DuraMax})
-		}
-	}
-	return entries
-}
-
-func BagItemsBody(w *world.World, ch storage.Character) []byte {
-	body, _ := BagItemsBodyAndCount(w, ch)
-	return body
-}
-
 func BagItemsBodyAndCount(w *world.World, ch storage.Character) ([]byte, int) {
 	itemEntries := []byte{}
 	count := 0
@@ -156,27 +107,6 @@ func equippedItem(ch storage.Character, slot int) (storage.UserItem, bool) {
 		return storage.UserItem{}, false
 	}
 	return item, true
-}
-
-func itemFromEquipped(ch storage.Character, slot int) storage.UserItem {
-	item, _ := equippedItem(ch, slot)
-	return item
-}
-
-func equippedItemDesc(ch storage.Character, slot int) [14]byte {
-	item, ok := equippedItem(ch, slot)
-	if !ok {
-		return [14]byte{}
-	}
-	return item.Desc
-}
-
-func equippedItemDura(ch storage.Character, slot int) uint16 {
-	item, ok := equippedItem(ch, slot)
-	if !ok {
-		return 0
-	}
-	return item.Dura
 }
 
 func bagItemDurability(item data.StdItem, entry storage.UserItem) (uint16, uint16) {

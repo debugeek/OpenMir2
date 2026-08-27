@@ -15,12 +15,12 @@
       "repair": true
     },
     "stock": [
-      { "item_id": "小手镯", "count": 10, "refill_minutes": 10 },
-      { "item_id": "银手镯", "count": 10, "refill_minutes": 10 },
-      { "item_id": "铁手镯", "count": 10, "refill_minutes": 10 },
-      { "item_id": "钢手镯", "count": 10, "refill_minutes": 10 },
-      { "item_id": "皮制手套", "count": 10, "refill_minutes": 10 },
-      { "item_id": "大手镯", "count": 10, "refill_minutes": 10 }
+      { "item_id": "小手镯", "count": 10 },
+      { "item_id": "银手镯", "count": 10 },
+      { "item_id": "铁手镯", "count": 10 },
+      { "item_id": "钢手镯", "count": 10 },
+      { "item_id": "皮制手套", "count": 10 },
+      { "item_id": "大手镯", "count": 10 }
     ]
   },
   "labels": {
