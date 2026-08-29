@@ -2,6 +2,8 @@
   "id": "火墙",
   "name": "火墙",
   "job": 1,
+  "effect_type": 4,
+  "effect": 20,
   "power": 10,
   "max_power": 22,
   "spell": 20,

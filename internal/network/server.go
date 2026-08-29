@@ -85,6 +85,7 @@ type Client struct {
 	powerHitArmed         bool
 	fireHitArmed          bool
 	fireHitLatestAt       time.Time
+	probeLatestAt         time.Time
 }
 
 type teleportSyncAdapter struct {
@@ -185,10 +186,6 @@ func (a itemUseSyncAdapter) SendWeightChanged(ch storage.Character) {
 	a.s.sendWeightChanged(a.conn, a.s.world.AbilityStats(ch))
 }
 
-func (a itemUseSyncAdapter) SendUseMagic(ch storage.Character) {
-	a.s.sendUseMagic(a.conn, ch)
-}
-
 func (a itemUseSyncAdapter) SendAbilityRefresh(ch storage.Character, okIdent uint16) {
 	a.s.sendAbilityRefresh(a.conn, ch, okIdent)
 }
@@ -233,10 +230,6 @@ func (a attackSyncAdapter) SendLevelUp(ch storage.Character) {
 
 func (a attackSyncAdapter) SendHealthSpellChanged(ch storage.Character) {
 	a.s.sendHealthSpellChanged(a.conn, world.CharacterActorID(ch), a.s.world.AbilityStats(ch))
-}
-
-func (a attackSyncAdapter) SendUseMagic(ch storage.Character) {
-	a.s.sendUseMagic(a.conn, ch)
 }
 
 func (a attackSyncAdapter) BroadcastCharacterHit(ch storage.Character, attackIdent uint16) {
@@ -338,7 +331,6 @@ func (s *Server) runWorldTicks(ctx context.Context) {
 		case now := <-ticker.C:
 			result, err := s.world.Tick(s.PlayerSnapshots(), now)
 			if err != nil {
-				s.log.Info("world tick failed", "error", err)
 				continue
 			}
 			s.applyWorldTick(result, now)
@@ -495,7 +487,6 @@ func (s *Server) handleTurn(conn net.Conn, activeChar *storage.Character, cmd mi
 	dir := int(cmd.Tag)
 	updated, err := s.world.Turn(*activeChar, x, y, dir)
 	if err != nil {
-		s.log.Info("game turn rejected", "account", activeChar.Account, "char", activeChar.Name, "error", err)
 		s.sendMoveFail(conn, activeChar)
 		return
 	}
@@ -514,7 +505,6 @@ func (s *Server) handleMove(conn net.Conn, activeChar *storage.Character, cmd mi
 	}
 	updated, err := move(*activeChar, x, y, dir)
 	if err != nil {
-		s.log.Info("game move rejected", "account", activeChar.Account, "char", activeChar.Name, "ident", cmd.Ident, "error", err)
 		s.sendMoveFail(conn, activeChar)
 		return
 	}
@@ -529,7 +519,6 @@ func (s *Server) handleSitDown(conn net.Conn, activeChar *storage.Character, cmd
 	dir := int(cmd.Tag)
 	updated, err := s.world.SitDown(*activeChar, x, y, dir)
 	if err != nil {
-		s.log.Info("game sitdown rejected", "account", activeChar.Account, "char", activeChar.Name, "error", err)
 		s.sendMoveFail(conn, activeChar)
 		return
 	}
@@ -548,8 +537,9 @@ func (s *Server) handleHit(conn net.Conn, activeChar *storage.Character, cmd mir
 		client.mu.Lock()
 		switch cmd.Ident {
 		case mir176.CMPowerHit:
-			if !client.powerHitArmed {
+			if !powerHitUsable(*activeChar) || !client.powerHitArmed {
 				attackIdent = mir176.CMHit
+				client.powerHitArmed = false
 			} else {
 				client.powerHitArmed = false
 			}
@@ -567,28 +557,30 @@ func (s *Server) handleHit(conn net.Conn, activeChar *storage.Character, cmd mir
 	y := int(uint32(cmd.Recog) >> 16)
 	dir := int(cmd.Tag)
 	if client != nil {
-		s.advancePowerHitState(client, *activeChar)
+		s.advancePowerHitStateLocked(client, *activeChar, false)
 	}
 	result, err := s.world.HitWithIdent(*activeChar, x, y, dir, attackIdent, s.PlayerCharacters()...)
 	if err != nil {
-		s.log.Info("game hit rejected", "account", activeChar.Account, "char", activeChar.Name, "ident", cmd.Ident, "error", err)
 		s.sendMoveFail(conn, activeChar)
 		return
 	}
 	*activeChar = result.Character
 	world.ApplyAttackSync(attackSyncAdapter{s: s, conn: conn}, result, attackIdent)
-	if result.MonsterID != "" {
-		s.log.Info("game hit connected", "monster", result.MonsterID, "damage", result.Damage, "dead", result.Dead)
-	}
 }
 
 func (s *Server) handleSpell(conn net.Conn, activeChar *storage.Character, cmd mir176.Command) {
 	before := *activeChar
 	x := int(uint32(cmd.Recog) & 0xFFFF)
 	y := int(uint32(cmd.Recog) >> 16)
-	skillID, ok := s.world.SkillIDByMagicID(cmd.Param)
+	magicID := cmd.Param
+	skillID, ok := s.world.SkillIDByMagicID(magicID)
+	tagSkillID, tagOK := s.world.SkillIDByMagicID(cmd.Tag)
+	if !ok && magicID == 0 && tagOK {
+		magicID = cmd.Tag
+		skillID = tagSkillID
+		ok = true
+	}
 	if !ok {
-		s.log.Info("game spell rejected", "account", activeChar.Account, "char", activeChar.Name, "magic_id", cmd.Param, "error", "unknown skill")
 		s.sendMoveFail(conn, activeChar)
 		return
 	}
@@ -606,6 +598,10 @@ func (s *Server) handleSpell(conn net.Conn, activeChar *storage.Character, cmd m
 			s.sendMoveFail(conn, activeChar)
 			return
 		}
+		if !s.armFireHit(conn, activeChar) {
+			s.sendActionOK(conn)
+			return
+		}
 		skill, ok := s.world.Skill(skillID)
 		if !ok {
 			s.sendMoveFail(conn, activeChar)
@@ -616,31 +612,29 @@ func (s *Server) handleSpell(conn net.Conn, activeChar *storage.Character, cmd m
 			cost = 1
 		}
 		if activeChar.MP < cost {
-			s.sendMoveFail(conn, activeChar)
-			return
-		}
-		if !s.armFireHit(conn, activeChar) {
-			s.sendMoveFail(conn, activeChar)
+			s.sendActionOK(conn)
 			return
 		}
 		activeChar.MP -= cost
 		s.updateClient(conn, *activeChar)
 		s.sendHealthSpellChanged(conn, world.CharacterActorID(*activeChar), s.world.AbilityStats(*activeChar))
+		s.sendRawFrame(conn, "+FIR")
 		s.sendActionOK(conn)
 		return
 	}
-	targetID := int32(uint32(cmd.Param) | uint32(cmd.Series)<<16)
+	targetID := int32(cmd.Series)
 	result, err := s.world.CastSkillWithPlayers(*activeChar, skillID, x, y, targetID, s.PlayerCharacters())
 	if err != nil {
-		s.log.Info("game spell rejected", "account", activeChar.Account, "char", activeChar.Name, "skill", skillID, "error", err)
-		s.sendMoveFail(conn, activeChar)
+		s.sendMagicFireFail(conn, *activeChar)
+		s.sendActionFail(conn)
 		return
 	}
 	*activeChar = result.Character
-	s.updateClient(conn, result.Character)
-	s.broadcastCharacterSpell(result.Character, cmd.Param)
 	s.sendActionOK(conn)
-	s.sendUseMagic(conn, result.Character)
+	s.updateClient(conn, result.Character)
+	if skill, ok := s.world.Skill(skillID); ok {
+		s.broadcastCharacterSpell(result.Character, magicID, skill.Effect, x, y)
+	}
 	if before.MapID != result.Character.MapID || before.X != result.Character.X || before.Y != result.Character.Y {
 		s.broadcastTeleportMove(conn, before, result.Character)
 	}
@@ -650,19 +644,6 @@ func (s *Server) handleSpell(conn net.Conn, activeChar *storage.Character, cmd m
 	if len(result.AffectedMonsters) > 0 {
 		for _, mon := range result.AffectedMonsters {
 			s.broadcastMonsterFeatureRefresh(mon)
-		}
-	}
-	if skillID == "隐身术" || skillID == "集体隐身术" {
-		seen := map[string]struct{}{}
-		for _, ch := range append([]storage.Character{result.Character}, result.AffectedCharacters...) {
-			if ch.ID == "" {
-				continue
-			}
-			if _, ok := seen[ch.ID]; ok {
-				continue
-			}
-			seen[ch.ID] = struct{}{}
-			s.broadcastCharacterStateRefresh(ch)
 		}
 	}
 	if len(result.MonsterHits) > 0 {
@@ -698,6 +679,7 @@ func (s *Server) handleSpell(conn net.Conn, activeChar *storage.Character, cmd m
 	}
 	if len(result.AffectedCharacters) > 0 {
 		seen := map[string]struct{}{}
+		selfStateSent := false
 		for _, ch := range result.AffectedCharacters {
 			if ch.ID == "" {
 				continue
@@ -706,28 +688,35 @@ func (s *Server) handleSpell(conn net.Conn, activeChar *storage.Character, cmd m
 				continue
 			}
 			seen[ch.ID] = struct{}{}
+			prev, hadPrev := storage.Character{}, false
+			if client, ok := s.ClientByCharacterID(ch.ID); ok {
+				prev = client.ch
+				hadPrev = true
+			}
 			s.updateClientByCharacterID(ch)
-			if skillID == "抗拒火环" || skillID == "野蛮冲撞" {
+			if hadPrev && (s.world.HumanFeatureForCharacter(prev) != s.world.HumanFeatureForCharacter(ch) || s.world.CharacterStatus(prev) != s.world.CharacterStatus(ch) || prev.Dir != ch.Dir || prev.MapID != ch.MapID || prev.X != ch.X || prev.Y != ch.Y) {
 				s.broadcastCharacterStateRefresh(ch)
+				if ch.ID == result.Character.ID {
+					selfStateSent = true
+				}
 			}
 			if client, ok := s.ClientByCharacterID(ch.ID); ok {
 				s.sendHealthSpellChanged(client.conn, world.CharacterActorID(ch), s.world.AbilityStats(ch))
-				if skillID == "神圣战甲术" || skillID == "幽灵盾" || skillID == "魔法盾" {
+				if skillID == "神圣战甲术" || skillID == "幽灵盾" {
 					s.sendAbilityOnly(client.conn, ch)
 				}
-			} else if (skillID == "神圣战甲术" || skillID == "幽灵盾" || skillID == "魔法盾") && ch.ID == result.Character.ID {
-				s.sendAbilityOnly(conn, ch)
+			}
+			if ch.ShowHPOpenAt > 0 || ch.ShowHPUntil > 0 {
+				s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendUserState}, EncodeBuffer(UserStateBody(s.world, ch)))
 			}
 		}
-	}
-	if len(result.AffectedMonsters) > 0 {
-		for _, mon := range result.AffectedMonsters {
-			s.broadcastMonsterFeatureRefresh(mon)
+		if result.Character.ID != "" && !selfStateSent && (s.world.HumanFeatureForCharacter(before) != s.world.HumanFeatureForCharacter(result.Character) || s.world.CharacterStatus(before) != s.world.CharacterStatus(result.Character)) {
+			s.broadcastCharacterStateRefresh(result.Character)
 		}
 	}
-	if skillID == "心灵启示" && len(result.AffectedCharacters) > 0 {
-		for _, target := range result.AffectedCharacters {
-			s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendUserState}, EncodeBuffer(UserStateBody(s.world, target)))
+	if len(result.AffectedCharacters) == 0 && result.Character.ID != "" {
+		if s.world.HumanFeatureForCharacter(before) != s.world.HumanFeatureForCharacter(result.Character) || s.world.CharacterStatus(before) != s.world.CharacterStatus(result.Character) {
+			s.broadcastCharacterStateRefresh(result.Character)
 		}
 	}
 	if result.Experience > 0 {
@@ -737,26 +726,15 @@ func (s *Server) handleSpell(conn net.Conn, activeChar *storage.Character, cmd m
 		s.sendLevelUp(conn, result.Character)
 	}
 	s.sendHealthSpellChanged(conn, world.CharacterActorID(result.Character), s.world.AbilityStats(result.Character))
-	if skillID == "魔法盾" {
-		s.sendAbilityOnly(conn, result.Character)
+	if skill, ok := s.world.Skill(skillID); ok && skill.EffectType != 0 {
+		magicTargetID := int32(0)
+		if result.MonsterHit != nil {
+			magicTargetID = world.MonsterActorID(world.Monster{ID: result.MonsterHit.MonsterID})
+		} else if len(result.CharacterHits) > 0 {
+			magicTargetID = world.CharacterActorID(result.CharacterHits[0].Character)
+		}
+		s.sendMagicFire(conn, result.Character, skill, x, y, magicTargetID)
 	}
-}
-
-func (s *Server) armFireHit(conn net.Conn, activeChar *storage.Character) bool {
-	client := s.clientForConn(conn)
-	if client == nil {
-		return false
-	}
-	client.mu.Lock()
-	defer client.mu.Unlock()
-	now := time.Now()
-	if !client.fireHitLatestAt.IsZero() && now.Sub(client.fireHitLatestAt) <= 10*time.Second {
-		return false
-	}
-	client.fireHitArmed = true
-	client.fireHitLatestAt = now
-	s.sendRawFrame(conn, "+FIR")
-	return true
 }
 
 func (s *Server) expireFireHitIfNeeded(conn net.Conn, activeChar *storage.Character) bool {
@@ -765,29 +743,40 @@ func (s *Server) expireFireHitIfNeeded(conn net.Conn, activeChar *storage.Charac
 		return false
 	}
 	client.mu.Lock()
-	defer client.mu.Unlock()
 	if !client.fireHitArmed {
+		client.mu.Unlock()
 		return false
 	}
-	if time.Since(client.fireHitLatestAt) <= 20*time.Second {
+	latestAt := client.fireHitLatestAt
+	age := time.Since(latestAt)
+	if age <= fireHitExpireDelay {
+		client.mu.Unlock()
 		return false
 	}
 	client.fireHitArmed = false
+	client.mu.Unlock()
+	s.sendHear(conn, "召唤烈火精灵结束...", 0x00, 0x97)
 	s.sendRawFrame(conn, "+UFIR")
 	return true
 }
 
 func (s *Server) advancePowerHitState(client *Client, ch storage.Character) {
+	s.advancePowerHitStateLocked(client, ch, true)
+}
+
+func (s *Server) advancePowerHitStateLocked(client *Client, ch storage.Character, notify bool) bool {
 	if client == nil {
-		return
+		return false
 	}
-	weapon, ok := ch.EquippedItems[SlotWeapon]
-	if !ok || weapon.Dura == 0 {
-		return
+	if !powerHitUsable(ch) {
+		client.mu.Lock()
+		client.powerHitArmed = false
+		client.mu.Unlock()
+		return false
 	}
 	state, _, learned := ch.Skills.Get("攻杀剑术")
 	if !learned || state.Level > 3 {
-		return
+		return false
 	}
 	client.mu.Lock()
 	defer client.mu.Unlock()
@@ -801,7 +790,15 @@ func (s *Server) advancePowerHitState(client *Client, ch storage.Character) {
 	client.powerHitCount--
 	if client.powerHitCount == client.powerHitPointCount {
 		client.powerHitArmed = true
-		s.sendRawFrame(client.conn, "+PWR")
+		client.powerHitCount = 7 - int(state.Level)
+		if client.powerHitCount < 1 {
+			client.powerHitCount = 1
+		}
+		client.powerHitPointCount = rand.Intn(client.powerHitCount)
+		if notify {
+			s.sendRawFrame(client.conn, "+PWR")
+		}
+		return true
 	}
 	if client.powerHitCount <= 0 {
 		client.powerHitCount = 7 - int(state.Level)
@@ -810,11 +807,20 @@ func (s *Server) advancePowerHitState(client *Client, ch storage.Character) {
 		}
 		client.powerHitPointCount = rand.Intn(client.powerHitCount)
 	}
+	return false
+}
+
+func powerHitUsable(ch storage.Character) bool {
+	weapon, ok := ch.EquippedItems[SlotWeapon]
+	if !ok || weapon.Dura == 0 {
+		return false
+	}
+	state, _, learned := ch.Skills.Get("攻杀剑术")
+	return learned && state.Level <= 3
 }
 
 func (s *Server) sendRawFrame(conn net.Conn, text string) {
 	if _, err := conn.Write(mir176.WrapFrame([]byte(text))); err != nil {
-		s.log.Info("game raw frame failed", "text", text, "error", err)
 	}
 }
 
@@ -943,7 +949,6 @@ func (s *Server) handlePendingMerchantAction(conn net.Conn, activeChar *storage.
 		s.sendGoldChanged(conn, updated.Gold)
 		s.sendMerchantSay(conn, entity.Name, "行会创建申请已提交: "+text+"\n<返回/@main>")
 		if err := s.store.SaveCharacter(updated); err != nil {
-			s.log.Info("guild build request save failed", "char", updated.Name, "guild", text, "error", err)
 		}
 		return true
 	case "guildwar":
@@ -962,7 +967,6 @@ func (s *Server) handlePendingMerchantAction(conn net.Conn, activeChar *storage.
 		s.sendGoldChanged(conn, updated.Gold)
 		s.sendMerchantSay(conn, entity.Name, "行会战争申请已提交: "+text+"\n<返回/@main>")
 		if err := s.store.SaveCharacter(updated); err != nil {
-			s.log.Info("guild war request save failed", "char", updated.Name, "guild", text, "error", err)
 		}
 		return true
 	}
@@ -1095,7 +1099,6 @@ func (s *Server) teleportMerchantCharacter(conn net.Conn, activeChar *storage.Ch
 	s.sendGoldChanged(conn, updated.Gold)
 	s.sendMerchantDlgClose(conn, s.world.NPCActorID(entity.ID))
 	if err := s.store.SaveCharacter(updated); err != nil {
-		s.log.Info("merchant teleport save failed", "char", updated.Name, "destination", destination, "error", err)
 	}
 	return true
 }
@@ -1163,7 +1166,6 @@ func (s *Server) handleWarehouseMerchantDlgSelect(conn net.Conn, activeChar *sto
 		s.sendWeightChanged(conn, s.world.AbilityStats(updated))
 		s.sendMerchantSay(conn, entity.Name, "金币已经换好金条了.\n还换吗？\n<交换/@changeGold>\n<离 开/@exit>")
 		if err := s.store.SaveCharacter(updated); err != nil {
-			s.log.Info("warehouse gold exchange save failed", "char", updated.Name, "error", err)
 		}
 		return true
 	case "@changemoney":
@@ -1194,7 +1196,6 @@ func (s *Server) handleWarehouseMerchantDlgSelect(conn net.Conn, activeChar *sto
 		s.sendWeightChanged(conn, s.world.AbilityStats(updated))
 		s.sendMerchantSay(conn, entity.Name, "金条已经换好金币.\n还继续换吗?\n<交换/@changeMoney>\n<返 回/@main>\n<关闭/@exit>")
 		if err := s.store.SaveCharacter(updated); err != nil {
-			s.log.Info("warehouse money exchange save failed", "char", updated.Name, "error", err)
 		}
 		return true
 	case "@bind":
@@ -1286,7 +1287,6 @@ func (s *Server) handleSpecialMerchantDlgSelect(conn net.Conn, activeChar *stora
 		s.sendDelItemList(conn, removed)
 		s.sendMerchantSay(conn, entity.Name, "沙巴克攻城申请已经提交。\n战争会在第二天内开始。\n<返回/@main>")
 		if err := s.store.SaveCharacter(updated); err != nil {
-			s.log.Info("castle war request save failed", "char", updated.Name, "error", err)
 		}
 		return true
 	case "@openmaindoor":
@@ -1341,7 +1341,6 @@ func (s *Server) handleWarehousePackExchange(conn net.Conn, activeChar *storage.
 	s.sendWeightChanged(conn, s.world.AbilityStats(updated))
 	s.sendMerchantSay(conn, entity.Name, "已经捆好了... 我的技术不错吧..\n以后还有要捆的，就来找我吧..\n<继续捆/@P_bind>\n<离 开/@exit>")
 	if err := s.store.SaveCharacter(updated); err != nil {
-		s.log.Info("warehouse bundle save failed", "char", updated.Name, "error", err)
 	}
 	return true
 }
@@ -1388,7 +1387,6 @@ func (s *Server) handleUserSellItem(conn net.Conn, activeChar *storage.Character
 	s.sendGoldChanged(conn, updated.Gold)
 	s.world.AddMerchantStock(entity.ID, entry)
 	if err := s.store.SaveCharacter(updated); err != nil {
-		s.log.Info("merchant sell save failed", "char", updated.Name, "error", err)
 	}
 }
 
@@ -1426,7 +1424,6 @@ func (s *Server) handleUserBuyItem(conn net.Conn, activeChar *storage.Character,
 	s.sendBagAddItem(conn, updated, bought.ItemID, bought.MakeIndex)
 	s.sendGoldChanged(conn, updated.Gold)
 	if err := s.store.SaveCharacter(updated); err != nil {
-		s.log.Info("merchant buy save failed", "char", updated.Name, "error", err)
 	}
 }
 
@@ -1500,7 +1497,6 @@ func (s *Server) handleUserRepairItem(conn net.Conn, activeChar *storage.Charact
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMUserRepairItemOK, Recog: int32(updated.Gold), Param: updated.BagItems[slot].Dura, Tag: updated.BagItems[slot].DuraMax}, nil)
 	s.sendGoldChanged(conn, updated.Gold)
 	if err := s.store.SaveCharacter(updated); err != nil {
-		s.log.Info("merchant repair save failed", "char", updated.Name, "error", err)
 	}
 }
 
@@ -1530,7 +1526,6 @@ func (s *Server) handleUserStorageItem(conn net.Conn, activeChar *storage.Charac
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMStorageOK}, nil)
 	s.sendWeightChanged(conn, s.world.AbilityStats(updated))
 	if err := s.store.SaveCharacter(updated); err != nil {
-		s.log.Info("merchant storage save failed", "char", updated.Name, "error", err)
 	}
 }
 
@@ -1561,7 +1556,6 @@ func (s *Server) handleUserTakeBackStorageItem(conn net.Conn, activeChar *storag
 	s.sendBagAddItem(conn, updated, entry.ItemID, entry.MakeIndex)
 	s.sendWeightChanged(conn, s.world.AbilityStats(updated))
 	if err := s.store.SaveCharacter(updated); err != nil {
-		s.log.Info("merchant getback save failed", "char", updated.Name, "error", err)
 	}
 }
 
@@ -1598,7 +1592,6 @@ func (s *Server) handleUserMakeDrugItem(conn net.Conn, activeChar *storage.Chara
 		s.sendDelItemList(conn, removed)
 		s.sendCommand(conn, mir176.Command{Ident: mir176.SMMakeDrugFail, Recog: 2}, nil)
 		if err := s.store.SaveCharacter(updated); err != nil {
-			s.log.Info("merchant make drug save failed", "char", updated.Name, "error", err)
 		}
 		return
 	}
@@ -1610,7 +1603,6 @@ func (s *Server) handleUserMakeDrugItem(conn net.Conn, activeChar *storage.Chara
 	s.sendBagAddItem(conn, updated, bought.ItemID, bought.MakeIndex)
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMMakeDrugSuccess, Recog: int32(updated.Gold)}, nil)
 	if err := s.store.SaveCharacter(updated); err != nil {
-		s.log.Info("merchant make drug save failed", "char", updated.Name, "error", err)
 	}
 }
 
@@ -1951,7 +1943,6 @@ func (s *Server) handleTakeOnItem(conn net.Conn, activeChar *storage.Character, 
 	itemID := DecodeString(text)
 	updated, result, err := s.world.EquipItemByBagIndexWithResult(*activeChar, int(cmd.Param), int(cmd.Recog), itemID)
 	if err != nil {
-		s.log.Info("game take on item rejected", "account", activeChar.Account, "char", activeChar.Name, "item", itemID, "make_index", cmd.Recog, "slot", cmd.Param, "error", err)
 		s.sendCommand(conn, mir176.Command{Ident: mir176.SMTakeOnFail}, nil)
 		return
 	}
@@ -1964,7 +1955,6 @@ func (s *Server) handleTakeOffItem(conn net.Conn, activeChar *storage.Character,
 	itemID := DecodeString(text)
 	updated, result, err := s.world.UnequipItemByMakeIndexWithResult(*activeChar, int(cmd.Param), int(cmd.Recog), itemID)
 	if err != nil {
-		s.log.Info("game take off item rejected", "account", activeChar.Account, "char", activeChar.Name, "slot", cmd.Param, "item", itemID, "error", err)
 		s.sendCommand(conn, mir176.Command{Ident: mir176.SMTakeOffFail}, nil)
 		return
 	}
@@ -1977,7 +1967,6 @@ func (s *Server) handleDropItem(conn net.Conn, activeChar *storage.Character, cm
 	itemID := DecodeString(text)
 	updated, drop, err := s.world.DropItemCountByBagIndex(*activeChar, int(cmd.Recog), itemID, s.PlayerCharacters()...)
 	if err != nil {
-		s.log.Info("game drop item rejected", "account", activeChar.Account, "char", activeChar.Name, "item", itemID, "make_index", cmd.Recog, "count", cmd.Param, "error", err)
 		s.sendCommand(conn, mir176.Command{Ident: mir176.SMDropItemFail, Recog: cmd.Recog}, nil)
 		return
 	}
@@ -1997,7 +1986,6 @@ func (s *Server) handlePickup(conn net.Conn, activeChar *storage.Character, cmd 
 	y := int(cmd.Tag)
 	updated, result, err := s.world.PickupAtWithResult(*activeChar, x, y)
 	if err != nil {
-		s.log.Info("game pickup rejected", "account", activeChar.Account, "char", activeChar.Name, "error", err)
 		return
 	}
 	*activeChar = updated
@@ -2025,14 +2013,12 @@ func (s *Server) handleMagicKeyChange(conn net.Conn, activeChar *storage.Charact
 	}
 	updated, changed, err := s.world.SetSkillHotkey(*activeChar, skillID, byte(cmd.Tag))
 	if err != nil {
-		s.log.Info("game magic key change rejected", "account", activeChar.Account, "char", activeChar.Name, "magic_id", cmd.Param, "key", cmd.Tag, "error", err)
 		return
 	}
 	if !changed {
 		return
 	}
 	*activeChar = updated
-	s.sendUseMagic(conn, updated)
 }
 
 // handleQueryBagItems implements CM_QUERYBAGITEMS.
@@ -2100,11 +2086,56 @@ func (s *Server) sendInitialLoginState(conn net.Conn, ch storage.Character) {
 // actually expects.
 func (s *Server) sendActionOK(conn net.Conn) {
 	ack := fmt.Sprintf("+GOOD/%d", uint32(time.Now().UnixMilli()))
-	if _, err := conn.Write(mir176.WrapFrame([]byte(ack))); err != nil {
-		s.log.Info("game action ack failed", "error", err)
-		return
+	_, _ = conn.Write(mir176.WrapFrame([]byte(ack)))
+}
+
+func (s *Server) sendActionFail(conn net.Conn) {
+	ack := fmt.Sprintf("+FAIL/%d", uint32(time.Now().UnixMilli()))
+	_, _ = conn.Write(mir176.WrapFrame([]byte(ack)))
+}
+
+func (s *Server) armFireHit(conn net.Conn, activeChar *storage.Character) bool {
+	client := s.clientForConn(conn)
+	if client == nil {
+		return false
 	}
-	s.log.Info("game action ack sent", "ack", ack)
+	client.mu.Lock()
+	now := time.Now()
+	age := time.Duration(0)
+	if !client.fireHitLatestAt.IsZero() {
+		age = now.Sub(client.fireHitLatestAt)
+	}
+	if !client.fireHitLatestAt.IsZero() && age <= fireHitRearmCooldown {
+		client.mu.Unlock()
+		s.sendHear(conn, "召唤烈火精灵失败...", 0x00, 0x97)
+		return false
+	}
+	client.fireHitArmed = true
+	client.fireHitLatestAt = now
+	client.mu.Unlock()
+	s.sendHear(conn, "召唤烈火精灵成功...", 0x00, 0xFF)
+	return true
+}
+
+func (s *Server) sendMagicFireFail(conn net.Conn, ch storage.Character) {
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMMagicFireFail, Recog: world.CharacterActorID(ch)}, nil)
+}
+
+func (s *Server) sendMagicFire(conn net.Conn, ch storage.Character, skill data.StdSkill, targetX, targetY int, targetID int32) {
+	body := make([]byte, 4)
+	binary.LittleEndian.PutUint32(body, uint32(targetID))
+	body = EncodeBuffer(body)
+	cmd := mir176.Command{
+		Ident:  mir176.SMMagicFire,
+		Recog:  world.CharacterActorID(ch),
+		Param:  uint16(targetX),
+		Tag:    uint16(targetY),
+		Series: makeWord(byte(skill.EffectType), byte(skill.Effect)),
+	}
+	clients := s.ClientsAround(ch.MapID, ch.X, ch.Y, playerViewRange)
+	for _, client := range clients {
+		client.writeCommand(s, cmd, body)
+	}
 }
 
 // sendMoveFail resyncs the client to the server's authoritative position
@@ -2112,7 +2143,9 @@ func (s *Server) sendActionOK(conn net.Conn) {
 // unconditional (self included) SM_MOVEFAIL reply
 // (PlayObject.Message.cs RM_MOVEFAIL case).
 func (s *Server) sendMoveFail(conn net.Conn, activeChar *storage.Character) {
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMMoveFail, Recog: world.CharacterActorID(*activeChar), Param: uint16(activeChar.X), Tag: uint16(activeChar.Y), Series: uint16(activeChar.Dir)}, nil)
+	feature := s.world.HumanFeatureForCharacter(*activeChar)
+	status := s.world.CharacterStatus(*activeChar)
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMMoveFail, Recog: world.CharacterActorID(*activeChar), Param: uint16(activeChar.X), Tag: uint16(activeChar.Y), Series: uint16(activeChar.Dir)}, EncodeBuffer(CharDesc(feature, status)))
 }
 
 func (s *Server) sendNotice(conn net.Conn) {
@@ -2264,8 +2297,6 @@ func (s *Server) sendEnterWorld(conn net.Conn, login RunLogin) (storage.Characte
 		if changed {
 			ch = updated
 		}
-	} else {
-		s.log.Info("sync character home failed", "error", err)
 	}
 	return ch, true
 }
@@ -2585,15 +2616,21 @@ func (s *Server) expireFireHitStates(now time.Time) {
 	s.clientMu.Unlock()
 	for _, client := range clients {
 		client.mu.Lock()
-		if !client.fireHitArmed || client.fireHitLatestAt.IsZero() || now.Sub(client.fireHitLatestAt) <= 20*time.Second {
+		if !client.fireHitArmed || client.fireHitLatestAt.IsZero() || now.Sub(client.fireHitLatestAt) <= fireHitExpireDelay {
 			client.mu.Unlock()
 			continue
 		}
 		client.fireHitArmed = false
 		client.mu.Unlock()
+		s.sendHear(client.conn, "召唤烈火精灵结束...", 0x00, 0x97)
 		s.sendRawFrame(client.conn, "+UFIR")
 	}
 }
+
+const (
+	fireHitRearmCooldown = 10 * time.Second
+	fireHitExpireDelay   = 20 * time.Second
+)
 
 func (s *Server) syncVisibleNPCs() {
 	for _, client := range s.allClients() {
@@ -2687,7 +2724,7 @@ func (s *Server) broadcastCharacterHit(clients []*Client, ch storage.Character, 
 	}
 }
 
-func (s *Server) broadcastCharacterSpell(ch storage.Character, magicID uint16) {
+func (s *Server) broadcastCharacterSpell(ch storage.Character, magicID uint16, effect int, targetX, targetY int) {
 	clients := s.ClientsAround(ch.MapID, ch.X, ch.Y, playerViewRange)
 	if len(clients) == 0 {
 		return
@@ -2696,9 +2733,9 @@ func (s *Server) broadcastCharacterSpell(ch storage.Character, magicID uint16) {
 	cmd := mir176.Command{
 		Ident:  mir176.SMSpell,
 		Recog:  world.CharacterActorID(ch),
-		Param:  uint16(ch.X),
-		Tag:    uint16(ch.Y),
-		Series: magicID,
+		Param:  uint16(targetX),
+		Tag:    uint16(targetY),
+		Series: uint16(effect),
 	}
 	for _, client := range clients {
 		if client.ch.ID == ch.ID {
@@ -3222,20 +3259,12 @@ func (c *Client) character() storage.Character {
 
 func (c *Client) writeCommandLocked(s *Server, cmd mir176.Command, text []byte) {
 	response := encodeMessage(cmd, text)
-	if _, err := c.conn.Write(response); err != nil {
-		s.log.Info("game response failed", "ident", cmd.Ident, "error", err)
-		return
-	}
-	s.log.Info("game response sent", "ident", cmd.Ident, "text_len", len(text))
+	_, _ = c.conn.Write(response)
 }
 
 func (s *Server) sendCommand(conn net.Conn, cmd mir176.Command, text []byte) {
 	response := encodeMessage(cmd, text)
-	if _, err := conn.Write(response); err != nil {
-		s.log.Info("game response failed", "ident", cmd.Ident, "error", err)
-		return
-	}
-	s.log.Info("game response sent", "ident", cmd.Ident, "text_len", len(text))
+	_, _ = conn.Write(response)
 }
 
 func encodeMessage(cmd mir176.Command, text []byte) []byte {
@@ -3329,9 +3358,36 @@ func GoldNameBody() []byte {
 func (s *Server) sendUseMagic(conn net.Conn, ch storage.Character) {
 	body, count := UseMagicBody(s.world, ch)
 	if len(body) == 0 {
+		s.sendAttackSkillFlags(conn, ch)
 		return
 	}
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendMyMagic, Series: uint16(count)}, body)
+	s.sendAttackSkillFlags(conn, ch)
+}
+
+func skillSummaryForLog(w *world.World, ch storage.Character) string {
+	parts := make([]string, 0, len(ch.Skills))
+	for _, skillState := range ch.Skills {
+		skill, ok := w.Skill(skillState.ID)
+		if !ok {
+			continue
+		}
+		magicID, ok := w.MagicIDByName(skillState.ID)
+		if !ok {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%d:%s#%d(h=%q,l=%d,t=%d)", magicID, skillState.ID, skillState.Hotkey, skill.Name, skillState.Level, skillState.Train))
+	}
+	return strings.Join(parts, ",")
+}
+
+func (s *Server) sendAttackSkillFlags(conn net.Conn, ch storage.Character) {
+	if _, _, ok := ch.Skills.Get("刺杀剑术"); ok {
+		s.sendRawFrame(conn, "+LNG")
+	}
+	if _, _, ok := ch.Skills.Get("半月弯刀"); ok {
+		s.sendRawFrame(conn, "+WID")
+	}
 }
 
 func UseMagicBody(w *world.World, ch storage.Character) ([]byte, int) {
@@ -3366,8 +3422,8 @@ func writeClientMagic(buf *bytes.Buffer, magicID uint16, state storage.SkillStat
 	writeI32(buf, int32(state.Train))
 	writeU16(buf, magicID)
 	writeGBKAsciiString(buf, skill.Name, 14)
-	writeByte(buf, 0)
-	writeByte(buf, 0)
+	writeByte(buf, byte(skill.EffectType))
+	writeByte(buf, byte(skill.Effect))
 	writeByte(buf, 0)
 	writeU16(buf, uint16(skill.Spell))
 	writeU16(buf, uint16(skill.Power))

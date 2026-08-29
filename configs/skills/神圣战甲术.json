@@ -2,6 +2,8 @@
   "id": "神圣战甲术",
   "name": "神圣战甲术",
   "job": 2,
+  "effect_type": 9,
+  "effect": 12,
   "power": 0,
   "max_power": 0,
   "spell": 15,

@@ -2,6 +2,8 @@
   "id": "地狱火",
   "name": "地狱火",
   "job": 1,
+  "effect_type": 5,
+  "effect": 7,
   "power": 14,
   "max_power": 14,
   "spell": 10,

@@ -2,6 +2,8 @@
   "id": "火球术",
   "name": "火球术",
   "job": 1,
+  "effect_type": 1,
+  "effect": 1,
   "power": 8,
   "max_power": 8,
   "spell": 4,

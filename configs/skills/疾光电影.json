@@ -2,6 +2,8 @@
   "id": "疾光电影",
   "name": "疾光电影",
   "job": 1,
+  "effect_type": 6,
+  "effect": 8,
   "power": 22,
   "max_power": 38,
   "spell": 30,

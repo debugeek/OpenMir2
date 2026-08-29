@@ -2,6 +2,8 @@
   "id": "抗拒火环",
   "name": "抗拒火环",
   "job": 1,
+  "effect_type": 4,
+  "effect": 6,
   "power": 1,
   "max_power": 1,
   "spell": 8,

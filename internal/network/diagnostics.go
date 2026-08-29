@@ -19,7 +19,6 @@ func (s *Server) handleDiagnostics(conn net.Conn) {
 		return
 	}
 	line = strings.TrimSpace(line)
-	s.log.Info("diagnostics request", "line", line)
 	if !strings.HasPrefix(line, "GET ") {
 		_, _ = fmt.Fprintln(conn, "ok")
 		return

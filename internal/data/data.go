@@ -88,6 +88,8 @@ type StdSkill struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Job         int    `json:"job"`
+	EffectType  int    `json:"effect_type"`
+	Effect      int    `json:"effect"`
 	Power       int    `json:"power"`
 	MaxPower    int    `json:"max_power"`
 	Spell       int    `json:"spell"`

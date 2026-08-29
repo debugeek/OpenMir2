@@ -162,6 +162,9 @@ func (w *World) castChargeSkillLocked(result *SkillCastResult, ch storage.Charac
 	}
 	push := maxInt(2, int(state.Level)+1)
 	occupied := w.occupiedActorsLocked(players)
+	var lastCharacterHit *CharacterHit
+	var lastCharacter storage.Character
+	var lastMonsterHit *AttackResult
 	for step := 0; step < push; step++ {
 		off := dirOffsets[dir]
 		nextX := ch.X + off[0]
@@ -182,13 +185,19 @@ func (w *World) castChargeSkillLocked(result *SkillCastResult, ch storage.Charac
 				if !moved {
 					break
 				}
+				damage := w.rand.Intn((int(state.Level)+2)*10) + ((int(state.Level)+2)*10)
+				next, hit, err := w.attackCharacterWithDamageLocked(ch, next, damage)
+				if err != nil {
+					return ch, err
+				}
+				lastCharacterHit = &hit
+				lastCharacter = next
 				for i := range players {
 					if players[i].ID == next.ID {
 						players[i] = next
 						break
 					}
 				}
-				appendOrUpdateAffectedCharacter(result, next)
 			} else if mon, found := w.monsterByIDLocked(occupant); found {
 				if ch.Level <= mon.Level {
 					break
@@ -198,6 +207,12 @@ func (w *World) castChargeSkillLocked(result *SkillCastResult, ch storage.Charac
 					break
 				}
 				appendOrUpdateMonsterAction(result, action)
+				damage := w.rand.Intn((int(state.Level)+2)*10) + ((int(state.Level)+2)*10)
+				hit, err := w.attackMonsterWithDamageLocked(ch, mon, damage, players...)
+				if err != nil {
+					return ch, err
+				}
+				lastMonsterHit = &hit
 			} else {
 				break
 			}
@@ -208,6 +223,13 @@ func (w *World) castChargeSkillLocked(result *SkillCastResult, ch storage.Charac
 		ch.X = nextX
 		ch.Y = nextY
 		ch.Dir = dir
+	}
+	if lastCharacterHit != nil {
+		appendOrUpdateAffectedCharacter(result, lastCharacter)
+		result.CharacterHits = append(result.CharacterHits, *lastCharacterHit)
+	}
+	if lastMonsterHit != nil {
+		result.MonsterHits = append(result.MonsterHits, *lastMonsterHit)
 	}
 	result.Character = ch
 	return ch, nil
@@ -229,7 +251,7 @@ func (w *World) castPushAroundSkillLocked(result *SkillCastResult, ch storage.Ch
 		if ch.Level <= target.Level {
 			continue
 		}
-		threshold := 6 + int(state.Level)*3 + (ch.Level - target.Level)
+		threshold := 6 + int(state.Level)*4 + (ch.Level - target.Level)
 		if threshold < 0 {
 			threshold = 0
 		}
@@ -252,7 +274,7 @@ func (w *World) castPushAroundSkillLocked(result *SkillCastResult, ch storage.Ch
 		if ch.Level <= mon.Level {
 			continue
 		}
-		threshold := 6 + int(state.Level)*3 + (ch.Level - mon.Level)
+		threshold := 6 + int(state.Level)*4 + (ch.Level - mon.Level)
 		if threshold < 0 {
 			threshold = 0
 		}

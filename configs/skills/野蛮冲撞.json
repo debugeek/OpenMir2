@@ -2,6 +2,8 @@
   "id": "野蛮冲撞",
   "name": "野蛮冲撞",
   "job": 0,
+  "effect_type": 0,
+  "effect": 25,
   "power": 0,
   "max_power": 0,
   "spell": 15,

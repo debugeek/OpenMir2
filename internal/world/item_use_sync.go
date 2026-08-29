@@ -12,7 +12,6 @@ type ItemUseSyncer interface {
 	SendHealthSpellChanged(storage.Character)
 	SendEquippedItems(storage.Character)
 	SendWeightChanged(storage.Character)
-	SendUseMagic(storage.Character)
 }
 
 func ApplyItemUseSync(syncer ItemUseSyncer, result ItemUseResult) {
@@ -39,9 +38,6 @@ func ApplyItemUseSync(syncer ItemUseSyncer, result ItemUseResult) {
 		syncer.SendHealthSpellChanged(result.Character)
 	} else if result.HealthChanged {
 		syncer.SendHealthSpellChanged(result.Character)
-	}
-	if result.SkillChanged {
-		syncer.SendUseMagic(result.Character)
 	}
 	syncer.SendEquippedItems(result.Character)
 	syncer.SendWeightChanged(result.Character)

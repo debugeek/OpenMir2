@@ -2,6 +2,8 @@
   "id": "地狱雷光",
   "name": "地狱雷光",
   "job": 1,
+  "effect_type": 4,
+  "effect": 22,
   "power": 15,
   "max_power": 19,
   "spell": 35,

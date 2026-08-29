@@ -2,6 +2,8 @@
   "id": "魔法盾",
   "name": "魔法盾",
   "job": 1,
+  "effect_type": 4,
+  "effect": 29,
   "power": 0,
   "max_power": 0,
   "spell": 20,

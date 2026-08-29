@@ -2,6 +2,8 @@
   "id": "刺杀剑术",
   "name": "刺杀剑术",
   "job": 0,
+  "effect_type": 0,
+  "effect": 13,
   "power": 0,
   "max_power": 0,
   "spell": 0,

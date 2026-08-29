@@ -2,6 +2,8 @@
   "id": "幽灵盾",
   "name": "幽灵盾",
   "job": 2,
+  "effect_type": 9,
+  "effect": 11,
   "power": 0,
   "max_power": 0,
   "spell": 15,

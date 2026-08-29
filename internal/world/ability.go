@@ -215,6 +215,8 @@ type CombatStats struct {
 	DC, DCMax   int
 	MC, MCMax   int
 	SC, SCMax   int
+	Hit         int
+	Speed       int
 }
 
 func (w *World) CombatStats(ch storage.Character) CombatStats {
@@ -325,11 +327,12 @@ func (w *World) combatStatsLocked(ch storage.Character) CombatStats {
 		stats.MCMax += int(byte(item.Stats.McMin >> 8))
 		stats.SC += int(byte(item.Stats.ScMin))
 		stats.SCMax += int(byte(item.Stats.ScMin >> 8))
+		stats.Hit += item.Accurate
+		stats.Speed += item.Agility
 	}
 	if state, _, ok := ch.Skills.Get("基本剑术"); ok {
-		bonus := int(state.Level) + 1
-		stats.DC += bonus
-		stats.DCMax += bonus
+		bonus := (int(state.Level) + 1) * 3
+		stats.Hit += bonus
 	}
 	if state, _, ok := ch.Skills.Get("精神力战法"); ok {
 		bonus := int(state.Level) + 1

@@ -2,6 +2,8 @@
   "id": "隐身术",
   "name": "隐身术",
   "job": 2,
+  "effect_type": 4,
+  "effect": 16,
   "power": 0,
   "max_power": 0,
   "spell": 5,

@@ -2,6 +2,8 @@
   "id": "冰咆哮",
   "name": "冰咆哮",
   "job": 1,
+  "effect_type": 2,
+  "effect": 31,
   "power": 15,
   "max_power": 19,
   "spell": 12,

@@ -12,12 +12,15 @@ import (
 
 func (w *World) attackLocked(ch storage.Character, mon *Monster, attackIdent uint16, blockers ...storage.Character) (AttackResult, error) {
 	damage := w.characterAttackDamageLocked(ch, mon, attackIdent)
-	if damage < 1 {
-		damage = 1
+	if damage < 0 {
+		damage = 0
 	}
 	result, err := w.attackMonsterWithDamageLocked(ch, mon, damage, blockers...)
 	if err != nil {
 		return AttackResult{}, err
+	}
+	if result.Damage <= 0 {
+		return result, nil
 	}
 	points, ok := meleeSkillTrainPoints(w.rand, attackIdent)
 	if !ok {
@@ -36,13 +39,13 @@ func (w *World) attackLocked(ch storage.Character, mon *Monster, attackIdent uin
 
 func (w *World) attackMonsterWithDamageLocked(ch storage.Character, mon *Monster, damage int, blockers ...storage.Character) (AttackResult, error) {
 	now := time.Now()
-	if damage < 1 {
-		damage = 1
+	if damage < 0 {
+		damage = 0
 	}
 	if monsterPoisonArmorActive(mon, now) {
 		damage = int(math.Round(float64(damage) * poisonDamageMultiplier(true)))
-		if damage < 1 {
-			damage = 1
+		if damage < 0 {
+			damage = 0
 		}
 	}
 	defenceBonus, magicDefenceBonus := activeMonsterProtectionBuffs(mon, now)
@@ -52,8 +55,71 @@ func (w *World) attackMonsterWithDamageLocked(ch storage.Character, mon *Monster
 	if !mon.UseMagic && defenceBonus > 0 {
 		damage -= defenceBonus
 	}
-	if damage < 1 {
-		damage = 1
+	if damage < 0 {
+		damage = 0
+	}
+	hp := core.ApplyHPDelta(mon.HP, mon.MaxHP, -damage)
+	mon.HP = hp.HP
+	mon.TargetCharacterID = ch.ID
+	mon.TargetFocusAt = now
+	mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchHasTargetMSLocked(mon)) * time.Millisecond)
+	result := AttackResult{
+		MonsterID:      mon.ID,
+		Damage:         damage,
+		MonsterHP:      hp.HP,
+		MonsterMaxHP:   mon.MaxHP,
+		MonsterRaceImg: mon.RaceImg,
+		MonsterWeapon:  mon.MonsterWeapon,
+		MonsterAppr:    mon.Appr,
+		MonsterX:       mon.X,
+		MonsterY:       mon.Y,
+		MonsterDir:     mon.Dir,
+	}
+	if hp.Dead {
+		summoned := mon.MasterID != ""
+		w.removeMonsterLocked(mon, !summoned)
+		delay := mon.Spawn.RespawnSeconds
+		if !summoned && delay > 0 {
+			mon.RespawnAt = now.Add(time.Duration(delay) * time.Second)
+		}
+		var expGained int
+		var leveled bool
+		var err error
+		if !summoned {
+			ch, _, expGained, leveled, err = gainExperienceLocked(w, ch, mon.Experience)
+			if err != nil {
+				return AttackResult{}, err
+			}
+			result.Experience = expGained
+			result.CurrentExp = ch.Experience
+			result.LevelUp = leveled
+		}
+		result.Dead = true
+		if mon.Animal {
+			mon.RunAwayMode = true
+			mon.TargetCharacterID = ch.ID
+			mon.TargetFocusAt = now
+			mon.TargetX, mon.TargetY = fleePointForMonster(mon, ch)
+			mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchHasTargetMSLocked(mon)) * time.Millisecond)
+		}
+		if !summoned {
+			result.Drops = w.rollDropsLocked(mon, ch.ID, blockers...)
+		}
+	}
+	result.Character = ch
+	return result, w.store.SaveCharacter(ch)
+}
+
+func (w *World) attackMonsterWithMagicDamageLocked(ch storage.Character, mon *Monster, damage int, blockers ...storage.Character) (AttackResult, error) {
+	now := time.Now()
+	if damage < 0 {
+		damage = 0
+	}
+	if mon.MagicDefense > 0 {
+		damage -= w.rand.Intn(mon.MagicDefense + 1)
+	}
+	if damage < 0 {
+		damage = 0
 	}
 	hp := core.ApplyHPDelta(mon.HP, mon.MaxHP, -damage)
 	mon.HP = hp.HP
@@ -109,13 +175,13 @@ func (w *World) attackMonsterWithDamageLocked(ch storage.Character, mon *Monster
 
 func (w *World) killMonsterWithDamageLocked(ch storage.Character, mon *Monster, damage int, blockers ...storage.Character) (AttackResult, error) {
 	now := time.Now()
-	if damage < 1 {
-		damage = 1
+	if damage < 0 {
+		damage = 0
 	}
 	if monsterPoisonArmorActive(mon, now) {
 		damage = int(math.Round(float64(damage) * poisonDamageMultiplier(true)))
-		if damage < 1 {
-			damage = 1
+		if damage < 0 {
+			damage = 0
 		}
 	}
 	defenceBonus, magicDefenceBonus := activeMonsterProtectionBuffs(mon, now)
@@ -125,8 +191,8 @@ func (w *World) killMonsterWithDamageLocked(ch storage.Character, mon *Monster, 
 	if !mon.UseMagic && defenceBonus > 0 {
 		damage -= defenceBonus
 	}
-	if damage < 1 {
-		damage = 1
+	if damage < 0 {
+		damage = 0
 	}
 	hp := core.ApplyHPDelta(mon.HP, mon.MaxHP, -mon.HP)
 	mon.HP = hp.HP
@@ -179,6 +245,13 @@ func (w *World) killMonsterWithDamageLocked(ch storage.Character, mon *Monster, 
 }
 
 func (w *World) characterAttackDamageLocked(ch storage.Character, mon *Monster, attackIdent uint16) int {
+	if mon != nil {
+		hit := w.characterHitPointLocked(ch)
+		speed := w.monsterSpeedPointLocked(mon)
+		if speed > 0 && hit < w.rand.Intn(speed) {
+			return 0
+		}
+	}
 	stats := w.combatStatsLocked(ch)
 	minAttack := 3 + max(ch.Level, 1) + stats.DC
 	maxAttack := 3 + max(ch.Level, 1) + stats.DCMax
@@ -196,9 +269,52 @@ func (w *World) characterAttackDamageLocked(ch storage.Character, mon *Monster, 
 	return damage - mon.Defense
 }
 
+func (w *World) characterHitPointLocked(ch storage.Character) int {
+	stats := w.combatStatsLocked(ch)
+	hit := 5 + stats.Hit + int(ch.BonusAbil.Hit)
+	if ch.ExtraAbil[3] > 0 {
+		hit += int(ch.ExtraAbil[3])
+	}
+	if hit < 0 {
+		hit = 0
+	}
+	return hit
+}
+
+func (w *World) characterSpeedPointLocked(ch storage.Character) int {
+	stats := w.combatStatsLocked(ch)
+	speed := int(SubAbilitySpeed(ch.Class)) + stats.Speed + int(ch.BonusAbil.Speed)
+	if ch.ExtraAbil[3] > 0 {
+		speed += int(ch.ExtraAbil[3])
+	}
+	if speed < 1 {
+		speed = 1
+	}
+	return speed
+}
+
+func (w *World) monsterHitPointLocked(mon *Monster) int {
+	if mon == nil {
+		return 0
+	}
+	if mon.Hit < 0 {
+		return 0
+	}
+	return mon.Hit
+}
+
+func (w *World) monsterSpeedPointLocked(mon *Monster) int {
+	if mon == nil {
+		return 1
+	}
+	if mon.Speed < 1 {
+		return 1
+	}
+	return mon.Speed
+}
+
 func (w *World) warriorHitBonusLocked(ch storage.Character, attackIdent uint16, baseDamage int) int {
 	bonus := 0
-	preBonusDamage := baseDamage
 	switch attackIdent {
 	case mir176.CMPowerHit:
 		if state, _, ok := ch.Skills.Get("攻杀剑术"); ok {
@@ -206,16 +322,20 @@ func (w *World) warriorHitBonusLocked(ch storage.Character, attackIdent uint16, 
 		}
 	case mir176.CMLongHit:
 		if state, _, ok := ch.Skills.Get("刺杀剑术"); ok {
-			bonus += 2 + int(state.Level)*2
+			if skill, ok := w.data.Skills["刺杀剑术"]; ok {
+				bonus += int(math.Round(float64(baseDamage) / float64(skill.TrainLevel1+2) * float64(state.Level+2)))
+			}
 		}
 	case mir176.CMWideHit:
 		if state, _, ok := ch.Skills.Get("半月弯刀"); ok {
-			bonus += 1 + int(state.Level)*2
+			if skill, ok := w.data.Skills["半月弯刀"]; ok {
+				bonus += int(math.Round(float64(baseDamage) / float64(skill.TrainLevel1+10) * float64(state.Level+2)))
+			}
 		}
 	case mir176.CMFireHit:
 		if state, _, ok := ch.Skills.Get("烈火剑法"); ok {
 			firePct := 4 + int(state.Level)*4
-			bonus += int(math.Round(float64(preBonusDamage) * float64(firePct) / 10.0))
+			bonus += int(math.Round(float64(baseDamage) * float64(firePct) / 10.0))
 		}
 	}
 	return bonus
@@ -278,6 +398,11 @@ func (w *World) attackCharacterWithDamageLocked(caster storage.Character, target
 	if damage < 1 {
 		damage = 1
 	}
+	hitPoint := w.characterHitPointLocked(caster)
+	speed := w.characterSpeedPointLocked(target)
+	if speed > 0 && hitPoint < w.rand.Intn(speed) {
+		damage = 0
+	}
 	stats := w.combatStatsLocked(target)
 	armor := stats.AC
 	low := armor & 0xFF
@@ -285,9 +410,9 @@ func (w *World) attackCharacterWithDamageLocked(caster storage.Character, target
 	if high < low {
 		high = low
 	}
-	if high > low {
+	if damage > 0 && high > low {
 		damage -= low + w.rand.Intn(high-low+1)
-	} else {
+	} else if damage > 0 {
 		damage -= low
 	}
 	if damage < 0 {
@@ -295,7 +420,7 @@ func (w *World) attackCharacterWithDamageLocked(caster storage.Character, target
 	}
 	change := core.ApplyVitalDelta(target, -damage, 0)
 	target = change.Character
-	hit := CharacterHit{
+	resultHit := CharacterHit{
 		Character:  target,
 		Damage:     damage,
 		AttackerID: caster.ID,
@@ -303,7 +428,7 @@ func (w *World) attackCharacterWithDamageLocked(caster storage.Character, target
 		AttackerY:  caster.Y,
 		Dead:       change.Dead,
 	}
-	return target, hit, w.store.SaveCharacter(target)
+	return target, resultHit, w.store.SaveCharacter(target)
 }
 
 func (w *World) monsterAttackCharacterLocked(mon *Monster, ch storage.Character) (storage.Character, CharacterHit, error) {

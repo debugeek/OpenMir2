@@ -50,9 +50,6 @@ func (s *Server) handleWeaponUpgradeStart(conn net.Conn, activeChar *storage.Cha
 	s.sendEquippedItems(conn, updated)
 	s.sendAbilityOnly(conn, updated)
 	s.sendWeightChanged(conn, s.world.AbilityStats(updated))
-	if err := s.store.SaveCharacter(updated); err != nil {
-		s.log.Info("weapon upgrade save failed", "char", updated.Name, "error", err)
-	}
 	_ = state
 	s.sendNPCConversationLabel(conn, updated, entity, "~@upgradenow_ok")
 	return true
@@ -80,9 +77,6 @@ func (s *Server) handleWeaponUpgradeGetBack(conn net.Conn, activeChar *storage.C
 	s.sendBagAddItem(conn, updated, item.ItemID, item.MakeIndex)
 	s.sendAbilityOnly(conn, updated)
 	s.sendWeightChanged(conn, s.world.AbilityStats(updated))
-	if err := s.store.SaveCharacter(updated); err != nil {
-		s.log.Info("weapon upgrade getback save failed", "char", updated.Name, "error", err)
-	}
 	s.sendNPCConversationLabel(conn, updated, entity, "~@getbackupgnow_ok")
 	return true
 }

@@ -2,6 +2,8 @@
   "id": "集体隐身术",
   "name": "集体隐身术",
   "job": 2,
+  "effect_type": 8,
+  "effect": 17,
   "power": 0,
   "max_power": 0,
   "spell": 10,

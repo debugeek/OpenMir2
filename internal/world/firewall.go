@@ -55,14 +55,11 @@ func (w *World) fireWallDamageLocked(ch storage.Character, skill data.StdSkill, 
 
 func (w *World) fireWallCellsLocked(mapID string, x, y int) []fireFieldKey {
 	cells := []fireFieldKey{
-		{MapID: mapID, X: x - 1, Y: y - 2},
-		{MapID: mapID, X: x + 1, Y: y - 2},
-		{MapID: mapID, X: x - 2, Y: y - 1},
-		{MapID: mapID, X: x + 2, Y: y - 1},
-		{MapID: mapID, X: x - 2, Y: y + 1},
-		{MapID: mapID, X: x + 2, Y: y + 1},
-		{MapID: mapID, X: x - 1, Y: y + 2},
-		{MapID: mapID, X: x + 1, Y: y + 2},
+		{MapID: mapID, X: x, Y: y - 1},
+		{MapID: mapID, X: x - 1, Y: y},
+		{MapID: mapID, X: x, Y: y},
+		{MapID: mapID, X: x + 1, Y: y},
+		{MapID: mapID, X: x, Y: y + 1},
 	}
 	seen := make(map[fireFieldKey]struct{}, len(cells))
 	out := make([]fireFieldKey, 0, len(cells))
@@ -117,7 +114,7 @@ func (w *World) applyFireWallTickLocked(players map[string]storage.Character, no
 			owner = storage.Character{ID: field.OwnerID, MapID: field.MapID, X: field.X, Y: field.Y}
 		}
 		for _, mon := range w.monstersInRadiusLocked(field.MapID, field.X, field.Y, 0) {
-			attackResult, err := w.attackMonsterWithDamageLocked(owner, mon, field.Damage)
+			attackResult, err := w.attackMonsterWithMagicDamageLocked(owner, mon, field.Damage)
 			if err != nil {
 				continue
 			}

@@ -19,7 +19,6 @@ func disableNagle(conn net.Conn) {
 
 func (s *Server) handleConn(ctx context.Context, listener string, conn net.Conn) {
 	defer conn.Close()
-	s.log.Info("client connected", "listener", listener, "remote", conn.RemoteAddr().String())
 	switch listener {
 	case "diagnostics":
 		s.handleDiagnostics(conn)
@@ -32,7 +31,6 @@ func (s *Server) handleConn(ctx context.Context, listener string, conn net.Conn)
 		}
 		s.handleProtocolLab(listener, conn)
 	}
-	s.log.Info("client disconnected", "listener", listener, "remote", conn.RemoteAddr().String())
 }
 
 func (s *Server) handleProtocolLab(listener string, conn net.Conn) {
@@ -152,19 +150,12 @@ func (s *Server) sendPlain6CharacterList(conn net.Conn, account string) {
 
 func (s *Server) sendPlain6StartPlay(conn net.Conn, name string) {
 	body := fmt.Sprintf("%s/%d", acceptedLocalHost(conn), s.listenerPort("game", 7200))
-	if !s.characterNameExists(name) {
-		s.log.Info("plain6 selected character not found", "name", name)
-	}
 	s.sendPlain6Command(conn, mir176.Command{Ident: mir176.SMStartPlay}, []byte(body))
 }
 
 func (s *Server) sendPlain6Command(conn net.Conn, cmd mir176.Command, text []byte) {
 	response := mir176.EncodePlain6ClientMessage(cmd, text)
-	if _, err := conn.Write(response); err != nil {
-		s.log.Info("plain6 response failed", "ident", cmd.Ident, "error", err)
-		return
-	}
-	s.log.Info("plain6 response sent", "ident", cmd.Ident, "text_len", len(text))
+	_, _ = conn.Write(response)
 }
 
 func (s *Server) characterNameExists(name string) bool {

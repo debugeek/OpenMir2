@@ -2,6 +2,8 @@
   "id": "烈火剑法",
   "name": "烈火剑法",
   "job": 0,
+  "effect_type": 0,
+  "effect": 24,
   "power": 0,
   "max_power": 0,
   "spell": 0,

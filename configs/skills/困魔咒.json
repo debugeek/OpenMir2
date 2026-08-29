@@ -2,6 +2,8 @@
   "id": "困魔咒",
   "name": "困魔咒",
   "job": 2,
+  "effect_type": 10,
+  "effect": 14,
   "power": 0,
   "max_power": 0,
   "spell": 10,

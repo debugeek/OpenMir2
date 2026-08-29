@@ -47,6 +47,13 @@ func newMonster(w *World, id string, tpl data.StdMonster, mapID string, x, y int
 	return mon
 }
 
+func boostSummonedMonsterLocked(mon *Monster) {
+	if mon == nil || mon.MaxHP <= 0 || mon.HP >= mon.MaxHP {
+		return
+	}
+	mon.HP += (mon.MaxHP - mon.HP) / 2
+}
+
 func applyMonsterTemplateState(mon *Monster, tpl data.StdMonster) {
 	if tpl.Animal {
 		mon.Animal = true
@@ -231,6 +238,7 @@ func (w *World) summonMonsterNearCharacterLocked(master storage.Character, playe
 	if duration > 0 {
 		mon.MasterExpiresAt = now.Add(duration)
 	}
+	boostSummonedMonsterLocked(mon)
 	w.monsters[id] = mon
 	w.occupyMonsterLocked(mon)
 	return mon, nil

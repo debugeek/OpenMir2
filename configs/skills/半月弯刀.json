@@ -2,6 +2,8 @@
   "id": "半月弯刀",
   "name": "半月弯刀",
   "job": 0,
+  "effect_type": 0,
+  "effect": 23,
   "power": 0,
   "max_power": 0,
   "spell": 0,

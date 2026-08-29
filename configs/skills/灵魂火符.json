@@ -2,6 +2,8 @@
   "id": "灵魂火符",
   "name": "灵魂火符",
   "job": 2,
+  "effect_type": 8,
+  "effect": 10,
   "power": 20,
   "max_power": 44,
   "spell": 5,

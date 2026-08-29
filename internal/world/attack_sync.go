@@ -1,6 +1,8 @@
 package world
 
-import "openmir2/internal/storage"
+import (
+	"openmir2/internal/storage"
+)
 
 type AttackSyncer interface {
 	UpdateClient(storage.Character)
@@ -8,7 +10,6 @@ type AttackSyncer interface {
 	SendWinExp(int, int)
 	SendLevelUp(storage.Character)
 	SendHealthSpellChanged(storage.Character)
-	SendUseMagic(storage.Character)
 	BroadcastCharacterHit(storage.Character, uint16)
 	BroadcastCharacterStruck(CharacterHit)
 	BroadcastHitImpact(AttackResult)
@@ -30,8 +31,5 @@ func ApplyAttackSync(syncer AttackSyncer, result AttackResult, attackIdent uint1
 	}
 	if result.MonsterID != "" {
 		syncer.BroadcastHitImpact(result)
-	}
-	if result.SkillChanged {
-		syncer.SendUseMagic(result.Character)
 	}
 }

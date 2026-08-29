@@ -2,6 +2,8 @@
   "id": "基本剑术",
   "name": "基本剑术",
   "job": 0,
+  "effect_type": 0,
+  "effect": 0,
   "power": 0,
   "max_power": 0,
   "spell": 0,

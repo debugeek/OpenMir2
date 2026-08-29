@@ -2,6 +2,8 @@
   "id": "精神力战法",
   "name": "精神力战法",
   "job": 2,
+  "effect_type": 0,
+  "effect": 0,
   "power": 0,
   "max_power": 0,
   "spell": 0,

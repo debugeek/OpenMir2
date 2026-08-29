@@ -111,6 +111,8 @@ const (
 	SMUserName                   = 42
 	SMClearObjects               = 633
 	SMChangeMap                  = 634
+	SMMagicFire                  = 638
+	SMMagicFireFail              = 639
 	SMMerchantSay                = 643
 	SMSendGoodsList              = 645
 	SMSendUserSell               = 646

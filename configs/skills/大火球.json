@@ -2,6 +2,8 @@
   "id": "大火球",
   "name": "大火球",
   "job": 1,
+  "effect_type": 1,
+  "effect": 3,
   "power": 6,
   "max_power": 6,
   "spell": 3,

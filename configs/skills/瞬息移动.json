@@ -2,6 +2,8 @@
   "id": "瞬息移动",
   "name": "瞬息移动",
   "job": 1,
+  "effect_type": 4,
+  "effect": 19,
   "power": 0,
   "max_power": 0,
   "spell": 10,

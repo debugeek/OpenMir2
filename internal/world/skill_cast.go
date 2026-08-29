@@ -86,8 +86,10 @@ func (w *World) CastSkillWithPlayers(ch storage.Character, skillID string, targe
 	if targetX < 0 || targetY < 0 {
 		return SkillCastResult{}, fmt.Errorf("invalid spell target")
 	}
-	if abs(ch.X-targetX) > defaultMagicAttackRange || abs(ch.Y-targetY) > defaultMagicAttackRange {
-		return SkillCastResult{}, fmt.Errorf("spell target out of range")
+	if targetID != 0 && skillID != "召唤骷髅" && skillID != "召唤神兽" && skillID != "灵魂火符" {
+		if abs(ch.X-targetX) > defaultMagicAttackRange || abs(ch.Y-targetY) > defaultMagicAttackRange {
+			return SkillCastResult{}, fmt.Errorf("spell target out of range")
+		}
 	}
 
 	ch.MP -= cost
@@ -131,7 +133,7 @@ func (w *World) CastSkillWithPlayers(ch storage.Character, skillID string, targe
 		totalExp := 0
 		levelUp := false
 		for _, mon := range targets {
-			attackResult, err := w.attackMonsterWithDamageLocked(ch, mon, damage)
+			attackResult, err := w.attackMonsterWithMagicDamageLocked(ch, mon, damage)
 			if err != nil {
 				return SkillCastResult{}, err
 			}
@@ -258,6 +260,13 @@ func (w *World) CastSkillWithPlayers(ch storage.Character, skillID string, targe
 		if mon.Undead <= 0 {
 			return SkillCastResult{}, fmt.Errorf("no valid undead target")
 		}
+		if mon.TargetCharacterID == "" {
+			mon.TargetCharacterID = ch.ID
+		}
+		mon.TargetFocusAt = now
+		mon.RunAwayMode = true
+		mon.TargetX = -1
+		mon.TargetY = -1
 		casterLevel := maxInt(ch.Level, 1)
 		if mon.Level >= defaultTurnUndeadLevel {
 			result.Character = ch
@@ -412,7 +421,7 @@ func (w *World) CastSkillWithPlayers(ch storage.Character, skillID string, targe
 				break
 			}
 			damage := w.spellSpiritDamageLocked(ch, skill, state)
-			attackResult, err := w.attackMonsterWithDamageLocked(ch, mon, damage)
+			attackResult, err := w.attackMonsterWithMagicDamageLocked(ch, mon, damage)
 			if err != nil {
 				return SkillCastResult{}, err
 			}
@@ -427,7 +436,8 @@ func (w *World) CastSkillWithPlayers(ch storage.Character, skillID string, targe
 		}
 		target, ok := w.characterAtPointLocked(players, ch.MapID, targetX, targetY, targetID)
 		if !ok {
-			return SkillCastResult{}, fmt.Errorf("no valid target")
+			result.Character = ch
+			break
 		}
 		if w.rand.Intn(10) < maxInt(0, minInt(10, w.combatStatsLocked(target).MAC)) {
 			result.Character = ch
@@ -449,7 +459,7 @@ func (w *World) CastSkillWithPlayers(ch storage.Character, skillID string, targe
 					damage = 1
 				}
 			}
-			attackResult, err := w.attackMonsterWithDamageLocked(ch, mon, damage)
+			attackResult, err := w.attackMonsterWithMagicDamageLocked(ch, mon, damage)
 			if err != nil {
 				return SkillCastResult{}, err
 			}
@@ -512,8 +522,17 @@ func (w *World) CastSkillWithPlayers(ch storage.Character, skillID string, targe
 		if skillID == "召唤神兽" {
 			templateID = "神兽"
 		}
-		if w.countActiveSummonedMonstersLocked(ch.ID, "", now) > 0 {
-			return SkillCastResult{}, fmt.Errorf("skill %s is already active", skillID)
+		if existing := w.activeSummonedMonsterByTemplateLocked(ch.ID, templateID, now); existing != nil {
+			if w.recallSummonedMonsterNearCharacterLocked(existing, ch, players) {
+				result.AffectedMonsters = []Monster{*existing}
+			}
+			result.Character = ch
+			skillTrained = false
+			break
+		}
+		if w.countActiveSummonedMonstersLocked(ch.ID, "", now) >= defaultTamingCount {
+			result.Character = ch
+			break
 		}
 		summoned, err := w.summonMonsterNearCharacterLocked(ch, players, templateID, 10*24*time.Hour)
 		if err != nil {
@@ -532,11 +551,26 @@ func (w *World) CastSkillWithPlayers(ch storage.Character, skillID string, targe
 		if target.Undead > 0 {
 			return SkillCastResult{}, fmt.Errorf("no valid taming target")
 		}
+		if target.Level > 50 {
+			return SkillCastResult{}, fmt.Errorf("no valid taming target")
+		}
 		if target.Level > ch.Level+2 {
 			return SkillCastResult{}, fmt.Errorf("no valid taming target")
 		}
 		if w.countActiveSummonedMonstersLocked(ch.ID, "", now) >= defaultTamingCount {
 			return SkillCastResult{}, fmt.Errorf("too many controlled monsters")
+		}
+		magicLevel := int(state.Level)
+		if magicLevel < 0 {
+			magicLevel = 0
+		}
+		if magicLevel < 3 && w.rand.Intn(4-magicLevel) != 0 {
+			result.Character = ch
+			break
+		}
+		if w.rand.Intn(2) != 0 {
+			result.Character = ch
+			break
 		}
 		hpGate := target.MaxHP / defaultTamingHPRate
 		if hpGate <= 2 {
@@ -544,7 +578,7 @@ func (w *World) CastSkillWithPlayers(ch storage.Character, skillID string, targe
 		} else {
 			hpGate *= 2
 		}
-		if ch.Level+w.rand.Intn(20)+int(state.Level)*5 > target.Level+10 {
+		if ch.Level+w.rand.Intn(20)+magicLevel*5 > target.Level+10 {
 			if w.rand.Intn(hpGate) != 0 {
 				result.Character = ch
 				break
@@ -764,6 +798,22 @@ func (w *World) countActiveSummonedMonstersLocked(masterID, templateID string, n
 	return count
 }
 
+func (w *World) activeSummonedMonsterByTemplateLocked(masterID, templateID string, now time.Time) *Monster {
+	for _, mon := range w.monsters {
+		if mon == nil || !mon.Alive || mon.MasterID != masterID {
+			continue
+		}
+		if templateID != "" && mon.TemplateID != templateID {
+			continue
+		}
+		if !mon.MasterExpiresAt.IsZero() && !now.Before(mon.MasterExpiresAt) {
+			continue
+		}
+		return mon
+	}
+	return nil
+}
+
 func (w *World) groupHealCharactersLocked(caster storage.Character, players []storage.Character, targetX, targetY, heal int) ([]storage.Character, []Monster, bool, error) {
 	affected := make([]storage.Character, 0, 8)
 	affectedMonsters := make([]Monster, 0, 8)
@@ -777,6 +827,7 @@ func (w *World) groupHealCharactersLocked(caster storage.Character, players []st
 		}
 		playerByID[target.ID] = target
 	}
+	foundTarget := false
 	changed := false
 	for _, target := range players {
 		if target.MapID != caster.MapID || target.HP <= 0 {
@@ -788,6 +839,7 @@ func (w *World) groupHealCharactersLocked(caster storage.Character, players []st
 		if !w.isProperFriendLocked(caster, target) {
 			continue
 		}
+		foundTarget = true
 		change := core.ApplyVitalDelta(target, heal, 0)
 		if !change.Changed {
 			continue
@@ -799,17 +851,15 @@ func (w *World) groupHealCharactersLocked(caster storage.Character, players []st
 		}
 		changed = true
 	}
-	for _, mon := range w.monsters {
-		if mon == nil || !mon.Alive || mon.MapID != caster.MapID || mon.HP <= 0 {
-			continue
-		}
-		if abs(mon.X-targetX) > 1 || abs(mon.Y-targetY) > 1 {
+	for _, mon := range w.monstersInRadiusLocked(caster.MapID, targetX, targetY, 1) {
+		if mon == nil || mon.HP <= 0 {
 			continue
 		}
 		master, ok := playerByID[mon.MasterID]
 		if !ok || !w.isProperFriendLocked(caster, master) {
 			continue
 		}
+		foundTarget = true
 		hp := core.ApplyVitalDelta(storage.Character{HP: mon.HP, MaxHP: mon.MaxHP}, heal, 0)
 		if !hp.Changed {
 			continue
@@ -818,7 +868,7 @@ func (w *World) groupHealCharactersLocked(caster storage.Character, players []st
 		affectedMonsters = append(affectedMonsters, *mon)
 		changed = true
 	}
-	return affected, affectedMonsters, changed, nil
+	return affected, affectedMonsters, foundTarget || changed, nil
 }
 
 func (w *World) groupDefenceDurationLocked(ch storage.Character, skill data.StdSkill, state storage.SkillState) time.Duration {

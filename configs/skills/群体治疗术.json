@@ -2,6 +2,8 @@
   "id": "群体治疗术",
   "name": "群体治疗术",
   "job": 2,
+  "effect_type": 2,
+  "effect": 27,
   "power": 10,
   "max_power": 10,
   "spell": 12,

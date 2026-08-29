@@ -2,6 +2,8 @@
   "id": "心灵启示",
   "name": "心灵启示",
   "job": 2,
+  "effect_type": 2,
+  "effect": 26,
   "power": 0,
   "max_power": 0,
   "spell": 16,

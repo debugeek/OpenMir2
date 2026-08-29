@@ -116,7 +116,7 @@ func (w *World) castLightningLineSkillLocked(result *SkillCastResult, ch storage
 						applied = 1
 					}
 				}
-				attackResult, err := w.attackMonsterWithDamageLocked(ch, mon, applied)
+				attackResult, err := w.attackMonsterWithMagicDamageLocked(ch, mon, applied)
 				if err != nil {
 					return ch, err
 				}
@@ -170,7 +170,7 @@ func (w *World) castExplosionSkillLocked(result *SkillCastResult, ch storage.Cha
 		if _, seen := hitMonsters[mon.ID]; seen {
 			continue
 		}
-		attackResult, err := w.attackMonsterWithDamageLocked(ch, mon, damage)
+		attackResult, err := w.attackMonsterWithMagicDamageLocked(ch, mon, damage)
 		if err != nil {
 			return ch, err
 		}
@@ -222,7 +222,7 @@ func (w *World) castElectricBlizzardSkillLocked(result *SkillCastResult, ch stor
 		if mon.Undead <= 0 {
 			applied = maxInt(1, damage/10)
 		}
-		attackResult, err := w.attackMonsterWithDamageLocked(ch, mon, applied)
+		attackResult, err := w.attackMonsterWithMagicDamageLocked(ch, mon, applied)
 		if err != nil {
 			return ch, err
 		}
