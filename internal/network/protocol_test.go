@@ -198,6 +198,35 @@ func TestNewMapBodyDecodesOnceToMapID(t *testing.T) {
 	}
 }
 
+func TestShowEventMessageMatchesReferenceLayout(t *testing.T) {
+	eventID := int32(400001)
+	eventX, eventY := 12, 34
+	eventType, eventParam := 4, 7
+	body := make([]byte, 4)
+	binary.LittleEndian.PutUint16(body, uint16(eventParam))
+	frame := encodeMessage(mir176.Command{
+		Ident:  mir176.SMShowEvent,
+		Recog:  eventID,
+		Param:  uint16(eventType),
+		Tag:    uint16(eventX),
+		Series: uint16(eventY),
+	}, EncodeBuffer(body))
+	cmd, encodedBody, err := decodeMessageLikeClient(frame)
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() error = %v", err)
+	}
+	if cmd.Ident != mir176.SMShowEvent || cmd.Recog != eventID || cmd.Param != uint16(eventType) || cmd.Tag != uint16(eventX) || cmd.Series != uint16(eventY) {
+		t.Fatalf("show event command = %+v, want id=%d type=%d x=%d y=%d", cmd, eventID, eventType, eventX, eventY)
+	}
+	decodedBody, err := mir176.DecodePlain6Payload(encodedBody)
+	if err != nil {
+		t.Fatalf("DecodePlain6Payload() error = %v", err)
+	}
+	if len(decodedBody) != 4 || binary.LittleEndian.Uint16(decodedBody) != uint16(eventParam) {
+		t.Fatalf("show event body = %v, want event param %d", decodedBody, eventParam)
+	}
+}
+
 func TestNoticeBody(t *testing.T) {
 	got, err := mir176.DecodePlain6Payload(NoticeBody())
 	if err != nil {

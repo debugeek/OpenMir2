@@ -14,21 +14,32 @@ import (
 )
 
 type World struct {
-	mu             sync.Mutex
-	data           data.StdBundle
-	store          *storage.Store
-	monsters       map[string]*Monster
-	occupied       map[monsterPosition]string
-	drops          map[string]GroundDrop
-	fireFields     map[fireFieldKey]fireField
-	spawns         map[string]*spawnState
-	npcActors      map[string]int32
-	merchantStocks map[string][]storage.UserItem
-	merchantNextID map[string]int32
-	nextID         int
-	nextNPCID      int32
-	rand           *rand.Rand
-	gameplay       config.Gameplay
+	mu              sync.Mutex
+	data            data.StdBundle
+	store           *storage.Store
+	monsters        map[string]*Monster
+	occupied        map[monsterPosition]string
+	drops           map[string]GroundDrop
+	fireFields      map[fireFieldKey]fireField
+	groundEvents    map[int32]SpellGroundEvent
+	spawns          map[string]*spawnState
+	npcActors       map[string]int32
+	merchantStocks  map[string][]storage.UserItem
+	merchantNextID  map[string]int32
+	pendingSpells   []pendingSpell
+	nextID          int
+	nextObjectOrder uint64
+	nextNPCID       int32
+	nextEventID     int32
+	nextFireFieldID uint64
+	rand            *rand.Rand
+	gameplay        config.Gameplay
+}
+
+func (w *World) CanSpellWhileParalyzed() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.gameplay.Combat.ParalyCanSpell
 }
 
 type spawnState struct {
@@ -43,81 +54,104 @@ type monsterPosition struct {
 }
 
 type Monster struct {
-	ID                 string
-	TemplateID         string
-	Name               string
-	Race               int
-	RaceImg            int
-	MonsterWeapon      int
-	Appr               int
-	Level              int
-	Undead             int
-	MapID              string
-	X                  int
-	Y                  int
-	Dir                int
-	TargetX            int
-	TargetY            int
-	CoolEye            int
-	ViewRange          int
-	LeashRange         int
-	SearchNoTargetMS   int
-	SearchHasTargetMS  int
-	HP                 int
-	MaxHP              int
-	MP                 int
-	MaxMP              int
-	MinAttack          int
-	MaxAttack          int
-	Defense            int
-	MagicDefense       int
-	MagicAttack        int
-	TaoAttack          int
-	Speed              int
-	Hit                int
-	WalkSpeedMS        int
-	WalkStep           int
-	WalkWait           int
-	AttackIntervalMS   int
-	Experience         int
-	DropTable          string
-	Alive              bool
-	RespawnAt          time.Time
-	Spawn              data.StdSpawn
-	Hidden             bool
-	FixedHideMode      bool
-	StoneMode          bool
-	Animal             bool
-	FleeOnSight        bool
-	RunAwayMode        bool
-	FirstRevealPending bool
-	GuardDirection     int
-	AttackCount        int
-	AttackMax          int
-	UseMagic           bool
-	AppearStartAt      time.Time
-	ParentID           string
-	ExplosionStartAt   time.Time
-	TargetCharacterID  string
-	TargetFocusAt      time.Time
-	LastAttackAt       time.Time
-	LastWalkAt         time.Time
-	WalkCount          int
-	WalkWaitTick       time.Time
-	WalkWaitLocked     bool
-	NextSearchAt       time.Time
-	PoisonHealthLevel  byte
+	ID                  string
+	TemplateID          string
+	Name                string
+	Race                int
+	RaceImg             int
+	MonsterWeapon       int
+	Appr                int
+	Level               int
+	Undead              int
+	MapID               string
+	X                   int
+	Y                   int
+	Dir                 int
+	TargetX             int
+	TargetY             int
+	CoolEye             int
+	ViewRange           int
+	LeashRange          int
+	SearchNoTargetMS    int
+	SearchHasTargetMS   int
+	HP                  int
+	MaxHP               int
+	MP                  int
+	MaxMP               int
+	MinAttack           int
+	MaxAttack           int
+	Defense             int
+	MagicDefense        int
+	MagicDefenseMax     int
+	AntiMagic           int
+	AntiPoison          int
+	MagicAttack         int
+	TaoAttack           int
+	Speed               int
+	Hit                 int
+	WalkSpeedMS         int
+	WalkStep            int
+	WalkWait            int
+	AttackIntervalMS    int
+	Experience          int
+	IncHealing          int
+	PerHealing          int
+	IncHealthSpellAt    int64
+	DropTable           string
+	Alive               bool
+	RespawnAt           time.Time
+	Spawn               data.StdSpawn
+	Hidden              bool
+	FixedHideMode       bool
+	AdminMode           bool
+	StoneMode           bool
+	Animal              bool
+	NoTame              bool
+	FleeOnSight         bool
+	RunAwayMode         bool
+	RunAwayUntil        time.Time
+	FirstRevealPending  bool
+	GuardDirection      int
+	AttackCount         int
+	AttackMax           int
+	UseMagic            bool
+	AppearStartAt       time.Time
+	ParentID            string
+	ExplosionStartAt    time.Time
+	TargetCharacterID   string
+	PendingDeath        bool
+	DeathHitterID       string
+	ObjectOrder         uint64
+	TargetFocusAt       time.Time
+	TransparentUntil    time.Time
+	ShowHPOpenAt        int64
+	ShowHPUntil         int64
+	ShowHPDuration      int64
+	LastAttackAt        time.Time
+	LastWalkAt          time.Time
+	WalkCount           int
+	WalkWaitTick        time.Time
+	WalkWaitLocked      bool
+	NextSearchAt        time.Time
+	PoisonHealthLevel   byte
 	PoisonHealthStartAt time.Time
-	PoisonHealthUntil  time.Time
-	PoisonHealthTickAt time.Time
-	PoisonArmorLevel   byte
-	PoisonArmorStartAt time.Time
-	PoisonArmorUntil   time.Time
-	PoisonSourceID     string
-	DefenceUpUntil     int64
-	MagDefenceUpUntil  int64
-	MasterID           string
-	MasterExpiresAt    time.Time
+	PoisonHealthUntil   time.Time
+	PoisonHealthTickAt  time.Time
+	PoisonArmorLevel    byte
+	PoisonArmorStartAt  time.Time
+	PoisonArmorUntil    time.Time
+	PoisonSourceID      string
+	HolySeizeUntil      time.Time
+	CrazyUntil          time.Time
+	ParalyzedUntil      time.Time
+	DefenceUpUntil      int64
+	MagDefenceUpUntil   int64
+	MasterID            string
+	MasterName          string
+	MasterExpiresAt     time.Time
+	MasterTick          time.Time
+	SlaveMakeLevel      byte
+	MasterDeadSince     time.Time
 }
 
 type GroundDrop struct {
@@ -133,6 +167,25 @@ type GroundDrop struct {
 	OwnerID   string
 	PickupAt  time.Time
 	Desc      [14]byte
+}
+
+func (w *World) nextGroundEventIDLocked() int32 {
+	w.nextEventID++
+	return w.nextEventID
+}
+
+func (w *World) GroundEventsAround(mapID string, x, y, radius int, now time.Time) []SpellGroundEvent {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	events := make([]SpellGroundEvent, 0, len(w.groundEvents))
+	for _, event := range w.groundEvents {
+		if event.MapID != mapID || !now.Before(event.StartAt.Add(event.Duration)) || abs(event.X-x) > radius || abs(event.Y-y) > radius {
+			continue
+		}
+		events = append(events, event)
+	}
+	sort.Slice(events, func(i, j int) bool { return events[i].ID < events[j].ID })
+	return events
 }
 
 type ItemUseResult struct {
@@ -162,24 +215,38 @@ type UnequipResult struct {
 }
 
 type AttackResult struct {
-	MonsterID      string
-	Damage         int
-	MonsterHP      int
-	MonsterMaxHP   int
-	MonsterRaceImg int
-	MonsterWeapon  int
-	MonsterAppr    int
-	MonsterX       int
-	MonsterY       int
-	MonsterDir     int
-	Dead           bool
-	Experience     int
-	CurrentExp     int
-	LevelUp        bool
-	SkillChanged   bool
-	Drops          []GroundDrop
-	CharacterHits  []CharacterHit
-	Character      storage.Character
+	MonsterID            string
+	Connected            bool
+	Magic                bool
+	MonsterHealthChanged bool
+	ImpactDelay          time.Duration
+	Damage               int
+	MonsterHP            int
+	MonsterMaxHP         int
+	MonsterMP            int
+	MonsterMaxMP         int
+	MonsterRaceImg       int
+	MonsterWeapon        int
+	MonsterAppr          int
+	MonsterX             int
+	MonsterY             int
+	MonsterMapID         string
+	MonsterDir           int
+	MonsterStatus        int32
+	Dead                 bool
+	Experience           int
+	CurrentExp           int
+	LevelUp              bool
+	SkillChanged         bool
+	SkillExp             bool
+	SkillMagicID         uint16
+	SkillLevel           byte
+	SkillTrain           int
+	SkillExpDelay        time.Duration
+	Drops                []GroundDrop
+	CharacterHits        []CharacterHit
+	MonsterHits          []AttackResult
+	Character            storage.Character
 }
 
 type SpawnResult struct {
@@ -194,11 +261,67 @@ type TickResult struct {
 	MonsterActions           []MonsterAction
 	CharacterHits            []CharacterHit
 	MonsterHits              []AttackResult
+	MonsterDeaths            []AttackResult
+	AffectedMonsters         []Monster
+	NameMonsters             []Monster
+	NameColorMonsters        []Monster
+	AffectedCharacters       []storage.Character
 	StateRefreshCharacters   []storage.Character
+	StatusRefreshCharacters  []storage.Character
+	StatusRefreshMonsters    []Monster
+	OrderedStatusRefreshes   []StatusRefreshEvent
 	AbilityRefreshCharacters []storage.Character
 	ShowHPOpenedCharacters   []storage.Character
 	ShowHPExpiredCharacters  []storage.Character
+	ShowHPOpenedMonsters     []Monster
+	ShowHPExpiredMonsters    []Monster
+	HealingCharacters        []string
+	GroundEvents             []SpellGroundEvent
+	GroundEventHides         []int32
 	Characters               []storage.Character
+	SpellExperience          []SpellExperience
+	PoisonNotifications      []PoisonNotification
+	OrderedSpellEvents       []OrderedSpellEvent
+}
+
+type OrderedSpellEventKind uint8
+
+const (
+	OrderedSpellEventCharacterStatus OrderedSpellEventKind = iota + 1
+	OrderedSpellEventMonsterStatus
+	OrderedSpellEventCharacterOpenHealth
+	OrderedSpellEventMonsterOpenHealth
+	OrderedSpellEventCharacterHit
+	OrderedSpellEventMonsterHit
+	OrderedSpellEventPoisonNotification
+)
+
+type OrderedSpellEvent struct {
+	Kind               OrderedSpellEventKind
+	Character          storage.Character
+	Monster            Monster
+	CharacterHit       CharacterHit
+	MonsterHit         AttackResult
+	PoisonNotification PoisonNotification
+}
+
+type StatusRefreshEvent struct {
+	Character *storage.Character
+	Monster   *Monster
+}
+
+type SpellExperience struct {
+	CharacterID string
+	Experience  int
+	CurrentExp  int
+	LevelUp     bool
+	Character   storage.Character
+}
+
+type PoisonNotification struct {
+	Character storage.Character
+	Seconds   int
+	Points    int
 }
 
 type MonsterAction struct {
@@ -211,6 +334,7 @@ type MonsterAction struct {
 	X             int
 	Y             int
 	Dir           int
+	Status        int32
 	Kind          MonsterActionKind
 }
 
@@ -222,11 +346,17 @@ const (
 	MonsterActionTurn
 	MonsterActionReveal
 	MonsterActionHide
+	MonsterActionPush
 )
 
 type CharacterHit struct {
 	Character       storage.Character
+	Connected       bool
+	Magic           bool
 	Damage          int
+	Durability      []SpellDurability
+	FeatureChanged  bool
+	ImpactDelay     time.Duration
 	AttackerID      string
 	AttackerRaceImg int
 	AttackerAppr    int
@@ -242,24 +372,42 @@ func New(bundle data.StdBundle, store *storage.Store, gameplayConfig ...config.G
 	}
 	bundle = normalizeStdBundle(bundle)
 	w := &World{
-		data:           bundle,
-		store:          store,
-		monsters:       map[string]*Monster{},
-		occupied:       map[monsterPosition]string{},
-		drops:          map[string]GroundDrop{},
-		fireFields:     map[fireFieldKey]fireField{},
-		spawns:         map[string]*spawnState{},
-		npcActors:      map[string]int32{},
-		merchantStocks: map[string][]storage.UserItem{},
-		merchantNextID: map[string]int32{},
-		nextID:         1,
-		nextNPCID:      300000,
-		rand:           rand.New(rand.NewSource(1)),
-		gameplay:       gameplay,
+		data:            bundle,
+		store:           store,
+		monsters:        map[string]*Monster{},
+		occupied:        map[monsterPosition]string{},
+		drops:           map[string]GroundDrop{},
+		fireFields:      map[fireFieldKey]fireField{},
+		groundEvents:    map[int32]SpellGroundEvent{},
+		spawns:          map[string]*spawnState{},
+		npcActors:       map[string]int32{},
+		merchantStocks:  map[string][]storage.UserItem{},
+		merchantNextID:  map[string]int32{},
+		nextID:          1,
+		nextObjectOrder: 1,
+		nextNPCID:       300000,
+		nextEventID:     400000,
+		rand:            rand.New(rand.NewSource(1)),
+		gameplay:        gameplay,
 	}
 	w.initNPCActors()
 	w.spawnInitial()
 	return w
+}
+
+func (w *World) RegisterCharacter(ch storage.Character) storage.Character {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.refreshCharacterObjectOrderLocked(&ch)
+	return ch
+}
+
+func (w *World) refreshCharacterObjectOrderLocked(ch *storage.Character) {
+	if w.nextObjectOrder == 0 {
+		return
+	}
+	ch.ObjectOrder = w.nextObjectOrder
+	w.nextObjectOrder++
 }
 
 func (w *World) initNPCActors() {

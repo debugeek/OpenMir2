@@ -47,24 +47,26 @@ func (w *World) CreateCharacterWithAppearanceAtRandomStartPoint(account, name, c
 
 func (w *World) CreateCharacterWithAppearance(account, name, class string, hair, sex int, mapID string, x, y int) (storage.Character, error) {
 	base := Base(class, 1)
+	now := time.Now().UnixMilli()
 	ch := storage.Character{
-		Account:  account,
-		Name:     name,
-		Class:    class,
-		Hair:     hair,
-		Sex:      sex,
-		Level:    1,
-		HomeMap:  mapID,
-		HomeX:    x,
-		HomeY:    y,
-		MapID:    mapID,
-		X:        x,
-		Y:        y,
-		MaxHP:    base.MaxHP,
-		HP:       base.MaxHP,
-		MaxMP:    base.MaxMP,
-		MP:       base.MaxMP,
-		BagItems: []storage.UserItem{{ItemID: "木剑"}},
+		Account:          account,
+		Name:             name,
+		Class:            class,
+		Hair:             hair,
+		Sex:              sex,
+		Level:            1,
+		HomeMap:          mapID,
+		HomeX:            x,
+		HomeY:            y,
+		MapID:            mapID,
+		X:                x,
+		Y:                y,
+		MaxHP:            base.MaxHP,
+		HP:               base.MaxHP,
+		MaxMP:            base.MaxMP,
+		MP:               base.MaxMP,
+		IncHealthSpellAt: now,
+		BagItems:         []storage.UserItem{{ItemID: "木剑"}},
 	}
 	return w.store.InsertCharacter(ch)
 }
@@ -72,7 +74,14 @@ func (w *World) CreateCharacterWithAppearance(account, name, class string, hair,
 func (w *World) NormalizeCharacterState(ch storage.Character) (storage.Character, bool) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	changed := w.normalizeBagItemMakeIndexesLocked(&ch)
+	changed := false
+	if ch.IncHealthSpellAt == 0 {
+		ch.IncHealthSpellAt = time.Now().UnixMilli()
+		changed = true
+	}
+	if w.normalizeBagItemMakeIndexesLocked(&ch) {
+		changed = true
+	}
 	if w.normalizeEquippedItemsLocked(&ch) {
 		changed = true
 	}
@@ -144,14 +153,51 @@ func (w *World) CharacterAreaState(ch storage.Character) int32 {
 }
 
 func (w *World) CharacterStatus(ch storage.Character) int32 {
+	return characterStatus(ch, time.Now(), true)
+}
+
+func characterStatus(ch storage.Character, now time.Time, includeExpired bool) int32 {
+	active := func(until int64) bool {
+		return until > 0 && (includeExpired || until > now.UnixNano())
+	}
 	status := int32(0)
 	if ch.Sitting {
 		status |= 1
 	}
-	if characterTransparentActive(ch, time.Now()) {
-		status |= 2
+	transparent := characterTransparentActive(ch, now)
+	if includeExpired {
+		transparent = ch.TransparentUntil > 0
+	}
+	if transparent {
+		status |= 0x00800000
+	}
+	if active(ch.DefenceUpUntil) {
+		status |= 0x00400000
+	}
+	if active(ch.MagDefenceUpUntil) {
+		status |= 0x00200000
+	}
+	if active(ch.BubbleDefenceUntil) {
+		status |= 0x00100000
+	}
+	if active(ch.PoisonHealthUntil) {
+		status |= -2147483648
+	}
+	if ch.PoisonArmorLevel > 0 && active(ch.PoisonArmorUntil) {
+		status |= int32(uint32(0x40000000))
+	}
+	if active(ch.ParalyzedUntil) {
+		status |= 0x04000000
 	}
 	return status
+}
+
+func (w *World) CharacterHitSpeed(ch storage.Character) int32 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.normalizeEquippedItemsLocked(&ch)
+	stats := w.combatStatsLocked(ch)
+	return int32(stats.HitSpeed + int(ch.ExtraAbil[3]))
 }
 
 func (w *World) CharacterFeatureEx(ch storage.Character) int32 {

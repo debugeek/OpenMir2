@@ -1,13 +1,14 @@
 package world
 
 import (
+	"sort"
 	"time"
 
 	"openmir2/internal/data"
 	"openmir2/internal/storage"
 )
 
-const fireWallTickInterval = time.Second
+const fireWallTickInterval = 3 * time.Second
 
 type fireFieldKey struct {
 	MapID string
@@ -16,6 +17,8 @@ type fireFieldKey struct {
 }
 
 type fireField struct {
+	Order     uint64
+	EventID   int32
 	MapID     string
 	X         int
 	Y         int
@@ -26,8 +29,7 @@ type fireField struct {
 }
 
 func (w *World) fireWallDurationLocked(ch storage.Character, skill data.StdSkill, state storage.SkillState) time.Duration {
-	base := data.StdSkill{Power: 10, MaxPower: 10, TrainLevel1: skill.TrainLevel1}
-	duration := w.spellScaledPowerLocked(base, state)
+	duration := w.spellPowerFromBaseLocked(10, skill, state)
 	combat := w.combatStatsLocked(ch)
 	low := combat.MC
 	high := combat.MCMax
@@ -74,26 +76,52 @@ func (w *World) fireWallCellsLocked(mapID string, x, y int) []fireFieldKey {
 }
 
 func (w *World) castFireWallLocked(ch storage.Character, skill data.StdSkill, state storage.SkillState, targetX, targetY int, now time.Time) int {
+	created, _ := w.castFireWallWithEventsLocked(ch, skill, state, targetX, targetY, now)
+	return created
+}
+
+func (w *World) castFireWallWithEventsLocked(ch storage.Character, skill data.StdSkill, state storage.SkillState, targetX, targetY int, now time.Time) (int, []SpellGroundEvent) {
+	if _, ok := w.data.Maps[ch.MapID]; !ok {
+		return 0, nil
+	}
 	damage := w.fireWallDamageLocked(ch, skill, state)
 	duration := w.fireWallDurationLocked(ch, skill, state)
-	created := 0
+	createdEvents := make([]SpellGroundEvent, 0, 5)
 	for _, cell := range w.fireWallCellsLocked(ch.MapID, targetX, targetY) {
 		key := cell
-		if existing, ok := w.fireFields[key]; ok && now.Before(existing.ExpiresAt) {
+		if _, ok := w.fireFields[key]; ok || w.groundEventAtLocked(cell) {
 			continue
 		}
+		w.nextFireFieldID++
+		eventID := w.nextGroundEventIDLocked()
 		w.fireFields[key] = fireField{
+			Order:     w.nextFireFieldID,
+			EventID:   eventID,
 			MapID:     cell.MapID,
 			X:         cell.X,
 			Y:         cell.Y,
 			OwnerID:   ch.ID,
 			Damage:    damage,
 			ExpiresAt: now.Add(duration),
-			NextTick:  now,
+			NextTick:  now.Add(fireWallTickInterval),
 		}
-		created++
+		event := SpellGroundEvent{
+			ID: eventID, MapID: cell.MapID, X: cell.X, Y: cell.Y,
+			Type: 5, Duration: duration, StartAt: now,
+		}
+		w.groundEvents[eventID] = event
+		createdEvents = append(createdEvents, event)
 	}
-	return created
+	return 1, createdEvents
+}
+
+func (w *World) groundEventAtLocked(cell fireFieldKey) bool {
+	for _, event := range w.groundEvents {
+		if event.MapID == cell.MapID && event.X == cell.X && event.Y == cell.Y {
+			return true
+		}
+	}
+	return false
 }
 
 func (w *World) applyFireWallTickLocked(players map[string]storage.Character, now time.Time) ([]AttackResult, []CharacterHit, []storage.Character) {
@@ -101,7 +129,21 @@ func (w *World) applyFireWallTickLocked(players map[string]storage.Character, no
 	characterHits := []CharacterHit{}
 	updated := []storage.Character{}
 	playerList := charactersFromMap(players)
-	for key, field := range w.fireFields {
+	fields := make([]fireField, 0, len(w.fireFields))
+	for _, field := range w.fireFields {
+		fields = append(fields, field)
+	}
+	sort.Slice(fields, func(i, j int) bool {
+		if fields[i].Order != fields[j].Order {
+			return fields[i].Order < fields[j].Order
+		}
+		if fields[i].X != fields[j].X {
+			return fields[i].X < fields[j].X
+		}
+		return fields[i].Y < fields[j].Y
+	})
+	for _, field := range fields {
+		key := fireFieldKey{MapID: field.MapID, X: field.X, Y: field.Y}
 		if !now.Before(field.ExpiresAt) {
 			delete(w.fireFields, key)
 			continue
@@ -113,16 +155,25 @@ func (w *World) applyFireWallTickLocked(players map[string]storage.Character, no
 		if !ok {
 			owner = storage.Character{ID: field.OwnerID, MapID: field.MapID, X: field.X, Y: field.Y}
 		}
-		for _, mon := range w.monstersInRadiusLocked(field.MapID, field.X, field.Y, 0) {
-			attackResult, err := w.attackMonsterWithMagicDamageLocked(owner, mon, field.Damage)
-			if err != nil {
+		for _, areaTarget := range w.spellAreaTargetsLocked(playerList, field.MapID, field.X, field.Y, 0) {
+			if areaTarget.Monster != nil {
+				mon := areaTarget.Monster
+				if !w.isProperMonsterTargetLocked(owner, playerList, mon) {
+					continue
+				}
+				attackResult, err := w.attackMonsterWithImmediateMagicDamageLocked(owner, mon, field.Damage)
+				if err != nil || attackResult.Damage <= 0 {
+					continue
+				}
+				monsterHits = append(monsterHits, attackResult)
 				continue
 			}
-			monsterHits = append(monsterHits, attackResult)
-		}
-		for _, target := range w.charactersInRadiusLocked(playerList, field.MapID, field.X, field.Y, 0) {
+			target := *areaTarget.Character
+			if !w.isProperCharacterTargetLocked(owner, target) {
+				continue
+			}
 			updatedTarget, hit, err := w.spellCharacterDamageWithPowerLocked(owner, target, field.Damage)
-			if err != nil {
+			if err != nil || hit.Damage <= 0 {
 				continue
 			}
 			characterHits = append(characterHits, hit)

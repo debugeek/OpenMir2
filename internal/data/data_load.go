@@ -96,6 +96,7 @@ type monsterAttributesConfig struct {
 	Undead             int               `json:"undead"`
 	CoolEye            int               `json:"cool_eye"`
 	Animal             bool              `json:"animal"`
+	NoTame             bool              `json:"no_tame,omitempty"`
 	FleeOnSight        bool              `json:"flee_on_sight"`
 	UseMagic           bool              `json:"use_magic"`
 	Hidden             bool              `json:"hidden"`
@@ -112,6 +113,9 @@ type monsterAttributesConfig struct {
 	MP                 int               `json:"mp"`
 	Defense            int               `json:"defense"`
 	MagicDefense       int               `json:"magic_defense"`
+	MagicDefenseMax    int               `json:"magic_defense_max,omitempty"`
+	AntiMagic          int               `json:"anti_magic"`
+	AntiPoison         int               `json:"anti_poison,omitempty"`
 	MinAttack          int               `json:"min_attack"`
 	MaxAttack          int               `json:"max_attack"`
 	MagicAttack        int               `json:"magic_attack"`
@@ -247,6 +251,7 @@ func loadConfigMonsters(dir string, items map[string]StdItem, report *StdLoadRep
 			Undead:             cfg.Undead,
 			CoolEye:            cfg.CoolEye,
 			Animal:             cfg.Animal,
+			NoTame:             cfg.NoTame,
 			FleeOnSight:        cfg.FleeOnSight,
 			UseMagic:           cfg.UseMagic,
 			Hidden:             cfg.Hidden,
@@ -264,6 +269,9 @@ func loadConfigMonsters(dir string, items map[string]StdItem, report *StdLoadRep
 			MaxAttack:          cfg.MaxAttack,
 			Defense:            cfg.Defense,
 			MagicDefense:       cfg.MagicDefense,
+			MagicDefenseMax:    cfg.MagicDefenseMax,
+			AntiMagic:          cfg.AntiMagic,
+			AntiPoison:         cfg.AntiPoison,
 			MagicAttack:        cfg.MagicAttack,
 			TaoAttack:          cfg.TaoAttack,
 			Experience:         cfg.Experience,

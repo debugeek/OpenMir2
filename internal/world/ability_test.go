@@ -1,6 +1,10 @@
 package world
 
-import "testing"
+import (
+	"testing"
+
+	"openmir2/internal/storage"
+)
 
 func TestBaseWarriorLevel1(t *testing.T) {
 	got := Base("warrior", 1)
@@ -53,6 +57,35 @@ func TestBaseLevelHigherThanOneIncreasesMaxHP(t *testing.T) {
 	if l10.MaxHP <= l1.MaxHP {
 		t.Fatalf("Base(warrior, 10).MaxHP = %d, want > Base(warrior, 1).MaxHP = %d", l10.MaxHP, l1.MaxHP)
 	}
+}
+
+func TestTemporaryCombatBonusesUseReferenceOffset(t *testing.T) {
+	world := &World{}
+	ch := storage.Character{
+		Class:     "warrior",
+		Level:     1,
+		ExtraAbil: [7]uint16{3, 4, 5},
+	}
+
+	stats := world.AbilityStats(ch)
+	base := Base(ch.Class, ch.Level)
+	if got, want := highByte(stats.DC), highByte(PackWord(base.DC, base.DCMax, 0, 0))+5; got != want {
+		t.Fatalf("temporary DC = %d, want %d", got, want)
+	}
+	if got, want := highByte(stats.MC), highByte(PackWord(base.MC, base.MCMax, 0, 0))+6; got != want {
+		t.Fatalf("temporary MC = %d, want %d", got, want)
+	}
+	if got, want := highByte(stats.SC), highByte(PackWord(base.SC, base.SCMax, 0, 0))+7; got != want {
+		t.Fatalf("temporary SC = %d, want %d", got, want)
+	}
+	combat := world.CombatStats(ch)
+	if combat.DCMax != 5 || combat.MCMax != 6 || combat.SCMax != 7 {
+		t.Fatalf("temporary combat stats = %+v, want DC/MC/SC max 5/6/7", combat)
+	}
+}
+
+func highByte(word int) int {
+	return (word >> 8) & 0xFF
 }
 
 func TestBaseNonPositiveLevelTreatedAsOne(t *testing.T) {

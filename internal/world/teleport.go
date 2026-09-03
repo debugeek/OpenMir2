@@ -2,6 +2,7 @@ package world
 
 import (
 	"fmt"
+	"time"
 
 	"openmir2/internal/storage"
 	"openmir2/internal/world/core"
@@ -33,6 +34,8 @@ func (w *World) teleportLocked(ch storage.Character, mapID string, x, y int) (st
 		return ch, err
 	}
 	w.syncCharacterHomeFromStartPointLocked(&next)
+	w.refreshCharacterObjectOrderLocked(&next)
+	next.MapMoveAt = time.Now().UnixNano()
 	return next, w.store.SaveCharacter(next)
 }
 
@@ -46,6 +49,8 @@ func (w *World) teleportRandomInMapLocked(ch storage.Character, mapID string) (s
 		return ch, err
 	}
 	w.syncCharacterHomeFromStartPointLocked(&next)
+	w.refreshCharacterObjectOrderLocked(&next)
+	next.MapMoveAt = time.Now().UnixNano()
 	return next, w.store.SaveCharacter(next)
 }
 
@@ -67,7 +72,13 @@ func (w *World) homeTeleportCharacterLocked(ch storage.Character) (storage.Chara
 	if !ok {
 		return ch, fmt.Errorf("map %s not found", mapID)
 	}
-	return core.TeleportTo(ch, mp, x, y, w.rand)
+	next, err := core.TeleportTo(ch, mp, x, y, w.rand)
+	if err != nil {
+		return ch, err
+	}
+	w.refreshCharacterObjectOrderLocked(&next)
+	next.MapMoveAt = time.Now().UnixNano()
+	return next, nil
 }
 
 func (w *World) homeTeleportRandomCharacterLocked(ch storage.Character) (storage.Character, error) {
@@ -82,7 +93,13 @@ func (w *World) homeTeleportRandomCharacterLocked(ch storage.Character) (storage
 	if !ok {
 		return ch, fmt.Errorf("map %s not found", mapID)
 	}
-	return core.TeleportRandomInMap(ch, mp, w.rand)
+	next, err := core.TeleportRandomInMap(ch, mp, w.rand)
+	if err != nil {
+		return ch, err
+	}
+	w.refreshCharacterObjectOrderLocked(&next)
+	next.MapMoveAt = time.Now().UnixNano()
+	return next, nil
 }
 
 func (w *World) ReviveCharacterAtHome(ch storage.Character) (storage.Character, error) {

@@ -28,7 +28,17 @@ type Gameplay struct {
 }
 
 type CombatSettings struct {
-	HitImpactDelayMS int `json:"hit_impact_delay_ms"`
+	HitImpactDelayMS  int    `json:"hit_impact_delay_ms"`
+	NonPKServer       bool   `json:"non_pk_server"`
+	ParalyCanSpell    bool   `json:"paraly_can_spell"`
+	PKLevelProtect    bool   `json:"pk_level_protect"`
+	PKProtectLevel    int    `json:"pk_protect_level"`
+	RedPKProtectLevel int    `json:"red_pk_protect_level"`
+	SafeZoneSize      int    `json:"safe_zone_size"`
+	RedHomeMap        string `json:"red_home_map"`
+	RedHomeX          int    `json:"red_home_x"`
+	RedHomeY          int    `json:"red_home_y"`
+	MapMoveProtectMS  int    `json:"map_move_protect_ms"`
 }
 
 type ProgressionSettings struct {
@@ -148,7 +158,14 @@ func LoadGameplay(dir string) (Gameplay, error) {
 func DefaultGameplay() Gameplay {
 	return Gameplay{
 		Combat: CombatSettings{
-			HitImpactDelayMS: 200,
+			HitImpactDelayMS:  200,
+			PKProtectLevel:    10,
+			RedPKProtectLevel: 10,
+			SafeZoneSize:      10,
+			RedHomeMap:        "3",
+			RedHomeX:          845,
+			RedHomeY:          674,
+			MapMoveProtectMS:  3000,
 		},
 		Progression: ProgressionSettings{
 			RequiredExperiencePerLevel: 20,

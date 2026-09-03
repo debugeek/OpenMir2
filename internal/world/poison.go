@@ -1,7 +1,6 @@
 package world
 
 import (
-	"math"
 	"math/rand"
 	"time"
 
@@ -12,14 +11,13 @@ import (
 
 const (
 	poisonHealthTickInterval    = 2500 * time.Millisecond
-	poisonApplyDelay            = time.Second
 	poisonDamageArmorRate       = 12
 	poisonDamageArmorBaseRate   = 10
 	poisonBaseHealthPowerGrey   = 40
 	poisonBaseHealthPowerYellow = 30
 )
 
-func poisonArmorChanceOK(rng *rand.Rand, avoid int) bool {
+func poisonChanceOK(rng *rand.Rand, avoid int) bool {
 	if avoid < 0 {
 		avoid = 0
 	}
@@ -34,43 +32,19 @@ func poisonDamageMultiplier(active bool) float64 {
 }
 
 func characterPoisonArmorActive(ch storage.Character, now time.Time) bool {
-	if ch.PoisonArmorLevel == 0 || ch.PoisonArmorUntil <= 0 {
-		return false
-	}
-	if ch.PoisonArmorStartAt > 0 && now.UnixNano() < ch.PoisonArmorStartAt {
-		return false
-	}
-	return now.UnixNano() < ch.PoisonArmorUntil
+	return ch.PoisonArmorLevel != 0 && ch.PoisonArmorUntil > 0 && (ch.PoisonArmorStartAt == 0 || now.UnixNano() >= ch.PoisonArmorStartAt)
 }
 
 func characterPoisonHealthActive(ch storage.Character, now time.Time) bool {
-	if ch.PoisonHealthLevel == 0 || ch.PoisonHealthUntil <= 0 {
-		return false
-	}
-	if ch.PoisonHealthStartAt > 0 && now.UnixNano() < ch.PoisonHealthStartAt {
-		return false
-	}
-	return now.UnixNano() < ch.PoisonHealthUntil
+	return ch.PoisonHealthUntil > 0 && (ch.PoisonHealthStartAt == 0 || now.UnixNano() >= ch.PoisonHealthStartAt)
 }
 
 func monsterPoisonArmorActive(mon *Monster, now time.Time) bool {
-	if mon == nil || mon.PoisonArmorLevel == 0 || mon.PoisonArmorUntil.IsZero() {
-		return false
-	}
-	if !mon.PoisonArmorStartAt.IsZero() && now.Before(mon.PoisonArmorStartAt) {
-		return false
-	}
-	return now.Before(mon.PoisonArmorUntil)
+	return mon != nil && mon.PoisonArmorLevel != 0 && !mon.PoisonArmorUntil.IsZero() && (mon.PoisonArmorStartAt.IsZero() || !now.Before(mon.PoisonArmorStartAt))
 }
 
 func monsterPoisonHealthActive(mon *Monster, now time.Time) bool {
-	if mon == nil || mon.PoisonHealthLevel == 0 || mon.PoisonHealthUntil.IsZero() {
-		return false
-	}
-	if !mon.PoisonHealthStartAt.IsZero() && now.Before(mon.PoisonHealthStartAt) {
-		return false
-	}
-	return now.Before(mon.PoisonHealthUntil)
+	return mon != nil && !mon.PoisonHealthUntil.IsZero() && (mon.PoisonHealthStartAt.IsZero() || !now.Before(mon.PoisonHealthStartAt))
 }
 
 func (w *World) poisonAvoidanceLocked(ch storage.Character) int {
@@ -91,20 +65,14 @@ func (w *World) poisonAvoidanceLocked(ch storage.Character) int {
 
 func (w *World) poisonSpellPowerLocked(ch storage.Character, skill data.StdSkill, state storage.SkillState, base int) int {
 	combat := w.combatStatsLocked(ch)
-	trainLevel := skill.TrainLevel1
-	if trainLevel < 0 {
-		trainLevel = 0
-	}
-	d10 := float64(base) / 3.0
-	d18 := float64(base) - d10
-	roll := int(math.Round(d18/float64(trainLevel+1)*float64(int(state.Level)+1) + d10))
+	roll := w.spellPower13Locked(base, skill, state)
 	low := combat.SC
 	high := combat.SCMax
+	sc := low
 	if high > low {
-		roll += low + w.rand.Intn(high-low+1)
-	} else {
-		roll += low
+		sc += w.rand.Intn(high - low + 1)
 	}
+	roll += sc * 2
 	if roll < 1 {
 		return 1
 	}
@@ -112,8 +80,8 @@ func (w *World) poisonSpellPowerLocked(ch storage.Character, skill data.StdSkill
 }
 
 func poisonLevelFromPower(power int) byte {
-	if power < 1 {
-		power = 1
+	if power < 0 {
+		power = 0
 	}
 	if power > 255 {
 		power = 255
@@ -126,19 +94,16 @@ func poisonDamageFromLevel(level byte) int {
 }
 
 func poisonEffectDuration(power int) time.Duration {
-	if power < 1 {
-		power = 1
+	if power <= 0 {
+		return 0
 	}
 	return time.Duration(power) * time.Second
 }
 
 func (w *World) applyCharacterPoisonTickLocked(ch storage.Character, now time.Time) (storage.Character, bool) {
-	if ch.HP <= 0 {
-		return ch, false
-	}
 	next := ch
 	changed := false
-	if characterPoisonHealthActive(ch, now) {
+	if ch.HP > 0 && characterPoisonHealthActive(ch, now) {
 		nextTick := now.Add(poisonHealthTickInterval)
 		if ch.PoisonHealthTickAt > 0 {
 			nextTick = time.Unix(0, ch.PoisonHealthTickAt).Add(poisonHealthTickInterval)
@@ -146,6 +111,7 @@ func (w *World) applyCharacterPoisonTickLocked(ch storage.Character, now time.Ti
 		if !now.Before(nextTick) {
 			damage := poisonDamageFromLevel(ch.PoisonHealthLevel)
 			next = core.ApplyVitalDelta(next, -damage, 0).Character
+			next.SpellTick = 0
 			next.PoisonHealthTickAt = now.UnixNano()
 			changed = true
 		}
@@ -232,14 +198,13 @@ func (w *World) applyMonsterPoisonTickLocked(mon *Monster, players map[string]st
 	return nil, false, nil
 }
 
-func setCharacterHealthPoisonLocked(ch *storage.Character, level byte, until time.Time) bool {
+func setCharacterHealthPoisonLocked(ch *storage.Character, level byte, until, startAt time.Time) bool {
 	changed := false
-	if ch.PoisonHealthLevel < level {
+	if ch.PoisonHealthLevel != level {
 		ch.PoisonHealthLevel = level
 		changed = true
 	}
-	startAt := time.Now().Add(poisonApplyDelay)
-	if startAt.UnixNano() > ch.PoisonHealthStartAt {
+	if ch.PoisonHealthStartAt != startAt.UnixNano() {
 		ch.PoisonHealthStartAt = startAt.UnixNano()
 		changed = true
 	}
@@ -247,20 +212,19 @@ func setCharacterHealthPoisonLocked(ch *storage.Character, level byte, until tim
 		ch.PoisonHealthUntil = until.UnixNano()
 		changed = true
 	}
-	if changed || ch.PoisonHealthTickAt == 0 {
+	if ch.PoisonHealthTickAt != startAt.UnixNano() {
 		ch.PoisonHealthTickAt = startAt.UnixNano()
 		changed = true
 	}
 	return changed
 }
 
-func setCharacterArmorPoisonLocked(ch *storage.Character, until time.Time) bool {
+func setCharacterArmorPoisonLocked(ch *storage.Character, until, startAt time.Time) bool {
 	changed := false
 	if ch.PoisonArmorLevel < poisonDamageArmorRate {
 		ch.PoisonArmorLevel = poisonDamageArmorRate
 		changed = true
 	}
-	startAt := time.Now().Add(poisonApplyDelay)
 	if startAt.UnixNano() > ch.PoisonArmorStartAt {
 		ch.PoisonArmorStartAt = startAt.UnixNano()
 		changed = true
@@ -277,12 +241,12 @@ func setMonsterHealthPoisonLocked(mon *Monster, level byte, until time.Time, sou
 		return false
 	}
 	changed := false
-	if mon.PoisonHealthLevel < level {
+	if mon.PoisonHealthLevel != level {
 		mon.PoisonHealthLevel = level
 		changed = true
 	}
-	startAt := now.Add(poisonApplyDelay)
-	if mon.PoisonHealthStartAt.IsZero() || mon.PoisonHealthStartAt.Before(startAt) {
+	startAt := now
+	if !mon.PoisonHealthStartAt.Equal(startAt) {
 		mon.PoisonHealthStartAt = startAt
 		changed = true
 	}
@@ -294,13 +258,14 @@ func setMonsterHealthPoisonLocked(mon *Monster, level byte, until time.Time, sou
 		mon.PoisonSourceID = sourceID
 		changed = true
 	}
-	if mon.PoisonHealthTickAt.IsZero() || mon.PoisonHealthTickAt.Before(startAt.Add(-poisonHealthTickInterval)) {
+	if !mon.PoisonHealthTickAt.Equal(startAt) {
 		mon.PoisonHealthTickAt = startAt
+		changed = true
 	}
 	return changed
 }
 
-func setMonsterArmorPoisonLocked(mon *Monster, until time.Time) bool {
+func setMonsterArmorPoisonLocked(mon *Monster, until, startAt time.Time) bool {
 	if mon == nil {
 		return false
 	}
@@ -309,7 +274,6 @@ func setMonsterArmorPoisonLocked(mon *Monster, until time.Time) bool {
 		mon.PoisonArmorLevel = poisonDamageArmorRate
 		changed = true
 	}
-	startAt := time.Now().Add(poisonApplyDelay)
 	if mon.PoisonArmorStartAt.IsZero() || mon.PoisonArmorStartAt.Before(startAt) {
 		mon.PoisonArmorStartAt = startAt
 		changed = true
@@ -327,11 +291,14 @@ func (w *World) consumePoisonPowderLocked(ch *storage.Character) (storage.UserIt
 		if !ok || item.ItemID == "" {
 			continue
 		}
+		if referenceRound(float64(item.Dura)/100.0) < 1 {
+			continue
+		}
 		std, ok := w.data.Items[item.ItemID]
 		if !ok || std.StdMode != 25 || (std.Shape != 1 && std.Shape != 2) {
 			continue
 		}
-		if item.Dura >= 100 {
+		if item.Dura > 100 {
 			item.Dura -= 100
 		} else {
 			item.Dura = 0
@@ -346,30 +313,51 @@ func (w *World) consumePoisonPowderLocked(ch *storage.Character) (storage.UserIt
 	return storage.UserItem{}, false
 }
 
+func (w *World) consumeMagicAmuletLocked(ch *storage.Character, amount uint16) bool {
+	units := amount
+	duraCost := amount * 100
+	for _, slot := range []int{SlotArmRingL, SlotBujuk} {
+		item, ok := w.equippedItemLocked(*ch, slot)
+		if !ok || item.ItemID == "" || referenceRound(float64(item.Dura)/100.0) < int(units) {
+			continue
+		}
+		std, ok := w.data.Items[item.ItemID]
+		if !ok || std.StdMode != 25 || std.Shape != 5 {
+			continue
+		}
+		if item.Dura > duraCost {
+			item.Dura -= duraCost
+		} else {
+			item.Dura = 0
+		}
+		if item.Dura == 0 {
+			w.deleteEquippedItemLocked(ch, slot)
+		} else {
+			w.setEquippedItemLocked(ch, slot, item)
+		}
+		return true
+	}
+	return false
+}
+
 func (w *World) characterAtPointLocked(players []storage.Character, mapID string, x, y int, targetID int32) (storage.Character, bool) {
-	var fallback storage.Character
-	hasFallback := false
 	for _, target := range players {
 		if target.ID == "" || target.MapID != mapID || target.HP <= 0 {
 			continue
 		}
-		if abs(target.X-x) > 1 || abs(target.Y-y) > 1 {
-			continue
-		}
 		if targetID != 0 {
+			if abs(target.X-x) > 1 || abs(target.Y-y) > 1 {
+				continue
+			}
 			if CharacterActorID(target) == targetID {
 				return target, true
 			}
-			if !hasFallback {
-				fallback = target
-				hasFallback = true
-			}
+			continue
+		}
+		if target.X != x || target.Y != y {
 			continue
 		}
 		return target, true
-	}
-	if hasFallback {
-		return fallback, true
 	}
 	return storage.Character{}, false
 }

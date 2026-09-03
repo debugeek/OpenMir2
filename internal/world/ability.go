@@ -143,6 +143,13 @@ func addHighByte(word, add int) int {
 	return low | (high << 8)
 }
 
+func temporaryCombatBonus(value uint16) int {
+	if value == 0 {
+		return 0
+	}
+	return 2 + int(value)
+}
+
 func (w *World) Abilities(ch storage.Character) Abilities {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -159,9 +166,6 @@ func (w *World) Abilities(ch storage.Character) Abilities {
 	dc := PackWord(base.DC, base.DCMax, item.DC, item.DCMax)
 	mc := PackWord(base.MC, base.MCMax, item.MC, item.MCMax)
 	sc := PackWord(base.SC, base.SCMax, item.SC, item.SCMax)
-	dc = addHighByte(dc, int(extra[0]))
-	mc = addHighByte(mc, int(extra[1]))
-	sc = addHighByte(sc, int(extra[2]))
 	defenceBonus, magicDefenceBonus, _, _ := activeProtectionBuffs(ch, time.Now())
 	if defenceBonus > 0 {
 		ac = addHighByte(ac, defenceBonus)
@@ -216,7 +220,11 @@ type CombatStats struct {
 	MC, MCMax   int
 	SC, SCMax   int
 	Hit         int
+	HitSpeed    int
 	Speed       int
+	Undead      int
+	Luck        int
+	UnLuck      int
 }
 
 func (w *World) CombatStats(ch storage.Character) CombatStats {
@@ -242,9 +250,6 @@ func (w *World) AbilityStats(ch storage.Character) AbilityStats {
 	dc := PackWord(base.DC, base.DCMax, item.DC, item.DCMax)
 	mc := PackWord(base.MC, base.MCMax, item.MC, item.MCMax)
 	sc := PackWord(base.SC, base.SCMax, item.SC, item.SCMax)
-	dc = addHighByte(dc, int(extra[0]))
-	mc = addHighByte(mc, int(extra[1]))
-	sc = addHighByte(sc, int(extra[2]))
 	defenceBonus, magicDefenceBonus, _, _ := activeProtectionBuffs(ch, time.Now())
 	if defenceBonus > 0 {
 		ac = addHighByte(ac, defenceBonus)
@@ -328,8 +333,19 @@ func (w *World) combatStatsLocked(ch storage.Character) CombatStats {
 		stats.SC += int(byte(item.Stats.ScMin))
 		stats.SCMax += int(byte(item.Stats.ScMin >> 8))
 		stats.Hit += item.Accurate
+		stats.HitSpeed += item.AtkSpd
 		stats.Speed += item.Agility
+		stats.Undead += item.Undead
+		if item.StdMode == 5 || item.StdMode == 6 {
+			stats.Luck += int(byte(item.Stats.AcMin >> 8))
+			stats.UnLuck += int(byte(item.Stats.MacMin >> 8))
+		}
 	}
+	stats.Luck -= stats.UnLuck
+	extra := activeTemporaryAbilities(ch, time.Now())
+	stats.DCMax += temporaryCombatBonus(extra[0])
+	stats.MCMax += temporaryCombatBonus(extra[1])
+	stats.SCMax += temporaryCombatBonus(extra[2])
 	if state, _, ok := ch.Skills.Get("基本剑术"); ok {
 		bonus := (int(state.Level) + 1) * 3
 		stats.Hit += bonus
@@ -402,17 +418,13 @@ func activeTemporaryAbilities(ch storage.Character, now time.Time) [tempAbilityC
 }
 
 func activeProtectionBuffs(ch storage.Character, now time.Time) (defenceBonus, magicDefenceBonus int, bubbleLevel byte, bubbleActive bool) {
-	if now.IsZero() {
-		now = time.Now()
-	}
-	expires := now.UnixNano()
-	if ch.DefenceUpUntil > 0 && ch.DefenceUpUntil > expires {
+	if ch.DefenceUpUntil > 0 {
 		defenceBonus = 2 + maxInt(ch.Level, 1)/7
 	}
-	if ch.MagDefenceUpUntil > 0 && ch.MagDefenceUpUntil > expires {
+	if ch.MagDefenceUpUntil > 0 {
 		magicDefenceBonus = 2 + maxInt(ch.Level, 1)/7
 	}
-	if ch.BubbleDefenceUntil > 0 && ch.BubbleDefenceUntil > expires {
+	if ch.BubbleDefenceUntil > 0 {
 		bubbleLevel = ch.BubbleDefenceLevel
 		bubbleActive = true
 	}
@@ -423,14 +435,10 @@ func activeMonsterProtectionBuffs(mon *Monster, now time.Time) (defenceBonus, ma
 	if mon == nil {
 		return 0, 0
 	}
-	if now.IsZero() {
-		now = time.Now()
-	}
-	expires := now.UnixNano()
-	if mon.DefenceUpUntil > 0 && mon.DefenceUpUntil > expires {
+	if mon.DefenceUpUntil > 0 {
 		defenceBonus = 2 + maxInt(mon.Level, 1)/7
 	}
-	if mon.MagDefenceUpUntil > 0 && mon.MagDefenceUpUntil > expires {
+	if mon.MagDefenceUpUntil > 0 {
 		magicDefenceBonus = 2 + maxInt(mon.Level, 1)/7
 	}
 	return

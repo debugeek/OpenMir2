@@ -16,6 +16,17 @@ func QueueRecovery(ch storage.Character, hp, mp int) storage.Character {
 	return ch
 }
 
+func QueueHealing(ch storage.Character, hp int) storage.Character {
+	if hp <= 0 || ch.HP <= 0 || ch.HP >= ch.MaxHP {
+		return ch
+	}
+	ch.IncHealing += hp
+	if ch.IncHealing > 300 {
+		ch.IncHealing = 300
+	}
+	return ch
+}
+
 func ApplyQueuedRecovery(ch storage.Character, now time.Time) (storage.Character, bool) {
 	if ch.HP <= 0 {
 		return ch, false
@@ -23,7 +34,7 @@ func ApplyQueuedRecovery(ch storage.Character, now time.Time) (storage.Character
 	if ch.IncHealth <= 0 && ch.IncSpell <= 0 && ch.IncHealing <= 0 {
 		return ch, false
 	}
-	interval := recoveryInterval(ch.Level)
+	interval := RecoveryInterval(ch.Level)
 	nextAt := time.UnixMilli(ch.IncHealthSpellAt)
 	if ch.IncHealthSpellAt != 0 && now.Before(nextAt.Add(interval)) {
 		return ch, false
@@ -71,7 +82,7 @@ func ApplyQueuedRecovery(ch storage.Character, now time.Time) (storage.Character
 	return next, true
 }
 
-func recoveryInterval(level int) time.Duration {
+func RecoveryInterval(level int) time.Duration {
 	interval := time.Duration(600-minInt(400, level*10)) * time.Millisecond
 	if interval < 200*time.Millisecond {
 		return 200 * time.Millisecond

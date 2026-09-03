@@ -85,19 +85,167 @@ func (w *World) HitWithIdent(ch storage.Character, x, y, dir int, attackIdent ui
 	}
 	ch.Dir = dir
 	w.respawnLocked(time.Now())
-	for _, point := range w.hitPointsForAttackLocked(ch.X, ch.Y, dir, attackIdent) {
-		if mon := w.monsterAtExactPointLocked(ch.MapID, point[0], point[1]); mon != nil {
-			return w.attackLocked(ch, mon, attackIdent, blockers...)
+	result := AttackResult{Character: ch}
+	appendMonsterHit := func(hit AttackResult) {
+		if len(result.MonsterHits) == 0 {
+			result.MonsterID = hit.MonsterID
+			result.Damage = hit.Damage
+			result.MonsterHP = hit.MonsterHP
+			result.MonsterMaxHP = hit.MonsterMaxHP
+			result.MonsterRaceImg = hit.MonsterRaceImg
+			result.MonsterWeapon = hit.MonsterWeapon
+			result.MonsterAppr = hit.MonsterAppr
+			result.MonsterX = hit.MonsterX
+			result.MonsterY = hit.MonsterY
+			result.MonsterDir = hit.MonsterDir
+			result.MonsterStatus = hit.MonsterStatus
 		}
-		if target, ok := w.characterAtExactPointLocked(blockers, ch.MapID, point[0], point[1]); ok {
-			_, hit, err := w.attackCharacterWithDamageLocked(ch, target, w.characterHitDamageForAttackLocked(ch, attackIdent))
+		result.MonsterHits = append(result.MonsterHits, hit)
+		result.Experience += hit.Experience
+		result.CurrentExp = hit.CurrentExp
+		result.LevelUp = result.LevelUp || hit.LevelUp
+		result.SkillChanged = result.SkillChanged || hit.SkillChanged
+		ch = hit.Character
+		result.Character = ch
+	}
+	trainMainAttack := func() error {
+		points, ok := meleeSkillTrainPoints(w.rand, attackIdent)
+		if !ok {
+			return nil
+		}
+		updated, changed, levelUp := w.trainMeleeSkillLocked(ch, attackIdent, points)
+		if !changed {
+			return nil
+		}
+		ch = updated
+		result.Character = ch
+		result.SkillChanged = true
+		result.SkillExp = true
+		if skillID, ok := meleeSkillIDForAttackIdent(attackIdent); ok {
+			result.SkillMagicID, _ = w.MagicIDByName(skillID)
+			if trained, _, ok := ch.Skills.Get(skillID); ok {
+				result.SkillLevel = trained.Level
+				result.SkillTrain = trained.Train
+			}
+		}
+		result.SkillExpDelay = 3 * time.Second
+		if levelUp {
+			result.SkillExpDelay = 800 * time.Millisecond
+		}
+		return w.store.SaveCharacter(ch)
+	}
+	appendCharacterHit := func(hit CharacterHit) {
+		result.CharacterHits = append(result.CharacterHits, hit)
+		result.Character = ch
+	}
+	baseSecondaryDamage := 0
+	if attackIdent == mir176.CMLongHit || attackIdent == mir176.CMWideHit {
+		baseSecondaryDamage = w.characterAttackDamageLocked(ch, nil, mir176.CMHit)
+	}
+	secondaryDamage := baseSecondaryDamage
+	if attackIdent == mir176.CMLongHit {
+		if state, _, ok := ch.Skills.Get("刺杀剑术"); ok {
+			if _, ok := w.data.Skills["刺杀剑术"]; ok {
+				secondaryDamage += referenceRound(float64(baseSecondaryDamage) / float64(spellTrainLevel+2) * float64(state.Level+2))
+			}
+		}
+	}
+	if attackIdent == mir176.CMWideHit {
+		if state, _, ok := ch.Skills.Get("半月弯刀"); ok {
+			if _, ok := w.data.Skills["半月弯刀"]; ok {
+				secondaryDamage += referenceRound(float64(baseSecondaryDamage) / float64(spellTrainLevel+10) * float64(state.Level+2))
+			}
+		}
+	}
+	points := w.hitPointsForAttackLocked(ch.X, ch.Y, dir, attackIdent)
+	for _, point := range points {
+		if mon := w.monsterAtExactPointLocked(ch.MapID, point[0], point[1]); mon != nil {
+			if !w.isProperMonsterTargetLocked(ch, blockers, mon) {
+				continue
+			}
+			if attackIdent == mir176.CMLongHit || attackIdent == mir176.CMWideHit {
+				ch.TargetID = mon.ID
+				hit, err := w.attackMonsterDirectDamageLocked(ch, mon, secondaryDamage, blockers...)
+				if err != nil {
+					return AttackResult{}, err
+				}
+				if hit.Connected {
+					appendMonsterHit(hit)
+				}
+				continue
+			}
+			hit, err := w.attackLocked(ch, mon, attackIdent, blockers...)
 			if err != nil {
 				return AttackResult{}, err
 			}
-			return AttackResult{Character: ch, CharacterHits: []CharacterHit{hit}}, nil
+			if hit.Damage > 0 {
+				hit.Character.TargetID = mon.ID
+			}
+			return hit, w.store.SaveCharacter(hit.Character)
+		}
+		if target, ok := w.characterAtExactPointLocked(blockers, ch.MapID, point[0], point[1]); ok {
+			if !w.isProperCharacterTargetLocked(ch, target) {
+				continue
+			}
+			damage := w.characterHitDamageForAttackLocked(ch, attackIdent)
+			if attackIdent == mir176.CMLongHit || attackIdent == mir176.CMWideHit {
+				ch.TargetID = target.ID
+				damage = secondaryDamage
+				_, hit, err := w.attackCharacterDirectDamageLocked(ch, target, damage)
+				if err != nil {
+					return AttackResult{}, err
+				}
+				hit.ImpactDelay = 500 * time.Millisecond
+				if hit.Connected {
+					appendCharacterHit(hit)
+				}
+				continue
+			}
+			_, hit, err := w.attackCharacterWithDamageLocked(ch, target, damage)
+			if err != nil {
+				return AttackResult{}, err
+			}
+			if hit.Damage > 0 {
+				ch.TargetID = target.ID
+				result.Character = ch
+			}
+			result.CharacterHits = []CharacterHit{hit}
+			if hit.Damage > 0 {
+				if err := trainMainAttack(); err != nil {
+					return AttackResult{}, err
+				}
+			}
+			return result, w.store.SaveCharacter(ch)
 		}
 	}
-	return AttackResult{Character: ch}, w.store.SaveCharacter(ch)
+	if attackIdent == mir176.CMLongHit || attackIdent == mir176.CMWideHit {
+		primary := [2]int{ch.X + dirOffsets[dir][0], ch.Y + dirOffsets[dir][1]}
+		if mon := w.monsterAtExactPointLocked(ch.MapID, primary[0], primary[1]); mon != nil {
+			if w.isProperMonsterTargetLocked(ch, blockers, mon) {
+				ch.TargetID = mon.ID
+				hit, err := w.attackLockedWithDamageIdent(ch, mon, attackIdent, mir176.CMHit, blockers...)
+				if err != nil {
+					return AttackResult{}, err
+				}
+				if hit.MonsterID != "" {
+					appendMonsterHit(hit)
+				}
+			}
+		} else if target, ok := w.characterAtExactPointLocked(blockers, ch.MapID, primary[0], primary[1]); ok && w.isProperCharacterTargetLocked(ch, target) {
+			ch.TargetID = target.ID
+			_, hit, err := w.attackCharacterWithDamageLocked(ch, target, w.characterHitDamageForAttackLocked(ch, mir176.CMHit))
+			if err != nil {
+				return AttackResult{}, err
+			}
+			appendCharacterHit(hit)
+			if hit.Damage > 0 {
+				if err := trainMainAttack(); err != nil {
+					return AttackResult{}, err
+				}
+			}
+		}
+	}
+	return result, w.store.SaveCharacter(ch)
 }
 
 func (w *World) hitPointsForAttackLocked(x, y, dir int, attackIdent uint16) [][2]int {
@@ -156,7 +304,9 @@ func (w *World) stepLocked(ch storage.Character, x, y, maxDist int) (storage.Cha
 	}
 	ch.X = x
 	ch.Y = y
-	if characterTransparentActive(ch, time.Now()) {
+	w.refreshCharacterObjectOrderLocked(&ch)
+	ch.MapMoveAt = time.Now().UnixNano()
+	if characterTransparentStatePresent(ch) {
 		ch.TransparentUntil = time.Now().Add(time.Second).UnixNano()
 	}
 	w.syncCharacterHomeFromStartPointLocked(&ch)
@@ -191,7 +341,9 @@ func (w *World) directionalStepLocked(ch storage.Character, x, y, dir, steps int
 	}
 	ch.X = destX
 	ch.Y = destY
-	if characterTransparentActive(ch, time.Now()) {
+	w.refreshCharacterObjectOrderLocked(&ch)
+	ch.MapMoveAt = time.Now().UnixNano()
+	if characterTransparentStatePresent(ch) {
 		ch.TransparentUntil = time.Now().Add(time.Second).UnixNano()
 	}
 	w.syncCharacterHomeFromStartPointLocked(&ch)

@@ -26,15 +26,20 @@ func newMonster(w *World, id string, tpl data.StdMonster, mapID string, x, y int
 	mon := &Monster{
 		ID: id, TemplateID: tpl.ID, Name: tpl.Name, Race: tpl.Race, RaceImg: tpl.RaceImg, MonsterWeapon: tpl.MP & 0xFF, Appr: tpl.Appr,
 		Level: tpl.Level, Undead: tpl.Undead, MapID: mapID, X: x, Y: y, Dir: 4, TargetX: -1, TargetY: -1, CoolEye: tpl.CoolEye,
+		NoTame:           tpl.NoTame,
 		ViewRange:        tpl.ViewRange,
 		LeashRange:       tpl.LeashRange,
 		SearchNoTargetMS: tpl.SearchNoTargetMS, SearchHasTargetMS: tpl.SearchHasTargetMS,
 		HP: tpl.HP, MaxHP: tpl.HP, MP: tpl.MP, MaxMP: tpl.MP, MinAttack: tpl.MinAttack,
-		MaxAttack: tpl.MaxAttack, Defense: tpl.Defense, MagicDefense: tpl.MagicDefense,
+		MaxAttack: tpl.MaxAttack, Defense: tpl.Defense, MagicDefense: tpl.MagicDefense, MagicDefenseMax: tpl.MagicDefenseMax, AntiMagic: tpl.AntiMagic, AntiPoison: tpl.AntiPoison,
 		MagicAttack: tpl.MagicAttack, TaoAttack: tpl.TaoAttack, Speed: tpl.Speed, Hit: tpl.Hit,
 		WalkSpeedMS: tpl.WalkSpeedMS, WalkStep: tpl.WalkStep, WalkWait: tpl.WalkWait,
 		AttackIntervalMS: tpl.AttackIntervalMS, Experience: tpl.Experience,
-		Alive: true, Spawn: spawn,
+		Alive: true, Spawn: spawn, PerHealing: 5, IncHealthSpellAt: now.UnixMilli(),
+	}
+	if w.nextObjectOrder > 0 {
+		mon.ObjectOrder = w.nextObjectOrder
+		w.nextObjectOrder++
 	}
 	if _, ok := w.data.Drops[tpl.ID]; ok {
 		mon.DropTable = tpl.ID
@@ -197,7 +202,7 @@ func (w *World) spawnMonsterByName(mapID string, x, y int, name string, count, a
 	return result, nil
 }
 
-func (w *World) summonMonsterNearCharacterLocked(master storage.Character, players []storage.Character, name string, duration time.Duration) (*Monster, error) {
+func (w *World) summonMonsterNearCharacterLocked(master storage.Character, players []storage.Character, name string, duration time.Duration, slaveLevel byte) (*Monster, error) {
 	mp, ok := w.data.Maps[master.MapID]
 	if !ok {
 		return nil, fmt.Errorf("map %s not found", master.MapID)
@@ -235,6 +240,8 @@ func (w *World) summonMonsterNearCharacterLocked(master storage.Character, playe
 	}
 	mon := newMonster(w, id, tpl, master.MapID, x, y, spawn)
 	mon.MasterID = master.ID
+	mon.MasterName = master.Name
+	mon.SlaveMakeLevel = slaveLevel
 	if duration > 0 {
 		mon.MasterExpiresAt = now.Add(duration)
 	}

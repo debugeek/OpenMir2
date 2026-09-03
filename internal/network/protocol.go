@@ -77,10 +77,8 @@ func (s *Server) sendPlain6LoginOK(conn net.Conn, account string) {
 	body := fmt.Sprintf("%s/%d/%d", acceptedLocalHost(conn), s.listenerPort("select", 7100), sessionID)
 	response := mir176.EncodePlain6ClientMessage(mir176.Command{Ident: mir176.SMSelectServerOK, Recog: sessionID}, []byte(body))
 	if _, err := conn.Write(response); err != nil {
-		s.log.Info("plain6 login response failed", "error", err)
 		return
 	}
-	s.log.Info("plain6 login response sent", "ident", mir176.SMSelectServerOK, "body_len", len(body))
 }
 
 func (s *Server) handlePlain6SelectCommand(conn net.Conn, cmd mir176.Command, text []byte) bool {
@@ -109,7 +107,6 @@ func (s *Server) handlePlain6SelectCommand(conn net.Conn, cmd mir176.Command, te
 		class := world.Plain6ClassName(parts[3])
 		sex, _ := strconv.Atoi(parts[4])
 		if _, err := s.world.CreateCharacterWithAppearanceAtRandomStartPoint(account, name, class, hair, sex); err != nil {
-			s.log.Info("plain6 create character failed", "error", err)
 			s.sendPlain6Command(conn, mir176.Command{Ident: mir176.SMNewCharacterFail}, nil)
 			return true
 		}
@@ -142,10 +139,8 @@ func (s *Server) sendPlain6CharacterList(conn net.Conn, account string) {
 	}
 	response := mir176.EncodePlain6ClientMessage(mir176.Command{Ident: mir176.SMQueryCharacter, Recog: int32(len(chars)), Tag: 1}, []byte(body.String()))
 	if _, err := conn.Write(response); err != nil {
-		s.log.Info("plain6 character list response failed", "error", err)
 		return
 	}
-	s.log.Info("plain6 character list response sent", "account", account, "count", len(chars), "body_len", body.Len())
 }
 
 func (s *Server) sendPlain6StartPlay(conn net.Conn, name string) {

@@ -92,10 +92,17 @@ type StdSkill struct {
 	Effect      int    `json:"effect"`
 	Power       int    `json:"power"`
 	MaxPower    int    `json:"max_power"`
+	DefPower    int    `json:"def_power"`
+	DefMaxPower int    `json:"def_max_power"`
 	Spell       int    `json:"spell"`
+	DefSpell    int    `json:"def_spell"`
 	Delay       int    `json:"delay"`
 	NeedLevel1  int    `json:"need_level_1"`
+	NeedLevel2  int    `json:"need_level_2,omitempty"`
+	NeedLevel3  int    `json:"need_level_3,omitempty"`
 	TrainLevel1 int    `json:"train_level_1"`
+	TrainLevel2 int    `json:"train_level_2,omitempty"`
+	TrainLevel3 int    `json:"train_level_3,omitempty"`
 }
 
 type StdMonster struct {
@@ -108,6 +115,7 @@ type StdMonster struct {
 	Undead             int    `json:"undead"`
 	CoolEye            int    `json:"cool_eye"`
 	Animal             bool   `json:"animal"`
+	NoTame             bool   `json:"no_tame,omitempty"`
 	FleeOnSight        bool   `json:"flee_on_sight"`
 	UseMagic           bool   `json:"use_magic"`
 	Hidden             bool   `json:"hidden"`
@@ -125,6 +133,9 @@ type StdMonster struct {
 	MaxAttack          int    `json:"max_attack"`
 	Defense            int    `json:"defense"`
 	MagicDefense       int    `json:"magic_defense"`
+	MagicDefenseMax    int    `json:"magic_defense_max,omitempty"`
+	AntiMagic          int    `json:"anti_magic"`
+	AntiPoison         int    `json:"anti_poison,omitempty"`
 	MagicAttack        int    `json:"magic_attack"`
 	TaoAttack          int    `json:"tao_attack"`
 	Experience         int    `json:"experience"`
@@ -156,6 +167,7 @@ type StdMakeIngredient struct {
 type StdMap struct {
 	ID               string             `json:"id"`
 	Name             string             `json:"name"`
+	Safe             bool               `json:"safe,omitempty"`
 	Light            int                `json:"light,omitempty"`
 	Width            int                `json:"width"`
 	Height           int                `json:"height"`

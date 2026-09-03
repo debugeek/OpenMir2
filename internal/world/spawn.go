@@ -67,6 +67,8 @@ func (w *World) respawnLocked(now time.Time) {
 			w.occupyMonsterLocked(mon)
 			mon.RespawnAt = time.Time{}
 			mon.TargetCharacterID = ""
+			mon.PendingDeath = false
+			mon.DeathHitterID = ""
 			mon.TargetFocusAt = time.Time{}
 			mon.LastAttackAt = time.Time{}
 			mon.LastWalkAt = time.Time{}
@@ -79,6 +81,7 @@ func (w *World) respawnLocked(now time.Time) {
 			mon.Animal = false
 			mon.FleeOnSight = false
 			mon.RunAwayMode = false
+			mon.RunAwayUntil = time.Time{}
 			mon.FirstRevealPending = false
 			mon.GuardDirection = 4
 			if mon.Race == 112 {

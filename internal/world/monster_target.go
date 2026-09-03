@@ -89,7 +89,7 @@ func (w *World) findClosestMonsterTargetLocked(mon *Monster, players map[string]
 		if ch.MapID != mon.MapID || ch.HP <= 0 {
 			continue
 		}
-		if characterTransparentActive(ch, time.Now()) && !monsterCanSeeTransparent(mon) {
+		if characterTransparentStatePresent(ch) && !monsterCanSeeTransparent(mon) {
 			continue
 		}
 		if abs(ch.X-mon.X) > viewRange || abs(ch.Y-mon.Y) > viewRange {
@@ -114,7 +114,7 @@ func (w *World) findClosestMonsterTargetStrictLocked(mon *Monster, players map[s
 		if ch.MapID != mon.MapID || ch.HP <= 0 {
 			continue
 		}
-		if characterTransparentActive(ch, time.Now()) && !monsterCanSeeTransparent(mon) {
+		if characterTransparentStatePresent(ch) && !monsterCanSeeTransparent(mon) {
 			continue
 		}
 		if abs(ch.X-mon.X) >= viewRange || abs(ch.Y-mon.Y) >= viewRange {
@@ -137,12 +137,13 @@ func (w *World) clearInvalidMonsterTargetLocked(mon *Monster, players map[string
 		return
 	}
 	target, ok := players[mon.TargetCharacterID]
-	if !ok || target.HP <= 0 || target.MapID != mon.MapID || abs(target.X-mon.X) > w.monsterLeashRangeLocked(mon) || abs(target.Y-mon.Y) > w.monsterLeashRangeLocked(mon) || (characterTransparentActive(target, now) && !monsterCanSeeTransparent(mon)) {
+	if !ok || target.HP <= 0 || target.MapID != mon.MapID || abs(target.X-mon.X) > w.monsterLeashRangeLocked(mon) || abs(target.Y-mon.Y) > w.monsterLeashRangeLocked(mon) || (characterTransparentStatePresent(target) && !monsterCanSeeTransparent(mon)) {
 		mon.TargetCharacterID = ""
 		mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchNoTargetMSLocked(mon)) * time.Millisecond)
 		mon.TargetX = -1
 		mon.TargetY = -1
 		mon.RunAwayMode = false
+		mon.RunAwayUntil = time.Time{}
 	}
 }
 
@@ -153,7 +154,7 @@ func (w *World) searchMonsterTargetLocked(mon *Monster, players map[string]stora
 		if ch.MapID != mon.MapID || ch.HP <= 0 {
 			continue
 		}
-		if characterTransparentActive(ch, now) && !monsterCanSeeTransparent(mon) {
+		if characterTransparentStatePresent(ch) && !monsterCanSeeTransparent(mon) {
 			continue
 		}
 		if abs(ch.X-mon.X) > w.monsterViewRangeLocked(mon) || abs(ch.Y-mon.Y) > w.monsterViewRangeLocked(mon) {

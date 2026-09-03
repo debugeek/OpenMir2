@@ -23,7 +23,7 @@ var skillIDs = map[string]uint16{
 	"灵魂火符":  13,
 	"幽灵盾":   14,
 	"神圣战甲术": 15,
-	"困魔咒":   16,
+	"困魔咒":   50,
 	"召唤骷髅":  17,
 	"隐身术":   18,
 	"集体隐身术": 19,
@@ -50,6 +50,15 @@ var magicNames = func() map[uint16]string {
 	}
 	return out
 }()
+
+func isWarriorSkill(skillID string) bool {
+	switch skillID {
+	case "基本剑术", "精神力战法", "攻杀剑术", "刺杀剑术", "半月弯刀", "烈火剑法", "野蛮冲撞":
+		return true
+	default:
+		return false
+	}
+}
 
 func (w *World) Skill(skillID string) (data.StdSkill, bool) {
 	w.mu.Lock()

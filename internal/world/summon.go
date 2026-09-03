@@ -15,7 +15,7 @@ func (w *World) summonedMonsterOwnerLocked(mon *Monster, players map[string]stor
 		return storage.Character{}, false
 	}
 	master, ok := players[mon.MasterID]
-	if !ok || master.HP <= 0 || master.MapID != mon.MapID {
+	if !ok || master.MapID != mon.MapID {
 		return storage.Character{}, false
 	}
 	if !mon.MasterExpiresAt.IsZero() && now.After(mon.MasterExpiresAt) {
@@ -31,7 +31,7 @@ func (w *World) findClosestMonsterTargetExceptLocked(mon *Monster, players map[s
 		if ch.ID == excludeID || ch.MapID != mon.MapID || ch.HP <= 0 {
 			continue
 		}
-		if characterTransparentActive(ch, now) && !monsterCanSeeTransparent(mon) {
+		if characterTransparentStatePresent(ch) && !monsterCanSeeTransparent(mon) {
 			continue
 		}
 		if abs(ch.X-mon.X) > viewRange || abs(ch.Y-mon.Y) > viewRange {
@@ -59,7 +59,7 @@ func (w *World) findClosestMonsterTargetAgainstMasterFriendsLocked(mon *Monster,
 		if w.isProperFriendLocked(master, ch) {
 			continue
 		}
-		if characterTransparentActive(ch, now) && !monsterCanSeeTransparent(mon) {
+		if characterTransparentStatePresent(ch) && !monsterCanSeeTransparent(mon) {
 			continue
 		}
 		if abs(ch.X-mon.X) > viewRange || abs(ch.Y-mon.Y) > viewRange {
@@ -83,6 +83,18 @@ func (w *World) tickSummonedMonsterLocked(mon *Monster, players map[string]stora
 		w.removeMonsterLocked(mon, false)
 		return nil, nil, nil, nil
 	}
+	if master.HP <= 0 {
+		if mon.MasterDeadSince.IsZero() {
+			mon.MasterDeadSince = now
+			return nil, nil, nil, nil
+		}
+		if now.Sub(mon.MasterDeadSince) >= time.Second {
+			mon.HP = 0
+			w.removeMonsterLocked(mon, false)
+		}
+		return nil, nil, nil, nil
+	}
+	mon.MasterDeadSince = time.Time{}
 	if mon.TargetCharacterID == master.ID {
 		mon.TargetCharacterID = ""
 		mon.TargetFocusAt = time.Time{}
@@ -140,5 +152,6 @@ func (w *World) recallSummonedMonsterNearCharacterLocked(mon *Monster, master st
 	mon.TargetFocusAt = time.Time{}
 	mon.NextSearchAt = time.Time{}
 	mon.RunAwayMode = false
+	mon.RunAwayUntil = time.Time{}
 	return true
 }

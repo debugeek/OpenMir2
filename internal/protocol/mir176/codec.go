@@ -67,6 +67,9 @@ const (
 
 	SMTurn               = 10
 	SMWalk               = 11
+	SMRush               = 6
+	SMRushKung           = 7
+	SMBackStep           = 9
 	SMSitDown            = 12
 	SMRun                = 13
 	SMHit                = 14
@@ -107,12 +110,16 @@ const (
 	SMLevelUp                    = 45
 	SMDayChanging                = 46
 	SMFeatureChanged             = 41
+	SMShowEvent                  = 804
+	SMHideEvent                  = 805
 	SMChangeLight                = 654
+	SMChangeNameColor            = 656
 	SMUserName                   = 42
 	SMClearObjects               = 633
 	SMChangeMap                  = 634
 	SMMagicFire                  = 638
 	SMMagicFireFail              = 639
+	SMMagicLvExp                 = 640
 	SMMerchantSay                = 643
 	SMSendGoodsList              = 645
 	SMSendUserSell               = 646
@@ -149,8 +156,11 @@ const (
 	SMBagItems                   = 201
 	SMSystemMessage              = 100
 	SMHealthSpellChanged         = 53
+	SMDuraChange                 = 642
 	SMOpenHealth                 = 1100
 	SMCloseHealth                = 1101
+	SMInstanceHealGauge          = 1103
+	SMCharStatusChanged          = 657
 	SMWeightChanged              = 622
 	SMSendMyMagic                = 211
 	SMAttackMode                 = 213
