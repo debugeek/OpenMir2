@@ -66,6 +66,8 @@ func (w *World) CreateCharacterWithAppearance(account, name, class string, hair,
 		MaxMP:            base.MaxMP,
 		MP:               base.MaxMP,
 		IncHealthSpellAt: now,
+		PerHealth:        5,
+		PerSpell:         5,
 		BagItems:         []storage.UserItem{{ItemID: "木剑"}},
 	}
 	return w.store.InsertCharacter(ch)
@@ -78,6 +80,12 @@ func (w *World) NormalizeCharacterState(ch storage.Character) (storage.Character
 	if ch.IncHealthSpellAt == 0 {
 		ch.IncHealthSpellAt = time.Now().UnixMilli()
 		changed = true
+	}
+	if ch.PerHealth == 0 {
+		ch.PerHealth = 5
+	}
+	if ch.PerSpell == 0 {
+		ch.PerSpell = 5
 	}
 	if w.normalizeBagItemMakeIndexesLocked(&ch) {
 		changed = true
@@ -145,7 +153,36 @@ func (w *World) CharacterDisplayName(ch storage.Character) string {
 }
 
 func (w *World) CharacterNameColor(ch storage.Character) uint16 {
+	if ch.PKPoint >= 200 {
+		return 0xF9
+	}
+	if ch.PKPoint >= 100 {
+		return 0xFB
+	}
+	if ch.PKFlag {
+		return 0x2F
+	}
 	return 255
+}
+
+func (w *World) CharacterNameColorFor(observer, target storage.Character) uint16 {
+	color := w.CharacterNameColor(target)
+	if target.PKPoint >= 200 {
+		return color
+	}
+	if target.GuildID != "" && observer.GuildID == target.GuildID {
+		return 0xB4
+	}
+	if observer.GuildWarArea && target.GuildWarArea && observer.GuildAllianceID != "" && observer.GuildAllianceID == target.GuildAllianceID {
+		return 0xB4
+	}
+	if observer.GuildWarArea && target.GuildWarArea && observer.FreePKArea && target.FreePKArea {
+		return 0xDD
+	}
+	if observer.GuildWarArea && target.GuildWarArea && observer.GuildID != "" && target.GuildID != "" {
+		return 0x45
+	}
+	return color
 }
 
 func (w *World) CharacterAreaState(ch storage.Character) int32 {
@@ -158,7 +195,7 @@ func (w *World) CharacterStatus(ch storage.Character) int32 {
 
 func characterStatus(ch storage.Character, now time.Time, includeExpired bool) int32 {
 	active := func(until int64) bool {
-		return until > 0 && (includeExpired || until > now.UnixNano())
+		return until > 0 && (includeExpired || until >= now.UnixNano())
 	}
 	status := int32(0)
 	if ch.Sitting {
@@ -179,6 +216,9 @@ func characterStatus(ch storage.Character, now time.Time, includeExpired bool) i
 	}
 	if active(ch.BubbleDefenceUntil) {
 		status |= 0x00100000
+	}
+	if active(ch.ShowHPUntil) {
+		status |= 0x20000000
 	}
 	if active(ch.PoisonHealthUntil) {
 		status |= -2147483648

@@ -75,6 +75,10 @@ func (w *World) removeMonsterLocked(mon *Monster, adjustSpawn bool) {
 	mon.TargetCharacterID = ""
 	mon.PendingDeath = false
 	mon.DeathHitterID = ""
+	mon.LastHitterID = ""
+	mon.LastHitterAt = time.Time{}
+	mon.ExpHitterID = ""
+	mon.ExpHitterAt = time.Time{}
 	mon.TargetFocusAt = time.Time{}
 	mon.NextSearchAt = time.Time{}
 	mon.LastAttackAt = time.Time{}
@@ -92,6 +96,20 @@ func (w *World) removeMonsterLocked(mon *Monster, adjustSpawn bool) {
 		if state.activeCount > 0 {
 			state.activeCount--
 		}
+	}
+}
+
+func (w *World) setMonsterLastHitterLocked(mon *Monster, attackerID string) {
+	if mon == nil || attackerID == "" {
+		return
+	}
+	mon.LastHitterID = attackerID
+	mon.LastHitterAt = time.Now()
+	if mon.ExpHitterID == "" {
+		mon.ExpHitterID = attackerID
+		mon.ExpHitterAt = mon.LastHitterAt
+	} else if mon.ExpHitterID == attackerID {
+		mon.ExpHitterAt = mon.LastHitterAt
 	}
 }
 

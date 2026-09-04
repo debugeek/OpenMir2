@@ -31,6 +31,11 @@ func ApplyVitalDelta(ch storage.Character, hpDelta, mpDelta int) VitalChange {
 	hp := ApplyHPDelta(next.HP, next.MaxHP, hpDelta)
 	next.HP = hp.HP
 	next.MP = clampInt(next.MP+mpDelta, 0, next.MaxMP)
+	if hp.Dead {
+		next.IncHealth = 0
+		next.IncSpell = 0
+		next.IncHealing = 0
+	}
 	return VitalChange{
 		Character: next,
 		Changed:   hp.Changed || next.MP != ch.MP,

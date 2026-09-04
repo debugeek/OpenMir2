@@ -3,6 +3,7 @@ package world
 import (
 	"fmt"
 	"sort"
+	"time"
 
 	"openmir2/internal/data"
 	"openmir2/internal/storage"
@@ -290,6 +291,7 @@ func (w *World) castChargeDirectionLocked(result *SkillCastResult, ch storage.Ch
 				break
 			}
 			if w.canOccupyLocked(mp, occupied, ch.MapID, nextX, nextY, ch.ID) {
+				result.ChargeActionSucceeded = true
 				ch.X = nextX
 				ch.Y = nextY
 				w.refreshCharacterObjectOrderLocked(&ch)
@@ -330,6 +332,10 @@ func (w *World) castChargeDirectionLocked(result *SkillCastResult, ch storage.Ch
 			return ch, err
 		}
 		if hit.Damage > 0 {
+			if hit.AttackerNameColorChanged {
+				ch = w.mergeStoredCharacterPKFlagLocked(ch)
+				result.NameColorCharacters = append(result.NameColorCharacters, ch)
+			}
 			if len(result.OrderedEvents) == 0 {
 				appendOrUpdateAffectedCharacter(result, next)
 			}
@@ -360,12 +366,15 @@ func (w *World) castChargeDirectionLocked(result *SkillCastResult, ch storage.Ch
 	if selfDamagePower > 0 {
 		damage := w.rand.Intn(selfDamagePower*10) + (selfDamagePower+1)*3
 		damage = w.characterPhysicalDamageAfterDefenseLocked(&ch, damage)
-		ch, damage, durability, featureChanged := w.applyCharacterStruckLocked(ch, damage)
+		ch, damage, durability, deletedItems, featureChanged := w.applyCharacterStruckLocked(ch, damage)
 		change := core.ApplyVitalDelta(ch, -damage, 0)
 		ch = change.Character
+		if change.Dead {
+			w.deferCharacterDeathLocked(ch)
+		}
 		if damage > 0 {
 			ch.SpellTick = 0
-			result.CharacterHits = append(result.CharacterHits, CharacterHit{Character: ch, Damage: damage, Durability: durability, FeatureChanged: featureChanged, Dead: change.Dead})
+			result.CharacterHits = append(result.CharacterHits, CharacterHit{Character: ch, Damage: damage, Durability: durability, DeletedItems: deletedItems, FeatureChanged: featureChanged, Dead: change.Dead, DeathDeferred: change.Dead})
 			result.OrderedEvents = append(result.OrderedEvents, SpellEvent{Kind: SpellEventCharacterHit, Character: ch, CharacterHit: result.CharacterHits[len(result.CharacterHits)-1]})
 		}
 		if err := w.store.SaveCharacter(ch); err != nil {
@@ -377,16 +386,32 @@ func (w *World) castChargeDirectionLocked(result *SkillCastResult, ch storage.Ch
 }
 
 func (w *World) chargeCharacterWithDamageLocked(caster storage.Character, target storage.Character, damage int) (storage.Character, CharacterHit, error) {
+	canMarkCasterPK := w.isProperCharacterTargetLocked(caster, target)
+	attackerNameColorChanged := false
 	damage = w.characterPhysicalDamageAfterDefenseLocked(&target, damage)
 	var durability []SpellDurability
+	var deletedItems []storage.UserItem
 	var featureChanged bool
-	target, damage, durability, featureChanged = w.applyCharacterStruckLocked(target, damage)
+	target, damage, durability, deletedItems, featureChanged = w.applyCharacterStruckLocked(target, damage)
 	change := core.ApplyVitalDelta(target, -damage, 0)
 	target = change.Character
+	if change.Dead {
+		w.deferCharacterDeathLocked(target)
+	}
 	if damage > 0 {
 		target.SpellTick = 0
+		if canMarkCasterPK {
+			target.LastHitterID = caster.ID
+			target.LastHitterAt = time.Now().UnixNano()
+			attackerNameColorChanged = !caster.PKFlag
+			caster.PKFlag = true
+			caster.PKFlagUntil = time.Now().Add(60 * time.Second).UnixNano()
+			if err := w.store.SaveCharacter(caster); err != nil {
+				return target, CharacterHit{}, err
+			}
+		}
 	}
-	hit := CharacterHit{Character: target, Damage: damage, Durability: durability, FeatureChanged: featureChanged, AttackerID: caster.ID, AttackerX: caster.X, AttackerY: caster.Y, Dead: change.Dead}
+	hit := CharacterHit{Character: target, Damage: damage, Durability: durability, DeletedItems: deletedItems, FeatureChanged: featureChanged, AttackerID: caster.ID, AttackerActor: CharacterActorID(caster), AttackerX: caster.X, AttackerY: caster.Y, AttackerNameColorChanged: attackerNameColorChanged, Dead: change.Dead, DeathDeferred: change.Dead}
 	return target, hit, w.store.SaveCharacter(target)
 }
 

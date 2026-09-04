@@ -136,6 +136,53 @@ type AbilityStats struct {
 	MaxHandWeight int
 }
 
+type SubAbilityStats struct {
+	AntiMagic     int
+	HitPoint      int
+	SpeedPoint    int
+	AntiPoison    int
+	PoisonRecover int
+	HealthRecover int
+	SpellRecover  int
+}
+
+func (w *World) SubAbilityStats(ch storage.Character) SubAbilityStats {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.normalizeEquippedItemsLocked(&ch)
+	combat := w.combatStatsLocked(ch)
+	hitPoint := 5 + combat.Hit + ch.BonusAbil.Hit
+	if ch.ExtraAbil[3] > 0 {
+		hitPoint += int(ch.ExtraAbil[3])
+	}
+	speedPoint := int(SubAbilitySpeed(ch.Class)) + combat.Speed + ch.BonusAbil.Speed
+	if ch.ExtraAbil[3] > 0 {
+		speedPoint += int(ch.ExtraAbil[3])
+	}
+	if speedPoint < 1 {
+		speedPoint = 1
+	}
+	antiMagic := 1
+	antiPoison := ch.AntiPoison
+	for slot := 0; slot < useSlotCount; slot++ {
+		entry, ok := w.equippedItemLocked(ch, slot)
+		if !ok {
+			continue
+		}
+		if item, ok := w.data.Items[entry.ItemID]; ok {
+			display := UpgradeClientItemForDisplay(item, entry, false)
+			antiMagic += display.MgAvoid
+			antiPoison += display.ToxAvoid
+		}
+	}
+	return SubAbilityStats{
+		AntiMagic:  antiMagic,
+		HitPoint:   hitPoint,
+		SpeedPoint: speedPoint,
+		AntiPoison: antiPoison,
+	}
+}
+
 func addHighByte(word, add int) int {
 	low := word & 0xFF
 	high := (word >> 8) & 0xFF

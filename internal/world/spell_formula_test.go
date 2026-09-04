@@ -2,6 +2,8 @@ package world
 
 import (
 	"math/rand"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -25,6 +27,154 @@ func TestReferenceRoundUsesBankersRounding(t *testing.T) {
 		if got := referenceRound(test.value); got != test.want {
 			t.Fatalf("referenceRound(%v) = %d, want %d", test.value, got, test.want)
 		}
+	}
+}
+
+func TestSpellRangeAndLineOfSightUseReferenceBoundaries(t *testing.T) {
+	w := &World{}
+	w.data.Maps = map[string]data.StdMap{
+		"test": {Width: 16, Height: 16},
+	}
+	caster := storage.Character{MapID: "test", X: 4, Y: 4}
+
+	if !w.SpellTargetInRange(caster, 12, 12) {
+		t.Fatal("SpellTargetInRange() rejected the inclusive 8-tile coordinate range")
+	}
+	if w.SpellTargetInRange(caster, 13, 12) {
+		t.Fatal("SpellTargetInRange() accepted a coordinate beyond the reference range")
+	}
+	if !w.magCanHitTargetLocked("test", 4, 4, 7, 4) {
+		t.Fatal("magCanHitTargetLocked() rejected an unobstructed target")
+	}
+
+	w.data.Maps["test"] = data.StdMap{
+		Width:   16,
+		Height:  16,
+		Blocked: []data.StdPoint{{X: 5, Y: 4}},
+	}
+	if w.magCanHitTargetLocked("test", 4, 4, 7, 4) {
+		t.Fatal("magCanHitTargetLocked() crossed a blocked intermediate cell")
+	}
+}
+
+func TestSpellStatusAndShowHealthExpireOnlyAfterReferenceBoundary(t *testing.T) {
+	now := time.Unix(20, 0)
+	boundary := now.UnixNano()
+	w := &World{}
+	character := storage.Character{
+		DefenceUpUntil:     boundary,
+		MagDefenceUpUntil:  boundary,
+		BubbleDefenceUntil: boundary,
+		BubbleDefenceLevel: 2,
+		TransparentUntil:   boundary,
+		ParalyzedUntil:     boundary,
+		ShowHPUntil:        boundary,
+	}
+	if _, changed := w.applyCharacterProtectionTickLocked(character, now); changed {
+		t.Fatal("character protection expired at the exact reference boundary")
+	}
+	if _, changed := w.applyCharacterShowHPTickLocked(character, now); changed {
+		t.Fatal("character show-health state expired at the exact reference boundary")
+	}
+	if _, changed := w.applyCharacterStealthTickLocked(character, now); changed {
+		t.Fatal("character stealth expired at the exact reference boundary")
+	}
+	if characterStatus(character, now, false)&0x00800000 == 0 {
+		t.Fatal("character status dropped stealth at the exact reference boundary")
+	}
+	status := uint32(characterStatus(character, now, false))
+	if status&0x00400000 == 0 || status&0x00200000 == 0 || status&0x00100000 == 0 || status&0x20000000 == 0 || status&0x04000000 == 0 {
+		t.Fatalf("character status dropped an active exact-boundary flag: %#x", status)
+	}
+	if _, changed := w.applyCharacterProtectionTickLocked(character, now.Add(1)); !changed {
+		t.Fatal("character protection did not expire after the reference boundary")
+	}
+	if _, changed := w.applyCharacterShowHPTickLocked(character, now.Add(1)); !changed {
+		t.Fatal("character show-health state did not expire after the reference boundary")
+	}
+	if _, changed := w.applyCharacterStealthTickLocked(character, now.Add(1)); !changed {
+		t.Fatal("character stealth did not expire after the reference boundary")
+	}
+
+	monster := &Monster{DefenceUpUntil: boundary, MagDefenceUpUntil: boundary, ShowHPUntil: boundary, TransparentUntil: now, Alive: true}
+	if w.applyMonsterProtectionTickLocked(monster, now) {
+		t.Fatal("monster protection expired at the exact reference boundary")
+	}
+	if w.applyMonsterShowHPTickLocked(monster, now) {
+		t.Fatal("monster show-health state expired at the exact reference boundary")
+	}
+	if !monster.TransparentUntil.Equal(now) {
+		t.Fatal("monster stealth state changed at the exact reference boundary")
+	}
+	if !w.applyMonsterProtectionTickLocked(monster, now.Add(1)) {
+		t.Fatal("monster protection did not expire after the reference boundary")
+	}
+	monster.ShowHPUntil = boundary
+	if !w.applyMonsterShowHPTickLocked(monster, now.Add(1)) {
+		t.Fatal("monster show-health state did not expire after the reference boundary")
+	}
+}
+
+func TestPoisonActiveChecksHonorReferenceExpiry(t *testing.T) {
+	now := time.Unix(30, 0)
+	character := storage.Character{
+		PoisonHealthLevel: 1, PoisonHealthUntil: now.UnixNano(), PoisonHealthStartAt: now.UnixNano(),
+		PoisonArmorLevel: 1, PoisonArmorUntil: now.UnixNano(), PoisonArmorStartAt: now.UnixNano(),
+	}
+	if !characterPoisonHealthActive(character, now) || !characterPoisonArmorActive(character, now) {
+		t.Fatal("character poison became inactive at the exact reference expiry boundary")
+	}
+	if characterPoisonHealthActive(character, now.Add(1)) || characterPoisonArmorActive(character, now.Add(1)) {
+		t.Fatal("character poison remained active after the reference expiry boundary")
+	}
+
+	monster := &Monster{
+		PoisonHealthLevel: 1, PoisonHealthUntil: now, PoisonHealthStartAt: now,
+		PoisonArmorLevel: 1, PoisonArmorUntil: now, PoisonArmorStartAt: now,
+	}
+	if !monsterPoisonHealthActive(monster, now) || !monsterPoisonArmorActive(monster, now) {
+		t.Fatal("monster poison became inactive at the exact reference expiry boundary")
+	}
+	if monsterPoisonHealthActive(monster, now.Add(1)) || monsterPoisonArmorActive(monster, now.Add(1)) {
+		t.Fatal("monster poison remained active after the reference expiry boundary")
+	}
+}
+
+func TestPoisonDamageTickWaitsPastReferenceInterval(t *testing.T) {
+	now := time.Unix(40, 0)
+	character := storage.Character{
+		HP: 100, MaxHP: 100, PoisonHealthLevel: 1,
+		PoisonHealthStartAt: now.Add(-time.Second).UnixNano(), PoisonHealthUntil: now.Add(time.Minute).UnixNano(),
+		PoisonHealthTickAt: now.Add(-poisonHealthTickInterval).UnixNano(),
+	}
+	w := &World{}
+	updated, changed := w.applyCharacterPoisonTickLocked(character, now)
+	if changed || updated.HP != character.HP {
+		t.Fatalf("character poison tick fired at exact interval: changed=%t hp=%d", changed, updated.HP)
+	}
+	updated, changed = w.applyCharacterPoisonTickLocked(character, now.Add(1))
+	if !changed || updated.HP >= character.HP {
+		t.Fatalf("character poison tick did not fire after interval: changed=%t hp=%d", changed, updated.HP)
+	}
+
+	monster := &Monster{
+		ID: "poison-tick-monster", Alive: true, HP: 100, MaxHP: 100,
+		PoisonHealthLevel: 1, PoisonHealthStartAt: now.Add(-time.Second), PoisonHealthUntil: now.Add(time.Minute),
+		PoisonHealthTickAt: now.Add(-poisonHealthTickInterval),
+	}
+	hits, _, err := w.applyMonsterPoisonTickLocked(monster, nil, now)
+	if err != nil {
+		t.Fatalf("monster poison tick at exact interval error = %v", err)
+	}
+	if len(hits) != 0 || monster.HP != 100 {
+		t.Fatalf("monster poison tick fired at exact interval: hits=%d hp=%d", len(hits), monster.HP)
+	}
+	hits, _, err = w.applyMonsterPoisonTickLocked(monster, nil, now.Add(1))
+	if err != nil {
+		t.Fatalf("monster poison tick after interval error = %v", err)
+	}
+	if len(hits) != 1 || monster.HP >= 100 {
+		t.Fatalf("monster poison tick did not fire after interval: hits=%d hp=%d", len(hits), monster.HP)
 	}
 }
 
@@ -116,6 +266,74 @@ func TestPendingMagicDamagePrecedesNaturalSpellRecovery(t *testing.T) {
 	t.Fatal("updated target missing")
 }
 
+func TestPendingMagicDamageReturnsCharacterPersistenceError(t *testing.T) {
+	bundle := loadTestBundle(t)
+	storePath := filepath.Join(t.TempDir(), "state.json")
+	store, err := storage.Open(storePath)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	w := New(bundle, store)
+	mapID, x, y := defaultSpawn(bundle)
+	caster, err := w.CreateCharacterWithAppearance("test", "pending-error-caster", "wizard", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	target := storage.Character{ID: "pending-error-target", MapID: mapID, X: x + 1, Y: y, HP: 100, MaxHP: 100}
+	now := time.Now()
+	w.mu.Lock()
+	w.pendingSpells = []pendingSpell{{
+		DueAt: now.Add(-time.Second), CasterID: caster.ID, TargetCharacterID: target.ID,
+		CharacterDamage: true, TargetX: target.X, TargetY: target.Y, Damage: 1,
+	}}
+	w.mu.Unlock()
+	if err := os.Remove(storePath); err != nil {
+		t.Fatalf("Remove() error = %v", err)
+	}
+	if err := os.Mkdir(storePath, 0o755); err != nil {
+		t.Fatalf("Mkdir() error = %v", err)
+	}
+	_, err = w.Tick([]PlayerSnapshot{{Character: caster}, {Character: target}}, now)
+	if err == nil {
+		t.Fatal("Tick() error = nil, want character persistence failure")
+	}
+}
+
+func TestDoSpellPersistenceFailureRollsBackPendingEffects(t *testing.T) {
+	bundle := loadTestBundle(t)
+	storePath := filepath.Join(t.TempDir(), "state.json")
+	store, err := storage.Open(storePath)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	w := New(bundle, store)
+	mapID, x, y := defaultSpawn(bundle)
+	caster, err := w.CreateCharacterWithAppearance("test", "spell-error-caster", "wizard", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	caster.MP = 100
+	target := Monster{ID: "spell-error-target", Name: "鹿", MapID: mapID, X: x + 1, Y: y, Alive: true, HP: 100, MaxHP: 100, Race: 50}
+	w.mu.Lock()
+	w.monsters[target.ID] = &target
+	w.mu.Unlock()
+	if err := os.Remove(storePath); err != nil {
+		t.Fatalf("Remove() error = %v", err)
+	}
+	if err := os.Mkdir(storePath, 0o755); err != nil {
+		t.Fatalf("Mkdir() error = %v", err)
+	}
+	_, err = w.DoSpell(caster, "火球术", target.X, target.Y, MonsterActorID(target), []storage.Character{caster})
+	if err == nil {
+		t.Fatal("DoSpell() error = nil, want character persistence failure")
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if len(w.pendingSpells) != 0 {
+		t.Fatalf("pendingSpells = %d, want rollback after persistence failure", len(w.pendingSpells))
+	}
+}
+
 func TestCharacterPhysicalDamageUsesReferenceMagicBubbleAfterDefense(t *testing.T) {
 	w, caster := newTestWorldCharacter(t)
 	w.rand = rand.New(&seqSource{vals: []int64{0, 0, 0, 0}})
@@ -151,6 +369,9 @@ func TestPrimaryCharacterAttackUsesReferencePhysicalDefense(t *testing.T) {
 	if len(result.CharacterHits) != 1 || result.CharacterHits[0].Damage != 0 || result.CharacterHits[0].Character.HP != 100 {
 		t.Fatalf("primary character hit = %+v, want zero damage after physical defense", result.CharacterHits)
 	}
+	if result.CharacterHits[0].ImpactDelay != 200*time.Millisecond {
+		t.Fatalf("primary character impact delay = %s, want 200ms", result.CharacterHits[0].ImpactDelay)
+	}
 }
 
 func TestChargeDamageUsesReferencePhysicalDefense(t *testing.T) {
@@ -184,10 +405,37 @@ func TestChargeDamageAddsUndeadBonusAfterMonsterDefense(t *testing.T) {
 	}
 }
 
+func TestPrimaryMonsterAttackAddsUndeadBonusAfterDefense(t *testing.T) {
+	w, caster := prepareHitDamageTestWorld(t, nil)
+	w.data.Items["undead-ring"] = data.StdItem{ID: "undead-ring", StdMode: 19, Undead: 7}
+	caster.EquippedItems = map[int]storage.UserItem{SlotArmRingL: {ItemID: "undead-ring"}}
+	w.mu.Lock()
+	w.rand = rand.New(zeroSource{})
+	var mon *Monster
+	for _, candidate := range w.monsters {
+		mon = candidate
+		break
+	}
+	mon.Defense = 3
+	mon.Undead = 1
+	mon.Speed = 1
+	stats := w.combatStatsLocked(caster)
+	want := 3 + max(caster.Level, 1) + stats.DC - mon.Defense + stats.Undead
+	w.mu.Unlock()
+
+	result, err := w.HitWithIdent(caster, caster.X, caster.Y, 2, mir176.CMHit)
+	if err != nil {
+		t.Fatalf("HitWithIdent() error = %v", err)
+	}
+	if result.Damage != want {
+		t.Fatalf("primary monster damage = %d, want defense-adjusted undead damage %d", result.Damage, want)
+	}
+}
+
 func TestCharacterPoisonDamageResetsNaturalSpellTick(t *testing.T) {
 	w := &World{}
-	now := time.Unix(10, 0)
-	ch := storage.Character{ID: "target", HP: 100, MaxHP: 100, SpellTick: 700, PoisonHealthLevel: 1, PoisonHealthStartAt: now.Add(-time.Second).UnixNano(), PoisonHealthUntil: now.Add(time.Second).UnixNano(), PoisonHealthTickAt: now.Add(-poisonHealthTickInterval).UnixNano()}
+	now := time.Unix(10, 0).Add(time.Nanosecond)
+	ch := storage.Character{ID: "target", HP: 100, MaxHP: 100, SpellTick: 700, PoisonHealthLevel: 1, PoisonHealthStartAt: now.Add(-time.Second).UnixNano(), PoisonHealthUntil: now.Add(time.Second).UnixNano(), PoisonHealthTickAt: now.Add(-poisonHealthTickInterval).Add(-time.Nanosecond).UnixNano()}
 	updated, changed := w.applyCharacterPoisonTickLocked(ch, now)
 	if !changed || updated.HP >= ch.HP || updated.SpellTick != 0 {
 		t.Fatalf("poison result = changed:%v character:%+v, want damage and zero SpellTick", changed, updated)
@@ -213,13 +461,48 @@ func TestFireWallDurationUsesReferenceDefensePower(t *testing.T) {
 	}
 }
 
+func TestFireWallDurationHalvesRolledMagicRange(t *testing.T) {
+	w := &World{
+		data: data.StdBundle{Items: map[string]data.StdItem{
+			"magic-ring": {ID: "magic-ring", Stats: data.StdItemStats{McMin: 3, McMax: 5}},
+		}},
+		rand: rand.New(rand.NewSource(1)),
+	}
+	skill := data.StdSkill{TrainLevel1: 1, DefPower: 4, DefMaxPower: 4}
+	state := storage.SkillState{Level: 0}
+	ch := storage.Character{EquippedItems: map[int]storage.UserItem{
+		SlotWeapon: {ItemID: "magic-ring"},
+	}}
+	if got := w.fireWallDurationLocked(ch, skill, state); got < 8*time.Second || got >= 10*time.Second {
+		t.Fatalf("fireWallDurationLocked() = %s, want 8-9 seconds", got)
+	}
+}
+
 func TestGroupDefenceDurationUsesReferenceSpiritPowerFormula(t *testing.T) {
 	w := &World{rand: rand.New(rand.NewSource(1))}
 	skill := data.StdSkill{TrainLevel1: 1, DefPower: 4, DefMaxPower: 7}
 	state := storage.SkillState{Level: 0}
 	ch := storage.Character{}
-	if got := w.groupDefenceDurationLocked(ch, skill, state); got < 34*time.Second || got >= 37*time.Second {
-		t.Fatalf("groupDefenceDurationLocked() = %s, want 34-36 seconds from direct GetPower13 formula", got)
+	if got := w.groupDefenceDurationLocked(ch, skill, state); got < 34*time.Second || got >= 38*time.Second {
+		t.Fatalf("groupDefenceDurationLocked() = %s, want 34-37 seconds from GetPower13 plus GetAttackPower", got)
+	}
+}
+
+func TestGroupDefenceDurationUsesSpiritPowerRange(t *testing.T) {
+	w := &World{
+		data: data.StdBundle{Items: map[string]data.StdItem{
+			"spirit-ring": {ID: "spirit-ring", Stats: data.StdItemStats{ScMin: 2 | (4 << 8)}},
+		}},
+		rand: rand.New(rand.NewSource(1)),
+	}
+	skill := data.StdSkill{TrainLevel1: 1, DefPower: 4, DefMaxPower: 4}
+	state := storage.SkillState{Level: 0}
+	ch := storage.Character{Class: "taoist", Level: 35, EquippedItems: map[int]storage.UserItem{
+		SlotArmRingL: {ItemID: "spirit-ring"},
+	}}
+	got := w.groupDefenceDurationLocked(ch, skill, state)
+	if got < 54*time.Second || got >= 58*time.Second {
+		t.Fatalf("groupDefenceDurationLocked() = %s, want 54-57 seconds including SC range", got)
 	}
 }
 
@@ -281,6 +564,22 @@ func TestSpellDamageUsesWeaponLuck(t *testing.T) {
 		if got := w.spellDamageLocked(ch, skill, state); got != 5 {
 			t.Fatalf("spellDamageLocked() = %d, want blessed weapon maximum 5", got)
 		}
+	}
+}
+
+func TestSpellDamageUsesWeaponLuckWithFixedMagicRange(t *testing.T) {
+	w := &World{
+		data: data.StdBundle{Items: map[string]data.StdItem{
+			"lucky-staff": {ID: "lucky-staff", StdMode: 5, Stats: data.StdItemStats{McMin: 2, McMax: 2}},
+		}},
+		rand: rand.New(zeroSource{}),
+	}
+	ch := storage.Character{EquippedItems: map[int]storage.UserItem{
+		SlotWeapon: {ItemID: "lucky-staff", Desc: [14]byte{3: 10}},
+	}}
+	skill := data.StdSkill{Power: 1, MaxPower: 1, TrainLevel1: 0}
+	if got := w.spellDamageLocked(ch, skill, storage.SkillState{Level: 0}); got != 4 {
+		t.Fatalf("spellDamageLocked() = %d, want 4 from fixed MC plus lucky GetAttackPower", got)
 	}
 }
 
@@ -478,6 +777,29 @@ func TestHealingGaugeTargetsUseSpellObjectOrder(t *testing.T) {
 	}
 }
 
+func TestHealingGaugeTargetsIncludeFullHealthFriendlySummon(t *testing.T) {
+	w := &World{monsters: map[string]*Monster{
+		"mon": {ID: "mon", MasterID: "caster", MapID: "map", X: 10, Y: 10, HP: 10, MaxHP: 10, Alive: true},
+	}}
+	caster := storage.Character{ID: "caster", MapID: "map", X: 10, Y: 10, HP: 10, MaxHP: 10}
+	targets := w.healingGaugeTargetsLocked(caster, nil, 10, 10)
+	if len(targets) != 2 {
+		t.Fatalf("healingGaugeTargetsLocked() returned %d targets, want caster and full-health summon", len(targets))
+	}
+	foundMonster, foundCaster := false, false
+	for _, target := range targets {
+		if target.Monster != nil && target.Monster.ID == "mon" {
+			foundMonster = true
+		}
+		if target.Character != nil && target.Character.ID == "caster" {
+			foundCaster = true
+		}
+	}
+	if !foundMonster || !foundCaster {
+		t.Fatalf("healing gauge targets = %+v, want full-health summon and caster", targets)
+	}
+}
+
 func TestCharacterSpellTargetUsesReferencePKProtection(t *testing.T) {
 	gameplay := config.DefaultGameplay()
 	w := &World{
@@ -535,6 +857,61 @@ func TestCharacterSpellTargetUsesReferenceGuildAttackMode(t *testing.T) {
 	target.GuildAllianceID = "alliance"
 	if w.isProperCharacterTargetLocked(caster, target) {
 		t.Fatal("guild attack mode should reject an allied guild in a guild war area")
+	}
+}
+
+func TestSpellFriendQualificationUsesReferenceAttackModes(t *testing.T) {
+	w := &World{}
+	caster := storage.Character{ID: "caster", AttackMode: 3, GuildID: "guild"}
+	target := storage.Character{ID: "target", GuildID: "guild"}
+	if !w.isProperFriendLocked(caster, target) {
+		t.Fatal("guild mode should treat same-guild target as a friend")
+	}
+	target.GuildID = "other"
+	caster.GuildWarArea = true
+	target.GuildWarArea = true
+	caster.GuildAllianceID = "alliance"
+	target.GuildAllianceID = "alliance"
+	if !w.isProperFriendLocked(caster, target) {
+		t.Fatal("guild war mode should treat an allied target as a friend")
+	}
+	caster = storage.Character{ID: "caster", AttackMode: 4, PKPoint: 0}
+	target = storage.Character{ID: "target", PKPoint: 200}
+	if !w.isProperFriendLocked(caster, target) {
+		t.Fatal("PK mode should treat the opposing PK tier as a friend")
+	}
+}
+
+func TestPoisonRetargetQualificationUsesTargetPerspective(t *testing.T) {
+	w := &World{
+		data:     data.StdBundle{Maps: map[string]data.StdMap{"map": {ID: "map"}}},
+		gameplay: config.DefaultGameplay(),
+	}
+	caster := storage.Character{ID: "caster", MapID: "map", HP: 1, AttackMode: 2, GroupOwnerID: "group"}
+	target := storage.Character{ID: "target", MapID: "map", HP: 1, AttackMode: 0, GroupOwnerID: "group"}
+	if w.isProperCharacterTargetLocked(caster, target) {
+		t.Fatal("caster perspective should reject a group member")
+	}
+	if !w.isProperCharacterTargetLocked(target, caster) {
+		t.Fatal("poison retarget should use target perspective")
+	}
+}
+
+func TestDelayedMonsterPoisonRetargetUsesMonsterPerspective(t *testing.T) {
+	w := &World{
+		data:     data.StdBundle{Maps: map[string]data.StdMap{"map": {ID: "map"}}},
+		gameplay: config.DefaultGameplay(),
+	}
+	caster := storage.Character{ID: "caster", MapID: "map", HP: 1, TargetID: "other"}
+	master := storage.Character{ID: "master", MapID: "map", HP: 1}
+	owned := &Monster{ID: "owned", MapID: "map", Alive: true, MasterID: master.ID}
+	if w.isProperDelayedMonsterPoisonTargetLocked(caster, []storage.Character{master}, owned) {
+		t.Fatal("monster perspective should reject an unrelated summoned monster")
+	}
+	caster.TargetID = ""
+	master.TargetID = caster.ID
+	if !w.isProperDelayedMonsterPoisonTargetLocked(caster, []storage.Character{master}, owned) {
+		t.Fatal("monster perspective should accept the master's target relationship")
 	}
 }
 

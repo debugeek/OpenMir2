@@ -9,15 +9,15 @@ import (
 func (w *World) applyCharacterProtectionTickLocked(ch storage.Character, now time.Time) (storage.Character, bool) {
 	next := ch
 	changed := false
-	if next.DefenceUpUntil > 0 && now.UnixNano() >= next.DefenceUpUntil {
+	if next.DefenceUpUntil > 0 && now.UnixNano() > next.DefenceUpUntil {
 		next.DefenceUpUntil = 0
 		changed = true
 	}
-	if next.MagDefenceUpUntil > 0 && now.UnixNano() >= next.MagDefenceUpUntil {
+	if next.MagDefenceUpUntil > 0 && now.UnixNano() > next.MagDefenceUpUntil {
 		next.MagDefenceUpUntil = 0
 		changed = true
 	}
-	if next.BubbleDefenceUntil > 0 && now.UnixNano() >= next.BubbleDefenceUntil {
+	if next.BubbleDefenceUntil > 0 && now.UnixNano() > next.BubbleDefenceUntil {
 		next.BubbleDefenceUntil = 0
 		next.BubbleDefenceLevel = 0
 		changed = true
@@ -33,11 +33,11 @@ func (w *World) applyMonsterProtectionTickLocked(mon *Monster, now time.Time) bo
 		return false
 	}
 	changed := false
-	if mon.DefenceUpUntil > 0 && now.UnixNano() >= mon.DefenceUpUntil {
+	if mon.DefenceUpUntil > 0 && now.UnixNano() > mon.DefenceUpUntil {
 		mon.DefenceUpUntil = 0
 		changed = true
 	}
-	if mon.MagDefenceUpUntil > 0 && now.UnixNano() >= mon.MagDefenceUpUntil {
+	if mon.MagDefenceUpUntil > 0 && now.UnixNano() > mon.MagDefenceUpUntil {
 		mon.MagDefenceUpUntil = 0
 		changed = true
 	}
@@ -58,7 +58,7 @@ func (w *World) applyCharacterShowHPOpenTickLocked(ch storage.Character, now tim
 }
 
 func (w *World) applyCharacterShowHPTickLocked(ch storage.Character, now time.Time) (storage.Character, bool) {
-	if ch.ShowHPUntil <= 0 || now.UnixNano() < ch.ShowHPUntil {
+	if ch.ShowHPUntil <= 0 || now.UnixNano() <= ch.ShowHPUntil {
 		return ch, false
 	}
 	next := ch
@@ -80,7 +80,7 @@ func (w *World) applyMonsterShowHPOpenTickLocked(mon *Monster, now time.Time) bo
 }
 
 func (w *World) applyMonsterShowHPTickLocked(mon *Monster, now time.Time) bool {
-	if mon == nil || mon.ShowHPUntil <= 0 || now.UnixNano() < mon.ShowHPUntil {
+	if mon == nil || mon.ShowHPUntil <= 0 || now.UnixNano() <= mon.ShowHPUntil {
 		return false
 	}
 	mon.ShowHPUntil = 0

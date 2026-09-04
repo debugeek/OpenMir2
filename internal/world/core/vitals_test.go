@@ -64,6 +64,17 @@ func TestApplyVitalDelta(t *testing.T) {
 	}
 }
 
+func TestApplyVitalDeltaClearsRecoveryOnDeath(t *testing.T) {
+	ch := storage.Character{HP: 10, MaxHP: 10, IncHealth: 4, IncSpell: 5, IncHealing: 6}
+	got := ApplyVitalDelta(ch, -10, 0)
+	if !got.Dead {
+		t.Fatal("Dead = false, want true")
+	}
+	if got.Character.IncHealth != 0 || got.Character.IncSpell != 0 || got.Character.IncHealing != 0 {
+		t.Fatalf("recovery queues = %d/%d/%d, want all cleared", got.Character.IncHealth, got.Character.IncSpell, got.Character.IncHealing)
+	}
+}
+
 func TestSetVitals(t *testing.T) {
 	got := SetVitals(storage.Character{HP: 3, MP: 4, MaxHP: 12, MaxMP: 11}, 99, -3)
 	if got.Character.HP != 12 || got.Character.MP != 0 {

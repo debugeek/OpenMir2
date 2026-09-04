@@ -23,6 +23,7 @@ type fireField struct {
 	X         int
 	Y         int
 	OwnerID   string
+	Owner     storage.Character
 	Damage    int
 	ExpiresAt time.Time
 	NextTick  time.Time
@@ -37,10 +38,9 @@ func (w *World) fireWallDurationLocked(ch storage.Character, skill data.StdSkill
 		high = low
 	}
 	if high > low {
-		duration += (low + w.rand.Intn(high-low+1)) / 2
-	} else {
-		duration += low / 2
+		low += w.rand.Intn(high - low + 1)
 	}
+	duration += low / 2
 	if duration < 1 {
 		duration = 1
 	}
@@ -101,6 +101,7 @@ func (w *World) castFireWallWithEventsLocked(ch storage.Character, skill data.St
 			X:         cell.X,
 			Y:         cell.Y,
 			OwnerID:   ch.ID,
+			Owner:     ch,
 			Damage:    damage,
 			ExpiresAt: now.Add(duration),
 			NextTick:  now.Add(fireWallTickInterval),
@@ -144,21 +145,25 @@ func (w *World) applyFireWallTickLocked(players map[string]storage.Character, no
 	})
 	for _, field := range fields {
 		key := fireFieldKey{MapID: field.MapID, X: field.X, Y: field.Y}
-		if !now.Before(field.ExpiresAt) {
+		if now.After(field.ExpiresAt) {
 			delete(w.fireFields, key)
 			continue
 		}
-		if now.Before(field.NextTick) {
+		if !now.After(field.NextTick) {
 			continue
 		}
 		owner, ok := players[field.OwnerID]
 		if !ok {
-			owner = storage.Character{ID: field.OwnerID, MapID: field.MapID, X: field.X, Y: field.Y}
+			owner = field.Owner
+			if owner.ID == "" {
+				owner = storage.Character{ID: field.OwnerID, MapID: field.MapID, X: field.X, Y: field.Y}
+			}
 		}
+		ownerDied := owner.ID != "" && owner.HP <= 0
 		for _, areaTarget := range w.spellAreaTargetsLocked(playerList, field.MapID, field.X, field.Y, 0) {
 			if areaTarget.Monster != nil {
 				mon := areaTarget.Monster
-				if !w.isProperMonsterTargetLocked(owner, playerList, mon) {
+				if !w.isProperMonsterAreaTargetLocked(owner, playerList, mon) {
 					continue
 				}
 				attackResult, err := w.attackMonsterWithImmediateMagicDamageLocked(owner, mon, field.Damage)
@@ -169,7 +174,7 @@ func (w *World) applyFireWallTickLocked(players map[string]storage.Character, no
 				continue
 			}
 			target := *areaTarget.Character
-			if !w.isProperCharacterTargetLocked(owner, target) {
+			if !w.isProperCharacterAreaTargetLocked(owner, target) {
 				continue
 			}
 			updatedTarget, hit, err := w.spellCharacterDamageWithPowerLocked(owner, target, field.Damage)
@@ -178,6 +183,10 @@ func (w *World) applyFireWallTickLocked(players map[string]storage.Character, no
 			}
 			characterHits = append(characterHits, hit)
 			updated = append(updated, updatedTarget)
+		}
+		if ownerDied {
+			field.OwnerID = ""
+			field.Owner = storage.Character{}
 		}
 		field.NextTick = now.Add(fireWallTickInterval)
 		w.fireFields[key] = field

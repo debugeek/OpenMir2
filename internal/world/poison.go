@@ -32,19 +32,19 @@ func poisonDamageMultiplier(active bool) float64 {
 }
 
 func characterPoisonArmorActive(ch storage.Character, now time.Time) bool {
-	return ch.PoisonArmorLevel != 0 && ch.PoisonArmorUntil > 0 && (ch.PoisonArmorStartAt == 0 || now.UnixNano() >= ch.PoisonArmorStartAt)
+	return ch.PoisonArmorLevel != 0 && ch.PoisonArmorUntil > 0 && now.UnixNano() <= ch.PoisonArmorUntil && (ch.PoisonArmorStartAt == 0 || now.UnixNano() >= ch.PoisonArmorStartAt)
 }
 
 func characterPoisonHealthActive(ch storage.Character, now time.Time) bool {
-	return ch.PoisonHealthUntil > 0 && (ch.PoisonHealthStartAt == 0 || now.UnixNano() >= ch.PoisonHealthStartAt)
+	return ch.PoisonHealthUntil > 0 && now.UnixNano() <= ch.PoisonHealthUntil && (ch.PoisonHealthStartAt == 0 || now.UnixNano() >= ch.PoisonHealthStartAt)
 }
 
 func monsterPoisonArmorActive(mon *Monster, now time.Time) bool {
-	return mon != nil && mon.PoisonArmorLevel != 0 && !mon.PoisonArmorUntil.IsZero() && (mon.PoisonArmorStartAt.IsZero() || !now.Before(mon.PoisonArmorStartAt))
+	return mon != nil && mon.PoisonArmorLevel != 0 && !mon.PoisonArmorUntil.IsZero() && !now.After(mon.PoisonArmorUntil) && (mon.PoisonArmorStartAt.IsZero() || !now.Before(mon.PoisonArmorStartAt))
 }
 
 func monsterPoisonHealthActive(mon *Monster, now time.Time) bool {
-	return mon != nil && !mon.PoisonHealthUntil.IsZero() && (mon.PoisonHealthStartAt.IsZero() || !now.Before(mon.PoisonHealthStartAt))
+	return mon != nil && !mon.PoisonHealthUntil.IsZero() && !now.After(mon.PoisonHealthUntil) && (mon.PoisonHealthStartAt.IsZero() || !now.Before(mon.PoisonHealthStartAt))
 }
 
 func (w *World) poisonAvoidanceLocked(ch storage.Character) int {
@@ -108,7 +108,7 @@ func (w *World) applyCharacterPoisonTickLocked(ch storage.Character, now time.Ti
 		if ch.PoisonHealthTickAt > 0 {
 			nextTick = time.Unix(0, ch.PoisonHealthTickAt).Add(poisonHealthTickInterval)
 		}
-		if !now.Before(nextTick) {
+		if now.After(nextTick) {
 			damage := poisonDamageFromLevel(ch.PoisonHealthLevel)
 			next = core.ApplyVitalDelta(next, -damage, 0).Character
 			next.SpellTick = 0
@@ -150,7 +150,7 @@ func (w *World) applyMonsterPoisonTickLocked(mon *Monster, players map[string]st
 		return nil, false, nil
 	}
 	nextTick := mon.PoisonHealthTickAt.Add(poisonHealthTickInterval)
-	if mon.PoisonHealthTickAt.IsZero() || !now.Before(nextTick) {
+	if mon.PoisonHealthTickAt.IsZero() || now.After(nextTick) {
 		damage := poisonDamageFromLevel(mon.PoisonHealthLevel)
 		source := players[mon.PoisonSourceID]
 		if source.ID != "" && source.HP > 0 {

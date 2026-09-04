@@ -105,34 +105,24 @@ func (w *World) HitWithIdent(ch storage.Character, x, y, dir int, attackIdent ui
 		result.CurrentExp = hit.CurrentExp
 		result.LevelUp = result.LevelUp || hit.LevelUp
 		result.SkillChanged = result.SkillChanged || hit.SkillChanged
+		result.SkillExp = result.SkillExp || hit.SkillExp
+		result.SkillLevelUp = result.SkillLevelUp || hit.SkillLevelUp
+		result.SkillExperiences = append(result.SkillExperiences, hit.SkillExperiences...)
+		if result.SkillMagicID == 0 {
+			result.SkillMagicID = hit.SkillMagicID
+			result.SkillLevel = hit.SkillLevel
+			result.SkillTrain = hit.SkillTrain
+			result.SkillExpDelay = hit.SkillExpDelay
+		}
 		ch = hit.Character
 		result.Character = ch
 	}
 	trainMainAttack := func() error {
-		points, ok := meleeSkillTrainPoints(w.rand, attackIdent)
-		if !ok {
-			return nil
+		if err := w.applyMeleeTrainingLocked(&result, attackIdent); err != nil {
+			return err
 		}
-		updated, changed, levelUp := w.trainMeleeSkillLocked(ch, attackIdent, points)
-		if !changed {
-			return nil
-		}
-		ch = updated
-		result.Character = ch
-		result.SkillChanged = true
-		result.SkillExp = true
-		if skillID, ok := meleeSkillIDForAttackIdent(attackIdent); ok {
-			result.SkillMagicID, _ = w.MagicIDByName(skillID)
-			if trained, _, ok := ch.Skills.Get(skillID); ok {
-				result.SkillLevel = trained.Level
-				result.SkillTrain = trained.Train
-			}
-		}
-		result.SkillExpDelay = 3 * time.Second
-		if levelUp {
-			result.SkillExpDelay = 800 * time.Millisecond
-		}
-		return w.store.SaveCharacter(ch)
+		ch = result.Character
+		return nil
 	}
 	appendCharacterHit := func(hit CharacterHit) {
 		result.CharacterHits = append(result.CharacterHits, hit)
@@ -142,18 +132,18 @@ func (w *World) HitWithIdent(ch storage.Character, x, y, dir int, attackIdent ui
 	if attackIdent == mir176.CMLongHit || attackIdent == mir176.CMWideHit {
 		baseSecondaryDamage = w.characterAttackDamageLocked(ch, nil, mir176.CMHit)
 	}
-	secondaryDamage := baseSecondaryDamage
+	secondaryDamage := 0
 	if attackIdent == mir176.CMLongHit {
 		if state, _, ok := ch.Skills.Get("刺杀剑术"); ok {
 			if _, ok := w.data.Skills["刺杀剑术"]; ok {
-				secondaryDamage += referenceRound(float64(baseSecondaryDamage) / float64(spellTrainLevel+2) * float64(state.Level+2))
+				secondaryDamage = referenceRound(float64(baseSecondaryDamage) / float64(spellTrainLevel+2) * float64(state.Level+2))
 			}
 		}
 	}
 	if attackIdent == mir176.CMWideHit {
 		if state, _, ok := ch.Skills.Get("半月弯刀"); ok {
 			if _, ok := w.data.Skills["半月弯刀"]; ok {
-				secondaryDamage += referenceRound(float64(baseSecondaryDamage) / float64(spellTrainLevel+10) * float64(state.Level+2))
+				secondaryDamage = referenceRound(float64(baseSecondaryDamage) / float64(spellTrainLevel+10) * float64(state.Level+2))
 			}
 		}
 	}
@@ -197,6 +187,7 @@ func (w *World) HitWithIdent(ch storage.Character, x, y, dir int, attackIdent ui
 				}
 				hit.ImpactDelay = 500 * time.Millisecond
 				if hit.Connected {
+					ch = w.mergeStoredCharacterPKFlagLocked(ch)
 					appendCharacterHit(hit)
 				}
 				continue
@@ -206,6 +197,7 @@ func (w *World) HitWithIdent(ch storage.Character, x, y, dir int, attackIdent ui
 				return AttackResult{}, err
 			}
 			if hit.Damage > 0 {
+				ch = w.mergeStoredCharacterPKFlagLocked(ch)
 				ch.TargetID = target.ID
 				result.Character = ch
 			}
@@ -223,22 +215,38 @@ func (w *World) HitWithIdent(ch storage.Character, x, y, dir int, attackIdent ui
 		if mon := w.monsterAtExactPointLocked(ch.MapID, primary[0], primary[1]); mon != nil {
 			if w.isProperMonsterTargetLocked(ch, blockers, mon) {
 				ch.TargetID = mon.ID
-				hit, err := w.attackLockedWithDamageIdent(ch, mon, attackIdent, mir176.CMHit, blockers...)
+				var hit AttackResult
+				var err error
+				if secondaryDamage > 0 {
+					hit, err = w.attackMonsterWithBaseDamageLocked(ch, mon, baseSecondaryDamage, blockers...)
+				} else {
+					hit, err = w.attackLockedWithDamageIdent(ch, mon, attackIdent, mir176.CMHit, blockers...)
+				}
 				if err != nil {
 					return AttackResult{}, err
 				}
 				if hit.MonsterID != "" {
+					if secondaryDamage > 0 {
+						if err := w.applyMeleeTrainingLocked(&hit, attackIdent); err != nil {
+							return AttackResult{}, err
+						}
+					}
 					appendMonsterHit(hit)
 				}
 			}
 		} else if target, ok := w.characterAtExactPointLocked(blockers, ch.MapID, primary[0], primary[1]); ok && w.isProperCharacterTargetLocked(ch, target) {
 			ch.TargetID = target.ID
-			_, hit, err := w.attackCharacterWithDamageLocked(ch, target, w.characterHitDamageForAttackLocked(ch, mir176.CMHit))
+			primaryDamage := w.characterHitDamageForAttackLocked(ch, mir176.CMHit)
+			if secondaryDamage > 0 {
+				primaryDamage = baseSecondaryDamage
+			}
+			_, hit, err := w.attackCharacterWithDamageLocked(ch, target, primaryDamage)
 			if err != nil {
 				return AttackResult{}, err
 			}
 			appendCharacterHit(hit)
 			if hit.Damage > 0 {
+				ch = w.mergeStoredCharacterPKFlagLocked(ch)
 				if err := trainMainAttack(); err != nil {
 					return AttackResult{}, err
 				}

@@ -14,26 +14,27 @@ import (
 )
 
 type World struct {
-	mu              sync.Mutex
-	data            data.StdBundle
-	store           *storage.Store
-	monsters        map[string]*Monster
-	occupied        map[monsterPosition]string
-	drops           map[string]GroundDrop
-	fireFields      map[fireFieldKey]fireField
-	groundEvents    map[int32]SpellGroundEvent
-	spawns          map[string]*spawnState
-	npcActors       map[string]int32
-	merchantStocks  map[string][]storage.UserItem
-	merchantNextID  map[string]int32
-	pendingSpells   []pendingSpell
-	nextID          int
-	nextObjectOrder uint64
-	nextNPCID       int32
-	nextEventID     int32
-	nextFireFieldID uint64
-	rand            *rand.Rand
-	gameplay        config.Gameplay
+	mu                     sync.Mutex
+	data                   data.StdBundle
+	store                  *storage.Store
+	monsters               map[string]*Monster
+	occupied               map[monsterPosition]string
+	drops                  map[string]GroundDrop
+	fireFields             map[fireFieldKey]fireField
+	groundEvents           map[int32]SpellGroundEvent
+	spawns                 map[string]*spawnState
+	npcActors              map[string]int32
+	merchantStocks         map[string][]storage.UserItem
+	merchantNextID         map[string]int32
+	pendingSpells          []pendingSpell
+	pendingCharacterDeaths map[string]struct{}
+	nextID                 int
+	nextObjectOrder        uint64
+	nextNPCID              int32
+	nextEventID            int32
+	nextFireFieldID        uint64
+	rand                   *rand.Rand
+	gameplay               config.Gameplay
 }
 
 func (w *World) CanSpellWhileParalyzed() bool {
@@ -121,6 +122,10 @@ type Monster struct {
 	TargetCharacterID   string
 	PendingDeath        bool
 	DeathHitterID       string
+	LastHitterID        string
+	LastHitterAt        time.Time
+	ExpHitterID         string
+	ExpHitterAt         time.Time
 	ObjectOrder         uint64
 	TargetFocusAt       time.Time
 	TransparentUntil    time.Time
@@ -179,7 +184,7 @@ func (w *World) GroundEventsAround(mapID string, x, y, radius int, now time.Time
 	defer w.mu.Unlock()
 	events := make([]SpellGroundEvent, 0, len(w.groundEvents))
 	for _, event := range w.groundEvents {
-		if event.MapID != mapID || !now.Before(event.StartAt.Add(event.Duration)) || abs(event.X-x) > radius || abs(event.Y-y) > radius {
+		if event.MapID != mapID || now.After(event.StartAt.Add(event.Duration)) || abs(event.X-x) > radius || abs(event.Y-y) > radius {
 			continue
 		}
 		events = append(events, event)
@@ -220,6 +225,7 @@ type AttackResult struct {
 	Magic                bool
 	MonsterHealthChanged bool
 	ImpactDelay          time.Duration
+	ImmediateImpact      bool
 	Damage               int
 	MonsterHP            int
 	MonsterMaxHP         int
@@ -239,14 +245,23 @@ type AttackResult struct {
 	LevelUp              bool
 	SkillChanged         bool
 	SkillExp             bool
+	SkillLevelUp         bool
 	SkillMagicID         uint16
 	SkillLevel           byte
 	SkillTrain           int
 	SkillExpDelay        time.Duration
+	SkillExperiences     []AttackSkillExperience
 	Drops                []GroundDrop
 	CharacterHits        []CharacterHit
 	MonsterHits          []AttackResult
 	Character            storage.Character
+}
+
+type AttackSkillExperience struct {
+	MagicID uint16
+	Level   byte
+	Train   int
+	Delay   time.Duration
 }
 
 type SpawnResult struct {
@@ -260,11 +275,13 @@ type PlayerSnapshot struct {
 type TickResult struct {
 	MonsterActions           []MonsterAction
 	CharacterHits            []CharacterHit
+	CharacterDeaths          []storage.Character
 	MonsterHits              []AttackResult
 	MonsterDeaths            []AttackResult
 	AffectedMonsters         []Monster
 	NameMonsters             []Monster
 	NameColorMonsters        []Monster
+	NameColorCharacters      []storage.Character
 	AffectedCharacters       []storage.Character
 	StateRefreshCharacters   []storage.Character
 	StatusRefreshCharacters  []storage.Character
@@ -350,19 +367,23 @@ const (
 )
 
 type CharacterHit struct {
-	Character       storage.Character
-	Connected       bool
-	Magic           bool
-	Damage          int
-	Durability      []SpellDurability
-	FeatureChanged  bool
-	ImpactDelay     time.Duration
-	AttackerID      string
-	AttackerRaceImg int
-	AttackerAppr    int
-	AttackerX       int
-	AttackerY       int
-	Dead            bool
+	Character                storage.Character
+	Connected                bool
+	Magic                    bool
+	Damage                   int
+	Durability               []SpellDurability
+	DeletedItems             []storage.UserItem
+	FeatureChanged           bool
+	ImpactDelay              time.Duration
+	AttackerID               string
+	AttackerActor            int32
+	AttackerRaceImg          int
+	AttackerAppr             int
+	AttackerX                int
+	AttackerY                int
+	AttackerNameColorChanged bool
+	Dead                     bool
+	DeathDeferred            bool
 }
 
 func New(bundle data.StdBundle, store *storage.Store, gameplayConfig ...config.Gameplay) *World {
@@ -372,23 +393,24 @@ func New(bundle data.StdBundle, store *storage.Store, gameplayConfig ...config.G
 	}
 	bundle = normalizeStdBundle(bundle)
 	w := &World{
-		data:            bundle,
-		store:           store,
-		monsters:        map[string]*Monster{},
-		occupied:        map[monsterPosition]string{},
-		drops:           map[string]GroundDrop{},
-		fireFields:      map[fireFieldKey]fireField{},
-		groundEvents:    map[int32]SpellGroundEvent{},
-		spawns:          map[string]*spawnState{},
-		npcActors:       map[string]int32{},
-		merchantStocks:  map[string][]storage.UserItem{},
-		merchantNextID:  map[string]int32{},
-		nextID:          1,
-		nextObjectOrder: 1,
-		nextNPCID:       300000,
-		nextEventID:     400000,
-		rand:            rand.New(rand.NewSource(1)),
-		gameplay:        gameplay,
+		data:                   bundle,
+		store:                  store,
+		monsters:               map[string]*Monster{},
+		occupied:               map[monsterPosition]string{},
+		drops:                  map[string]GroundDrop{},
+		fireFields:             map[fireFieldKey]fireField{},
+		groundEvents:           map[int32]SpellGroundEvent{},
+		spawns:                 map[string]*spawnState{},
+		npcActors:              map[string]int32{},
+		merchantStocks:         map[string][]storage.UserItem{},
+		merchantNextID:         map[string]int32{},
+		pendingCharacterDeaths: map[string]struct{}{},
+		nextID:                 1,
+		nextObjectOrder:        1,
+		nextNPCID:              300000,
+		nextEventID:            400000,
+		rand:                   rand.New(rand.NewSource(1)),
+		gameplay:               gameplay,
 	}
 	w.initNPCActors()
 	w.spawnInitial()
@@ -400,6 +422,16 @@ func (w *World) RegisterCharacter(ch storage.Character) storage.Character {
 	defer w.mu.Unlock()
 	w.refreshCharacterObjectOrderLocked(&ch)
 	return ch
+}
+
+func (w *World) deferCharacterDeathLocked(ch storage.Character) {
+	if ch.ID == "" || ch.HP > 0 {
+		return
+	}
+	if w.pendingCharacterDeaths == nil {
+		w.pendingCharacterDeaths = map[string]struct{}{}
+	}
+	w.pendingCharacterDeaths[ch.ID] = struct{}{}
 }
 
 func (w *World) refreshCharacterObjectOrderLocked(ch *storage.Character) {

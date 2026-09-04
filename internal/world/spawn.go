@@ -69,6 +69,10 @@ func (w *World) respawnLocked(now time.Time) {
 			mon.TargetCharacterID = ""
 			mon.PendingDeath = false
 			mon.DeathHitterID = ""
+			mon.LastHitterID = ""
+			mon.LastHitterAt = time.Time{}
+			mon.ExpHitterID = ""
+			mon.ExpHitterAt = time.Time{}
 			mon.TargetFocusAt = time.Time{}
 			mon.LastAttackAt = time.Time{}
 			mon.LastWalkAt = time.Time{}

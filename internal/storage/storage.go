@@ -55,6 +55,8 @@ type Character struct {
 	IncSpell            int                 `json:"inc_spell,omitempty"`
 	IncHealing          int                 `json:"inc_healing,omitempty"`
 	IncHealthSpellAt    int64               `json:"inc_health_spell_at,omitempty"`
+	PerHealth           int                 `json:"-"`
+	PerSpell            int                 `json:"-"`
 	SpellTick           int                 `json:"-"`
 	SpellTickAt         int64               `json:"-"`
 	Gold                int                 `json:"gold,omitempty"`
@@ -65,6 +67,9 @@ type Character struct {
 	StoneMode           bool                `json:"stone_mode,omitempty"`
 	PKPoint             int                 `json:"pk_point,omitempty"`
 	PKFlag              bool                `json:"pk_flag,omitempty"`
+	PKFlagUntil         int64               `json:"-"`
+	LastHitterID        string              `json:"-"`
+	LastHitterAt        int64               `json:"-"`
 	FreePKArea          bool                `json:"free_pk_area,omitempty"`
 	MapMoveAt           int64               `json:"map_move_at,omitempty"`
 	ObjectOrder         uint64              `json:"object_order,omitempty"`

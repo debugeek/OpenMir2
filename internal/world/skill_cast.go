@@ -38,7 +38,6 @@ type pendingSpell struct {
 	TargetCharacterID     string
 	SetCasterTarget       bool
 	CharacterDamage       bool
-	SingleMagicStrike     bool
 	Healing               int
 	TargetX               int
 	TargetY               int
@@ -78,6 +77,7 @@ const (
 	SpellEventMonsterHit
 	SpellEventMonsterAction
 	SpellEventCharacterHit
+	SpellEventCharacterNameColor
 	SpellEventAffectedCharacter
 	SpellEventHealingGauge
 	SpellEventExperience
@@ -142,6 +142,7 @@ type SpellEvent struct {
 	SkillLevel              byte
 	SkillTrain              int
 	SkillExpDelay           time.Duration
+	SkillExpReplacePending  bool
 	SystemMessage           string
 	SendHealth              bool
 	SendAbility             bool
@@ -176,6 +177,7 @@ type SkillCastResult struct {
 	TargetX                int
 	TargetY                int
 	TargetIDResolved       bool
+	StartTargetID          int32
 	SpellStarted           bool
 	SpellFailed            bool
 	SpaceMoveFireInBranch  bool
@@ -194,6 +196,7 @@ type SkillCastResult struct {
 	SkillChanged           bool
 	SkillLevelUp           bool
 	SkillTraining          bool
+	ChargeActionSucceeded  bool
 	SkillLevel             byte
 	SkillTrain             int
 	DefenceDurationSeconds int
@@ -201,6 +204,7 @@ type SkillCastResult struct {
 	MonsterHits            []AttackResult
 	MonsterActions         []MonsterAction
 	CharacterHits          []CharacterHit
+	NameColorCharacters    []storage.Character
 	AffectedCharacters     []storage.Character
 	HealingGaugeTargets    []SpellHealingGaugeTarget
 	AffectedMonsters       []Monster
@@ -278,7 +282,7 @@ func (w *World) DoCharge(ch storage.Character, dir int, players []storage.Charac
 		result.Character = ch
 		return result, err
 	}
-	skillTrained := ch.X != start.X || ch.Y != start.Y
+	skillTrained := result.ChargeActionSucceeded
 	if skillTrained {
 		previousTrain := state.Train
 		previousLevel := state.Level
@@ -317,6 +321,7 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 		return SkillCastResult{}, fmt.Errorf("skill %s not found", skillID)
 	}
 	now := time.Now()
+	pendingStart := len(w.pendingSpells)
 	if ch.MapID == "" {
 		return SkillCastResult{}, fmt.Errorf("character has no current map")
 	}
@@ -324,13 +329,19 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 		return SkillCastResult{}, fmt.Errorf("invalid spell target")
 	}
 	targetIDResolved := false
+	startTargetID := int32(0)
 	if targetID != 0 {
-		if target, ok := w.characterAtPointLocked(players, ch.MapID, targetX, targetY, targetID); ok {
+		if target, ok := w.spellTargetNearLocked(players, ch.MapID, targetX, targetY, targetID); ok {
 			targetX, targetY = target.X, target.Y
-			targetIDResolved = true
+			startTargetID = targetID
+			targetIDResolved = target.HP > 0
 		} else if target := w.monsterTargetLocked(ch.MapID, targetX, targetY, targetID, 1); target != nil {
 			targetX, targetY = target.X, target.Y
+			startTargetID = targetID
 			targetIDResolved = true
+		} else if target := w.spellMonsterTargetNearLocked(ch.MapID, targetX, targetY, targetID, 1); target != nil {
+			targetX, targetY = target.X, target.Y
+			startTargetID = targetID
 		}
 		if !targetIDResolved {
 			for _, target := range players {
@@ -351,6 +362,9 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 			}
 		}
 	}
+	if targetID != 0 {
+		ch.Dir = Direction(ch.X, ch.Y, targetX, targetY)
+	}
 	cost := w.SpellCost(skill, state)
 	if ch.MP < cost {
 		return SkillCastResult{Character: ch, SkillID: skillID, ManaCost: cost, CooldownMS: skill.Delay}, fmt.Errorf("not enough mp")
@@ -369,28 +383,37 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 		TargetX:          targetX,
 		TargetY:          targetY,
 		TargetIDResolved: targetIDResolved,
+		StartTargetID:    startTargetID,
 		SpellStarted:     false,
 		ManaCost:         cost,
 		ManaConsumed:     cost > 0,
 		CooldownMS:       skill.Delay,
 	}
 	if !w.SpellTargetInRange(ch, targetX, targetY) {
-		result.Events = []SpellEvent{{Kind: SpellEventCasterState, Character: ch, Previous: start, SendHealth: cost > 0}}
-		result.Character = ch
+		if err := w.store.SaveCharacter(result.Character); err != nil {
+			return SkillCastResult{}, err
+		}
 		return result, fmt.Errorf("spell target out of range")
 	}
 	spellStarted := false
 	defer func() {
 		if err != nil && spellStarted {
+			w.pendingSpells = w.pendingSpells[:pendingStart]
 			result.Character = ch
 			result.SkillID = skillID
 			result.TargetX = targetX
 			result.TargetY = targetY
 			result.TargetIDResolved = targetIDResolved
+			result.StartTargetID = startTargetID
 			result.SpellStarted = true
 			result.ManaCost = cost
 			result.ManaConsumed = cost > 0
 			result.CooldownMS = skill.Delay
+			if saveErr := w.store.SaveCharacter(ch); saveErr != nil {
+				result = SkillCastResult{}
+				err = saveErr
+				return
+			}
 			result.Events = w.spellFailureEvents(start, result, skill, targetX, targetY, targetID)
 		}
 	}()
@@ -398,14 +421,8 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 	spellStarted = true
 	magicID, _ := w.MagicIDByName(skillID)
 	if ch.SoftVersionDate == 0 && ch.ClientTick == 0 && magicID > 40 {
-		result.SuppressMagicFire = true
-		result.Character = ch
-		ch.Skills[idx] = state
-		if err := w.store.SaveCharacter(ch); err != nil {
-			return SkillCastResult{}, err
-		}
-		result.Events = w.spellEvents(start, result, skill, targetX, targetY, targetID)
-		return result, nil
+		result.SpellFailed = true
+		return result, fmt.Errorf("skill %s is unsupported by legacy client", skillID)
 	}
 	skillTrained := false
 	poisonApplied := false
@@ -419,7 +436,7 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 				damage := w.spellMonsterDamageLocked(ch, skill, state)
 				w.pendingSpells = append(w.pendingSpells, pendingSpell{DueAt: now.Add(spellDelayMagic), CasterID: ch.ID, TargetMonsterID: mon.ID, TargetX: targetX, TargetY: targetY, Damage: damage, SetCasterTarget: true})
 				result.MagicTargetID = MonsterActorID(*mon)
-				skillTrained = true
+				skillTrained = mon.Race >= 50
 			}
 			result.Character = ch
 			break
@@ -547,7 +564,7 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 		skillTrained = true
 	case "圣言术":
 		mon := w.explicitMonsterTargetLocked(ch.MapID, targetX, targetY, targetID, 1)
-		if mon == nil || !mon.Alive || mon.AdminMode {
+		if mon == nil || !w.isProperMonsterTargetLocked(ch, players, mon) {
 			result.Character = ch
 			break
 		}
@@ -578,6 +595,7 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 			chance = 0
 		}
 		if w.rand.Intn(100) < chance {
+			w.setMonsterLastHitterLocked(mon, ch.ID)
 			mon.HP = 0
 			mon.PendingDeath = true
 			mon.DeathHitterID = ch.ID
@@ -714,8 +732,9 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 		}
 		if validMonster {
 			result.MagicTargetID = MonsterActorID(*mon)
-			ch.TargetID = mon.ID
-			if !poisonChanceOK(w.rand, mon.AntiPoison) {
+			poisonAccepted := poisonChanceOK(w.rand, mon.AntiPoison)
+			if !poisonAccepted {
+				ch.TargetID = mon.ID
 				result.Character = ch
 				break
 			}
@@ -725,6 +744,7 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 				TargetX: targetX, TargetY: targetY, PoisonHealthLevel: poisonHealthLevel,
 				PoisonPoint: poisonPoint, PoisonHealth: applyHealthPoison, PoisonArmor: applyArmorPoison, PoisonDuration: duration,
 			})
+			ch.TargetID = mon.ID
 			result.Character = ch
 			poisonApplied = true
 			skillTrained = true
@@ -734,8 +754,9 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 			return result, fmt.Errorf("no valid poison target")
 		}
 		result.MagicTargetID = CharacterActorID(target)
-		ch.TargetID = target.ID
-		if !poisonChanceOK(w.rand, w.poisonAvoidanceLocked(target)+target.AntiPoison) {
+		poisonAccepted := poisonChanceOK(w.rand, w.poisonAvoidanceLocked(target)+target.AntiPoison)
+		if !poisonAccepted {
+			ch.TargetID = target.ID
 			result.Character = ch
 			break
 		}
@@ -743,8 +764,9 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 		w.pendingSpells = append(w.pendingSpells, pendingSpell{
 			DueAt: now.Add(time.Second), CasterID: ch.ID, TargetCharacterID: target.ID,
 			TargetX: targetX, TargetY: targetY, PoisonHealthLevel: poisonHealthLevel,
-			PoisonPoint: poisonPoint, PoisonHealth: applyHealthPoison, PoisonArmor: applyArmorPoison, PoisonDuration: duration,
+			PoisonPoint: poisonPoint, PoisonHealth: applyHealthPoison, PoisonArmor: applyArmorPoison, PoisonDuration: duration, PoisonNotification: true,
 		})
+		ch.TargetID = target.ID
 		result.Character = ch
 		poisonApplied = true
 		skillTrained = true
@@ -760,7 +782,7 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 			damage := w.spellSpiritDamageLocked(ch, skill, state)
 			w.pendingSpells = append(w.pendingSpells, pendingSpell{DueAt: now.Add(1200 * time.Millisecond), CasterID: ch.ID, TargetMonsterID: mon.ID, TargetX: targetX, TargetY: targetY, Damage: damage, SetCasterTarget: true})
 			result.MagicTargetID = MonsterActorID(*mon)
-			skillTrained = true
+			skillTrained = mon.Race >= 50
 			break
 		}
 		target, ok := w.explicitCharacterTargetLocked(players, ch.MapID, targetX, targetY, targetID)
@@ -783,7 +805,7 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 			}
 			w.pendingSpells = append(w.pendingSpells, pendingSpell{DueAt: now.Add(spellDelayMagic), CasterID: ch.ID, TargetMonsterID: mon.ID, TargetX: targetX, TargetY: targetY, Damage: damage, SetCasterTarget: true})
 			result.MagicTargetID = MonsterActorID(*mon)
-			skillTrained = true
+			skillTrained = mon.Race >= 50
 			break
 		}
 		target, ok := w.explicitCharacterTargetLocked(players, ch.MapID, targetX, targetY, targetID)
@@ -796,7 +818,11 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 		result.MagicTargetID = CharacterActorID(target)
 	case "疾光电影":
 		var hit bool
-		ch, hit, err = w.castLightningLineSkillLocked(&result, ch, skill, state, players, int32(targetX), int32(targetY), targetID, skillLightningRange, true, now)
+		lineTargetID := int32(0)
+		if targetIDResolved {
+			lineTargetID = targetID
+		}
+		ch, hit, err = w.castLightningLineSkillLocked(&result, ch, skill, state, players, int32(targetX), int32(targetY), lineTargetID, skillLightningRange, true, now)
 		if err != nil {
 			return SkillCastResult{}, err
 		}
@@ -827,14 +853,12 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 		skillTrained = fireWallCreated > 0
 	case "召唤骷髅", "召唤神兽":
 		templateID := "骷髅"
+		amuletCost := uint16(1)
 		if skillID == "召唤神兽" {
 			templateID = "神兽"
+			amuletCost = 5
 		}
-		amuletCount := uint16(1)
-		if skillID == "召唤神兽" {
-			amuletCount = 5
-		}
-		if !w.consumeMagicAmuletLocked(&ch, amuletCount) {
+		if !w.consumeMagicAmuletLocked(&ch, amuletCost) {
 			result.Character = ch
 			result.SpellFailed = true
 			break
@@ -918,7 +942,6 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 									target.AttackIntervalMS = attackLimit
 								}
 								result.AffectedMonsters = []Monster{*target}
-								result.NameColorMonsters = []Monster{*target}
 								result.NameMonsters = []Monster{*target}
 							} else if w.rand.Intn(14) == 0 {
 								target.HP = 0
@@ -952,7 +975,11 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 		result.Character = ch
 	case "地狱火":
 		var hit bool
-		ch, hit, err = w.castLightningLineSkillLocked(&result, ch, skill, state, players, int32(targetX), int32(targetY), 0, 5, false, now)
+		lineTargetID := int32(0)
+		if targetIDResolved {
+			lineTargetID = targetID
+		}
+		ch, hit, err = w.castLightningLineSkillLocked(&result, ch, skill, state, players, int32(targetX), int32(targetY), lineTargetID, 5, false, now)
 		if err != nil {
 			return result, err
 		}
@@ -1001,8 +1028,22 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 		if w.rand.Intn(2)+ch.Level-1 > level && w.rand.Intn(100) < maxInt(10, int(state.Level)*7+15+ch.Level-level) && w.rand.Intn(21) < int(state.Level)*2+4 {
 			second := first
 			if mon == nil {
+				target.LastHitterID = ch.ID
+				target.LastHitterAt = now.UnixNano()
+				for i := range players {
+					if players[i].ID == target.ID {
+						players[i] = target
+						break
+					}
+				}
+				if err := w.store.SaveCharacter(target); err != nil {
+					return result, err
+				}
 				ch.PKFlag = true
+				ch.PKFlagUntil = now.Add(60 * time.Second).UnixNano()
 				ch.TargetID = target.ID
+			} else {
+				w.setMonsterLastHitterLocked(mon, ch.ID)
 			}
 			if mon != nil {
 				second.Damage = w.monsterMagicDamageAfterDefenseLocked(mon, power)
@@ -1060,6 +1101,11 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 		}
 		result.SkillTraining = state.Train != previousTrain || state.Level != previousLevel
 	}
+	if stored, ok := w.store.Character(ch.ID); ok && !start.PKFlag && stored.PKFlag {
+		ch.PKFlag = stored.PKFlag
+		ch.PKFlagUntil = stored.PKFlagUntil
+		result.NameColorCharacters = append(result.NameColorCharacters, stored)
+	}
 	ch.Skills[idx] = state
 	result.Character = ch
 	result.SkillLevel = state.Level
@@ -1077,8 +1123,8 @@ func (w *World) spellEvents(previous storage.Character, result SkillCastResult, 
 	magicID, _ := w.MagicIDByName(result.SkillID)
 	casterState := previous
 	casterState.MP = result.Character.MP
-	startTargetID := int32(0)
-	if targetID == 0 || result.TargetIDResolved {
+	startTargetID := result.StartTargetID
+	if startTargetID == 0 && (targetID == 0 || result.TargetIDResolved) {
 		startTargetID = targetID
 	}
 	magicTargetID := int32(0)
@@ -1087,7 +1133,7 @@ func (w *World) spellEvents(previous storage.Character, result SkillCastResult, 
 	} else if result.TargetIDResolved {
 		magicTargetID = targetID
 	}
-	if magicTargetID == 0 && (result.SkillID == "治愈术" || result.SkillID == "群体治疗术") {
+	if magicTargetID == 0 && result.SkillID == "治愈术" {
 		magicTargetID = CharacterActorID(result.Character)
 	}
 	events := make([]SpellEvent, 0, 16)
@@ -1095,35 +1141,34 @@ func (w *World) spellEvents(previous storage.Character, result SkillCastResult, 
 	if result.SkillID != "野蛮冲撞" {
 		events = append(events, SpellEvent{Kind: SpellEventStart, Caster: previous, MagicID: magicID, Effect: skill.Effect, TargetX: targetX, TargetY: targetY, TargetID: startTargetID})
 	}
-	slots := make([]int, 0, len(previous.EquippedItems))
-	for slot := range previous.EquippedItems {
-		slots = append(slots, slot)
-	}
-	sort.Ints(slots)
-	for _, slot := range slots {
-		before := previous.EquippedItems[slot]
-		after, ok := result.Character.EquippedItems[slot]
-		if !ok {
-			events = append(events, SpellEvent{Kind: SpellEventItemDelete, Character: result.Character, DeletedItem: before})
-			continue
+	appendEquipmentEvents := func() {
+		slots := make([]int, 0, len(previous.EquippedItems))
+		for slot := range previous.EquippedItems {
+			slots = append(slots, slot)
 		}
-		if before.Dura != after.Dura || before.DuraMax != after.DuraMax {
-			events = append(events, SpellEvent{Kind: SpellEventDurability, Character: result.Character, Durability: SpellDurability{Slot: slot, Dura: after.Dura, DuraMax: after.DuraMax}})
+		sort.Ints(slots)
+		for _, slot := range slots {
+			before := previous.EquippedItems[slot]
+			after, ok := result.Character.EquippedItems[slot]
+			if !ok {
+				events = append(events, SpellEvent{Kind: SpellEventItemDelete, Character: result.Character, DeletedItem: before})
+				continue
+			}
+			if before.Dura != after.Dura || before.DuraMax != after.DuraMax {
+				events = append(events, SpellEvent{Kind: SpellEventDurability, Character: result.Character, Durability: SpellDurability{Slot: slot, Dura: after.Dura, DuraMax: after.DuraMax}})
+			}
 		}
 	}
-	appendMagicFire := func() {
+	appendEquipmentEvents()
+	appendMagicFire := func(caster storage.Character) {
 		fireX, fireY := targetX, targetY
 		if result.MagicFireTargetSet {
 			fireX, fireY = result.MagicFireTargetX, result.MagicFireTargetY
 		}
-		events = append(events, SpellEvent{Kind: SpellEventMagicFire, Caster: result.Character, MagicID: magicID, Effect: skill.Effect, TargetX: fireX, TargetY: fireY, TargetID: magicTargetID})
-	}
-	magicFireSent := false
-	if result.SpaceMoveMagicFire {
-		events = append(events, SpellEvent{Kind: SpellEventMagicFire, Caster: previous, MagicID: magicID, Effect: skill.Effect, TargetX: targetX, TargetY: targetY, TargetID: magicTargetID})
-		magicFireSent = true
+		events = append(events, SpellEvent{Kind: SpellEventMagicFire, Caster: caster, MagicID: magicID, Effect: skill.Effect, TargetX: fireX, TargetY: fireY, TargetID: magicTargetID})
 	}
 	if result.SpaceMoveFireInBranch {
+		appendMagicFire(previous)
 		events = append(events, SpellEvent{Kind: SpellEventSpaceMoveFire, Caster: previous})
 	}
 	if len(result.OrderedEvents) > 0 {
@@ -1167,7 +1212,7 @@ func (w *World) spellEvents(previous storage.Character, result SkillCastResult, 
 			Character:               ch,
 			SendHealth:              result.SkillID != "治愈术" && result.SkillID != "群体治疗术" && result.SkillID != "心灵启示" && result.SkillID != "神圣战甲术" && result.SkillID != "幽灵盾" && ch.ID != result.Character.ID,
 			SendAbility:             result.SkillID == "神圣战甲术" || result.SkillID == "幽灵盾",
-			SendStatus:              result.SkillID == "神圣战甲术" || result.SkillID == "幽灵盾",
+			SendStatus:              false,
 			SystemMessage:           defenceSystemMessage(result.SkillID, result.DefenceDurationSeconds),
 			SuppressStatusBroadcast: result.SkillID == "神圣战甲术" || result.SkillID == "幽灵盾",
 			SendUserState:           false,
@@ -1268,11 +1313,14 @@ func (w *World) spellEvents(previous storage.Character, result SkillCastResult, 
 			events = append(events, SpellEvent{Kind: SpellEventCharacterHit, Character: result.Character, CharacterHit: hit})
 		}
 	}
+	for _, ch := range result.NameColorCharacters {
+		events = append(events, SpellEvent{Kind: SpellEventCharacterNameColor, Character: ch})
+	}
 	for _, mon := range result.SummonedMonsters {
 		events = append(events, SpellEvent{Kind: SpellEventSummon, Monster: mon})
 	}
-	if result.SkillID != "野蛮冲撞" && !result.SuppressMagicFire && !magicFireSent {
-		appendMagicFire()
+	if result.SkillID != "野蛮冲撞" && !result.SuppressMagicFire && !result.SpaceMoveFireInBranch {
+		appendMagicFire(result.Character)
 	}
 	if result.Experience > 0 {
 		events = append(events, SpellEvent{Kind: SpellEventExperience, Character: result.Character, Experience: result.Experience, CurrentExp: result.CurrentExp})
@@ -1282,7 +1330,7 @@ func (w *World) spellEvents(previous storage.Character, result SkillCastResult, 
 		if result.SkillLevelUp {
 			delay = 800 * time.Millisecond
 		}
-		events = append(events, SpellEvent{Kind: SpellEventSkillExp, MagicID: magicID, SkillLevel: result.SkillLevel, SkillTrain: result.SkillTrain, SkillExpDelay: delay, Character: result.Character})
+		events = append(events, SpellEvent{Kind: SpellEventSkillExp, MagicID: magicID, SkillLevel: result.SkillLevel, SkillTrain: result.SkillTrain, SkillExpDelay: delay, SkillExpReplacePending: result.SkillLevelUp, Character: result.Character})
 	}
 	if result.LevelUp {
 		events = append(events, SpellEvent{Kind: SpellEventLevelUp, Character: result.Character})
@@ -1294,14 +1342,16 @@ func (w *World) spellFailureEvents(previous storage.Character, result SkillCastR
 	magicID, _ := w.MagicIDByName(result.SkillID)
 	casterState := previous
 	casterState.MP = result.Character.MP
+	startTargetID := result.StartTargetID
+	if startTargetID == 0 && (targetID == 0 || result.TargetIDResolved) {
+		startTargetID = targetID
+	}
 	magicTargetID := result.MagicTargetID
 	if magicTargetID == 0 && (targetID == 0 || result.TargetIDResolved) {
 		magicTargetID = targetID
 	}
-	events := []SpellEvent{
-		{Kind: SpellEventCasterState, Character: casterState, Previous: previous, SendHealth: result.ManaConsumed},
-		{Kind: SpellEventStart, Caster: previous, MagicID: magicID, Effect: skill.Effect, TargetX: targetX, TargetY: targetY, TargetID: magicTargetID},
-	}
+	events := []SpellEvent{{Kind: SpellEventCasterState, Character: casterState, Previous: previous, SendHealth: result.ManaConsumed}}
+	events = append(events, SpellEvent{Kind: SpellEventStart, Caster: previous, MagicID: magicID, Effect: skill.Effect, TargetX: targetX, TargetY: targetY, TargetID: startTargetID})
 	slots := make([]int, 0, len(previous.EquippedItems))
 	for slot := range previous.EquippedItems {
 		slots = append(slots, slot)
@@ -1351,7 +1401,7 @@ func (w *World) applySkillTrainingLocked(charLevel int, skill data.StdSkill, sta
 	if needLevel <= 0 || charLevel < needLevel {
 		return false
 	}
-	state.Train = minInt(65535, state.Train+points)
+	state.Train += points
 	w.advanceSkillTrainingLocked(skill, state)
 	return true
 }
@@ -1436,7 +1486,7 @@ func (w *World) queueGroupHealingLocked(caster storage.Character, players []stor
 			playerByID[target.ID] = target
 		}
 	}
-	for _, target := range w.spellAreaTargetsIncludingDeadLocked(players, caster.MapID, targetX, targetY, 1) {
+	for _, target := range w.spellAreaTargetsLocked(players, caster.MapID, targetX, targetY, 1) {
 		if target.Character != nil {
 			if !w.isProperFriendLocked(caster, *target.Character) || target.Character.HP >= target.Character.MaxHP {
 				continue
@@ -1473,7 +1523,7 @@ func (w *World) healingGaugeTargetsLocked(caster storage.Character, players []st
 			playerByID[target.ID] = target
 		}
 	}
-	for _, areaTarget := range w.spellAreaTargetsIncludingDeadLocked(players, caster.MapID, targetX, targetY, 1) {
+	for _, areaTarget := range w.spellAreaTargetsLocked(players, caster.MapID, targetX, targetY, 1) {
 		if areaTarget.Character != nil {
 			if !w.isProperFriendLocked(caster, *areaTarget.Character) {
 				continue
@@ -1497,7 +1547,12 @@ func (w *World) healingGaugeTargetsLocked(caster storage.Character, players []st
 
 func (w *World) groupDefenceDurationLocked(ch storage.Character, skill data.StdSkill, state storage.SkillState) time.Duration {
 	combat := w.combatStatsLocked(ch)
-	duration := w.spellPower13Locked(60, skill, state) + combat.SC*10
+	low := combat.SC * 10
+	rangeSize := combat.SCMax - combat.SC + 1
+	if rangeSize < 1 {
+		rangeSize = 1
+	}
+	duration := w.attackPowerLocked(combat, w.spellPower13Locked(60, skill, state)+low, rangeSize)
 	if duration < 1 {
 		duration = 1
 	}
@@ -1532,7 +1587,7 @@ func (w *World) groupDefenceCharactersLocked(caster storage.Character, skill dat
 		}
 		return expires
 	}
-	for _, target := range w.spellAreaTargetsIncludingDeadLocked(players, caster.MapID, targetX, targetY, 3) {
+	for _, target := range w.spellAreaTargetsWithLifeFilterLocked(players, caster.MapID, targetX, targetY, 3, false) {
 		if target.Character != nil {
 			ch := *target.Character
 			if !w.isProperFriendLocked(caster, ch) {
@@ -1629,6 +1684,30 @@ func (w *World) explicitMonsterTargetLocked(mapID string, x, y int, targetID int
 	return w.monsterTargetLocked(mapID, x, y, targetID, radius)
 }
 
+func (w *World) spellTargetNearLocked(players []storage.Character, mapID string, x, y int, targetID int32) (storage.Character, bool) {
+	for _, target := range players {
+		if target.ID == "" || target.MapID != mapID || CharacterActorID(target) != targetID {
+			continue
+		}
+		if abs(target.X-x) <= 1 && abs(target.Y-y) <= 1 {
+			return target, true
+		}
+	}
+	return storage.Character{}, false
+}
+
+func (w *World) spellMonsterTargetNearLocked(mapID string, x, y int, targetID int32, radius int) *Monster {
+	for _, mon := range w.monsters {
+		if mon == nil || mon.MapID != mapID || MonsterActorID(*mon) != targetID {
+			continue
+		}
+		if abs(mon.X-x) <= radius && abs(mon.Y-y) <= radius {
+			return mon
+		}
+	}
+	return nil
+}
+
 func (w *World) explicitCharacterTargetLocked(players []storage.Character, mapID string, x, y int, targetID int32) (storage.Character, bool) {
 	if targetID == 0 {
 		return storage.Character{}, false
@@ -1640,19 +1719,33 @@ func (w *World) isProperFriendLocked(a, b storage.Character) bool {
 	if a.ID == "" || b.ID == "" {
 		return false
 	}
-	if a.ID == b.ID {
+	switch a.AttackMode {
+	case 0, 1:
 		return true
-	}
-	if a.AttackMode == 0 || a.AttackMode == 1 {
-		return true
-	}
-	if a.GroupOwnerID == "" || b.GroupOwnerID == "" {
+	case 2:
+		if a.ID == b.ID {
+			return true
+		}
+		if a.GroupOwnerID == "" || b.GroupOwnerID == "" {
+			return false
+		}
+		return a.GroupOwnerID == b.ID || b.GroupOwnerID == a.ID || a.GroupOwnerID == b.GroupOwnerID
+	case 3:
+		if a.ID == b.ID || (a.GuildID != "" && a.GuildID == b.GuildID) {
+			return true
+		}
+		return a.GuildWarArea && b.GuildWarArea && a.GuildAllianceID != "" && a.GuildAllianceID == b.GuildAllianceID
+	case 4:
+		if a.ID == b.ID {
+			return true
+		}
+		if characterPKLevel(a) >= 2 {
+			return characterPKLevel(b) < 2
+		}
+		return characterPKLevel(b) >= 2
+	default:
 		return false
 	}
-	if a.GroupOwnerID == b.ID || b.GroupOwnerID == a.ID {
-		return true
-	}
-	return a.GroupOwnerID == b.GroupOwnerID
 }
 
 func (w *World) isFriendlySummonedMonsterLocked(caster storage.Character, players []storage.Character, mon *Monster) bool {
@@ -1713,11 +1806,7 @@ func (w *World) spellSpiritDamageLocked(ch storage.Character, skill data.StdSkil
 	if high < low {
 		high = low
 	}
-	if high > low {
-		damage += w.attackPowerLocked(combat, low, high-low+1)
-	} else {
-		damage += low
-	}
+	damage = w.attackPowerLocked(combat, damage+low, high-low+1)
 	if damage < 1 {
 		damage = 1
 	}
@@ -1732,11 +1821,7 @@ func (w *World) spellDamageLocked(ch storage.Character, skill data.StdSkill, sta
 	if high < low {
 		high = low
 	}
-	if high > low {
-		damage += w.attackPowerLocked(combat, low, high-low+1)
-	} else {
-		damage += low
-	}
+	damage = w.attackPowerLocked(combat, damage+low, high-low+1)
 	if damage < 1 {
 		damage = 1
 	}

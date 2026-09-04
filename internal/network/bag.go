@@ -30,6 +30,22 @@ func (s *Server) sendBagAddItem(conn net.Conn, ch storage.Character, itemID stri
 	return false
 }
 
+func (s *Server) sendDelItem(conn net.Conn, ch storage.Character, removed storage.UserItem) bool {
+	item, ok := s.world.Item(removed.ItemID)
+	if !ok {
+		return false
+	}
+	item = world.UpgradeClientItemForDisplay(item, removed, false)
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMDelItem, Recog: world.CharacterActorID(ch), Series: 1}, EncodeBuffer(ClientItemBody(item, removed.Desc, removed.MakeIndex, removed.Dura, removed.DuraMax)))
+	return true
+}
+
+func (s *Server) sendCharacterDeletedItems(conn net.Conn, ch storage.Character, removed []storage.UserItem) {
+	for _, item := range removed {
+		s.sendDelItem(conn, ch, item)
+	}
+}
+
 func (s *Server) sendEquippedItems(conn net.Conn, ch storage.Character) {
 	body := EquippedItemsBody(s.world, ch)
 	if len(body) == 0 {

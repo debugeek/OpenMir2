@@ -12,30 +12,24 @@ type AttackSyncer interface {
 	SendWinExp(int, int)
 	SendLevelUp(storage.Character)
 	SendHealthSpellChanged(storage.Character)
-	SendDurability(storage.Character, SpellDurability)
+	SendCharacterHitChanges(CharacterHit)
 	BroadcastCharacterHit(storage.Character, uint16)
 	BroadcastCharacterStruck(CharacterHit)
+	BroadcastCharacterNameColor(storage.Character)
 	BroadcastHitImpact(AttackResult)
 	SendSkillExp(uint16, byte, int, time.Duration)
 }
 
 func ApplyAttackSync(syncer AttackSyncer, result AttackResult, attackIdent uint16) {
 	syncer.UpdateClient(result.Character)
-	if result.Experience > 0 {
-		syncer.SendWinExp(result.Experience, result.CurrentExp)
-	}
-	if result.LevelUp {
-		syncer.SendLevelUp(result.Character)
-		syncer.SendHealthSpellChanged(result.Character)
-	}
 	for _, hit := range result.CharacterHits {
-		for _, durability := range hit.Durability {
-			syncer.SendDurability(hit.Character, durability)
-		}
+		syncer.SendCharacterHitChanges(hit)
 	}
 	syncer.BroadcastCharacterHit(result.Character, attackIdent)
 	for _, hit := range result.CharacterHits {
-		syncer.BroadcastCharacterStruck(hit)
+		if hit.Damage > 0 {
+			syncer.BroadcastCharacterStruck(hit)
+		}
 	}
 	if len(result.MonsterHits) > 0 {
 		for _, hit := range result.MonsterHits {
@@ -47,7 +41,22 @@ func ApplyAttackSync(syncer AttackSyncer, result AttackResult, attackIdent uint1
 		syncer.BroadcastHitImpact(result)
 	}
 	syncer.SendActionOK()
-	if result.SkillExp {
+	for _, hit := range result.CharacterHits {
+		if hit.Damage > 0 && hit.AttackerNameColorChanged {
+			syncer.BroadcastCharacterNameColor(result.Character)
+		}
+	}
+	if result.Experience > 0 {
+		syncer.SendWinExp(result.Experience, result.CurrentExp)
+	}
+	if result.LevelUp {
+		syncer.SendLevelUp(result.Character)
+		syncer.SendHealthSpellChanged(result.Character)
+	}
+	for _, skillExp := range result.SkillExperiences {
+		syncer.SendSkillExp(skillExp.MagicID, skillExp.Level, skillExp.Train, skillExp.Delay)
+	}
+	if result.SkillExp && len(result.SkillExperiences) == 0 {
 		syncer.SendSkillExp(result.SkillMagicID, result.SkillLevel, result.SkillTrain, result.SkillExpDelay)
 	}
 }

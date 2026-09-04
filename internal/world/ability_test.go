@@ -3,6 +3,7 @@ package world
 import (
 	"testing"
 
+	"openmir2/internal/data"
 	"openmir2/internal/storage"
 )
 
@@ -81,6 +82,29 @@ func TestTemporaryCombatBonusesUseReferenceOffset(t *testing.T) {
 	combat := world.CombatStats(ch)
 	if combat.DCMax != 5 || combat.MCMax != 6 || combat.SCMax != 7 {
 		t.Fatalf("temporary combat stats = %+v, want DC/MC/SC max 5/6/7", combat)
+	}
+}
+
+func TestSubAbilityStatsUsesReferenceCharacterDefaults(t *testing.T) {
+	w := &World{}
+	ch := storage.Character{Class: "taoist", Level: 1, AntiPoison: 4, BonusAbil: storage.BonusAbility{Hit: 2, Speed: 3}}
+	got := w.SubAbilityStats(ch)
+	if got.AntiMagic != 1 || got.HitPoint != 7 || got.SpeedPoint != 21 || got.AntiPoison != 4 || got.PoisonRecover != 0 || got.HealthRecover != 0 || got.SpellRecover != 0 {
+		t.Fatalf("SubAbilityStats = %+v, want reference defaults and derived hit/speed values", got)
+	}
+}
+
+func TestSubAbilityStatsIncludesEquippedResistances(t *testing.T) {
+	w := &World{data: data.StdBundle{Items: map[string]data.StdItem{
+		"amulet": {ID: "amulet", StdMode: 10, MgAvoid: 2, ToxAvoid: 3},
+	}}}
+	entry := storage.UserItem{ItemID: "amulet"}
+	entry.Desc[12] = 4
+	entry.Desc[13] = 5
+	ch := storage.Character{Class: "warrior", Level: 1, AntiPoison: 4, EquippedItems: map[int]storage.UserItem{SlotNecklace: entry}}
+	got := w.SubAbilityStats(ch)
+	if got.AntiMagic != 7 || got.AntiPoison != 12 {
+		t.Fatalf("SubAbilityStats resistances = %+v, want anti-magic/poison 7/12", got)
 	}
 }
 

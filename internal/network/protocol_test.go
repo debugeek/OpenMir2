@@ -80,6 +80,29 @@ func TestAbilityEncodesFieldsAtReferenceOffsets(t *testing.T) {
 	}
 }
 
+func TestOldAbilityEncodesReferenceLegacyLayout(t *testing.T) {
+	body := OldAbility(world.AbilityStats{
+		Level: 300, AC: 0x012c, MAC: 5, DC: 6, MC: 7, SC: 8,
+		HP: 30, MP: 20, MaxHP: 35, MaxMP: 25,
+		Exp: 100, MaxExp: 200, WearWeight: 300, MaxWearWeight: 400,
+	})
+	if got := binary.LittleEndian.Uint16(body[0:2]); got != 300 {
+		t.Fatalf("legacy Level = %d, want 300", got)
+	}
+	if got := binary.LittleEndian.Uint16(body[2:4]); got != 0x00ff {
+		t.Fatalf("legacy AC = %#x, want %#x", got, 0x00ff)
+	}
+	if got := binary.LittleEndian.Uint16(body[12:14]); got != 30 {
+		t.Fatalf("legacy HP = %d, want 30", got)
+	}
+	if got := binary.LittleEndian.Uint32(body[24:28]); got != 100 {
+		t.Fatalf("legacy Exp = %d, want 100", got)
+	}
+	if body[36] != 255 || body[37] != 255 {
+		t.Fatalf("legacy byte weights = %d/%d, want 255/255", body[36], body[37])
+	}
+}
+
 func TestMessageBodyWLLength(t *testing.T) {
 	if got := len(MessageBodyWL(0, 0, 0, 0)); got != 16 {
 		t.Fatalf("MessageBodyWL length = %d, want 16", got)

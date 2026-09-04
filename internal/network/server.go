@@ -31,8 +31,6 @@ const magicHitInterval = 800 * time.Millisecond
 const actionInterval = 350 * time.Millisecond
 const runMagicInterval = 900 * time.Millisecond
 
-const maxPendingSpellMessages = 1
-
 const (
 	SlotDress  = world.SlotDress
 	SlotWeapon = world.SlotWeapon
@@ -51,12 +49,15 @@ type Server struct {
 	world      *world.World
 	log        *slog.Logger
 
-	sessionMu  sync.Mutex
-	sessions   map[int32]string
-	clientMu   sync.Mutex
-	clients    map[net.Conn]*Client
-	spellRefMu sync.Mutex
-	spellRefs  map[string]spellRefSnapshot
+	sessionMu   sync.Mutex
+	sessions    map[int32]string
+	clientMu    sync.Mutex
+	clients     map[net.Conn]*Client
+	closed      map[net.Conn]struct{}
+	spellRefMu  sync.Mutex
+	spellRefs   map[string]spellRefSnapshot
+	skillExpMu  sync.Mutex
+	skillExpGen map[string]uint64
 
 	hitImpactDelay      time.Duration
 	monsterTickInterval time.Duration
@@ -94,40 +95,42 @@ type spellSkillExpEvent struct {
 }
 
 type spellObjectMessage struct {
-	kind             spellObjectMessageKind
-	start            spellStartEvent
-	magicFire        spellMagicFireEvent
-	magicFireFail    storage.Character
-	state            storage.Character
-	monsterState     world.Monster
-	monsterStatus    world.Monster
-	monsterNameColor world.Monster
-	monsterUsername  world.Monster
-	teleportFrom     storage.Character
-	teleportTo       storage.Character
-	monsterAction    world.MonsterAction
-	summoned         world.Monster
-	status           storage.Character
-	health           storage.Character
-	healthMonster    world.Monster
-	ability          storage.Character
-	gauge            storage.Character
-	gaugeMonster     world.Monster
-	rush             world.SpellRush
-	spellHit         world.CharacterHit
-	caster           storage.Character
-	monsterHit       world.AttackResult
-	drops            []world.GroundDrop
-	durability       world.SpellDurability
-	experience       int
-	currentExp       int
-	levelUp          storage.Character
-	skillExp         spellSkillExpEvent
-	characterPush    world.CharacterPush
-	monsterPush      world.MonsterAction
-	ground           world.SpellGroundEvent
-	groundHideID     int32
-	spaceMove        storage.Character
+	kind               spellObjectMessageKind
+	start              spellStartEvent
+	magicFire          spellMagicFireEvent
+	magicFireFail      storage.Character
+	state              storage.Character
+	characterNameColor storage.Character
+	monsterState       world.Monster
+	monsterStatus      world.Monster
+	monsterNameColor   world.Monster
+	monsterUsername    world.Monster
+	teleportFrom       storage.Character
+	teleportTo         storage.Character
+	monsterAction      world.MonsterAction
+	summoned           world.Monster
+	status             storage.Character
+	health             storage.Character
+	healthMonster      world.Monster
+	ability            storage.Character
+	gauge              storage.Character
+	gaugeMonster       world.Monster
+	rush               world.SpellRush
+	spellHit           world.CharacterHit
+	caster             storage.Character
+	monsterHit         world.AttackResult
+	drops              []world.GroundDrop
+	durability         world.SpellDurability
+	experience         int
+	currentExp         int
+	levelUp            storage.Character
+	skillExp           spellSkillExpEvent
+	characterPush      world.CharacterPush
+	monsterPush        world.MonsterAction
+	ground             world.SpellGroundEvent
+	groundHideID       int32
+	spaceMove          storage.Character
+	characterDeath     storage.Character
 }
 
 const clientOutputQueueSize = 256
@@ -142,6 +145,7 @@ const (
 	spellObjectMessageSpaceMoveMapChange
 	spellObjectMessageSpaceMoveShow
 	spellObjectMessageState
+	spellObjectMessageCharacterNameColor
 	spellObjectMessageMonsterState
 	spellObjectMessageMonsterStatus
 	spellObjectMessageMonsterNameColor
@@ -168,10 +172,11 @@ const (
 	spellObjectMessageMonsterPush
 	spellObjectMessageGroundShow
 	spellObjectMessageGroundHide
+	spellObjectMessageCharacterDeath
 )
 
 func New(serverName string, listeners []config.Listener, store *storage.Store, world *world.World, log *slog.Logger) *Server {
-	return &Server{serverName: serverName, listeners: listeners, store: store, world: world, log: log, sessions: map[int32]string{}, clients: map[net.Conn]*Client{}, spellRefs: map[string]spellRefSnapshot{}, hitImpactDelay: 200 * time.Millisecond, monsterTickInterval: 100 * time.Millisecond}
+	return &Server{serverName: serverName, listeners: listeners, store: store, world: world, log: log, sessions: map[int32]string{}, clients: map[net.Conn]*Client{}, closed: map[net.Conn]struct{}{}, spellRefs: map[string]spellRefSnapshot{}, skillExpGen: map[string]uint64{}, hitImpactDelay: 200 * time.Millisecond, monsterTickInterval: 100 * time.Millisecond}
 }
 
 func (s *Server) SetHitImpactDelay(delay time.Duration) {
@@ -211,6 +216,7 @@ type Client struct {
 	struckAt              time.Time
 	chargeAt              time.Time
 	probeLatestAt         time.Time
+	closed                bool
 	spellMessages         chan spellObjectMessage
 	spellQueue            []spellObjectMessage
 	spellQueueCond        *sync.Cond
@@ -338,8 +344,9 @@ func (a itemUseSyncAdapter) SendGlobalHear(ch storage.Character, msg string) {
 }
 
 type attackSyncAdapter struct {
-	s    *Server
-	conn net.Conn
+	s           *Server
+	conn        net.Conn
+	characterID string
 }
 
 func (a attackSyncAdapter) UpdateClient(ch storage.Character) {
@@ -362,9 +369,19 @@ func (a attackSyncAdapter) SendHealthSpellChanged(ch storage.Character) {
 	a.s.sendHealthSpellChanged(a.conn, world.CharacterActorID(ch), a.s.world.AbilityStats(ch))
 }
 
-func (a attackSyncAdapter) SendDurability(ch storage.Character, durability world.SpellDurability) {
-	if client, ok := a.s.ClientByCharacterID(ch.ID); ok {
-		client.enqueueSpellMessage(a.s, spellObjectMessage{kind: spellObjectMessageDurability, durability: durability})
+func (a attackSyncAdapter) SendCharacterHitChanges(hit world.CharacterHit) {
+	if client, ok := a.s.ClientByCharacterID(hit.Character.ID); ok {
+		a.s.sendCharacterDeletedItems(client.conn, hit.Character, hit.DeletedItems)
+		if hit.FeatureChanged {
+			client.sendCharacterStateRefresh(a.s, hit.Character)
+		}
+		for _, durability := range hit.Durability {
+			a.s.sendCommand(client.conn, DurabilityCommand(durability), nil)
+		}
+	}
+	if hit.FeatureChanged {
+		a.s.updateClientByCharacterID(hit.Character)
+		a.s.broadcastCharacterStateRefreshExcept(hit.Character, hit.Character.ID)
 	}
 }
 
@@ -372,25 +389,30 @@ func (a attackSyncAdapter) SendSkillExp(magicID uint16, level byte, train int, d
 	if delay <= 0 {
 		delay = 3 * time.Second
 	}
-	time.AfterFunc(delay, func() {
-		a.s.sendMagicLevelExp(a.conn, magicID, level, train)
-	})
+	a.s.scheduleSkillExp(a.characterID, magicID, level, train, delay, delay == 800*time.Millisecond)
 }
 
 func (a attackSyncAdapter) BroadcastCharacterHit(ch storage.Character, attackIdent uint16) {
-	if clients := a.s.ClientsAroundExcept(ch.MapID, ch.X, ch.Y, playerViewRange, a.conn); len(clients) > 0 {
-		a.s.broadcastCharacterHit(clients, ch, attackIdent)
+	clients := a.s.spellRefClients(ch)
+	filtered := make([]*Client, 0, len(clients))
+	for _, client := range clients {
+		if client.conn != a.conn {
+			filtered = append(filtered, client)
+		}
+	}
+	if len(filtered) > 0 {
+		a.s.broadcastCharacterHit(filtered, ch, attackIdent)
 	}
 }
 
 func (a attackSyncAdapter) BroadcastCharacterStruck(hit world.CharacterHit) {
-	if hit.FeatureChanged {
-		a.s.updateClientByCharacterID(hit.Character)
-		a.s.broadcastCharacterStateRefresh(hit.Character)
-	}
-	if clients := a.s.ClientsAroundExcept(hit.Character.MapID, hit.Character.X, hit.Character.Y, playerViewRange, a.conn); len(clients) > 0 {
+	if clients := a.s.spellRefClients(hit.Character); len(clients) > 0 {
 		a.s.broadcastCharacterStruck(clients, hit)
 	}
+}
+
+func (a attackSyncAdapter) BroadcastCharacterNameColor(ch storage.Character) {
+	a.s.broadcastCharacterNameColor(ch)
 }
 
 func (a attackSyncAdapter) BroadcastHitImpact(result world.AttackResult) {
@@ -736,7 +758,7 @@ func (s *Server) handleHit(conn net.Conn, activeChar *storage.Character, cmd mir
 	}
 	*activeChar = result.Character
 	s.recordClientAction(conn, cmd.Ident, dir)
-	world.ApplyAttackSync(attackSyncAdapter{s: s, conn: conn}, result, attackIdent)
+	world.ApplyAttackSync(attackSyncAdapter{s: s, conn: conn, characterID: result.Character.ID}, result, attackIdent)
 }
 
 func normalizeAttackIdent(ch storage.Character, ident uint16) uint16 {
@@ -885,7 +907,7 @@ func (s *Server) processSpellDelivery(conn net.Conn, activeChar *storage.Charact
 		if client != nil {
 			client.mu.Lock()
 			now := time.Now()
-			if !client.chargeAt.IsZero() && now.Sub(client.chargeAt) < 3*time.Second {
+			if !client.chargeAt.IsZero() && now.Sub(client.chargeAt) <= 3*time.Second {
 				client.mu.Unlock()
 				s.recordClientAction(conn, mir176.CMSpell, dir)
 				s.sendActionOK(conn)
@@ -936,7 +958,7 @@ func (s *Server) processSpellDelivery(conn net.Conn, activeChar *storage.Charact
 				struckDelayActive = true
 			}
 		}
-		if !lateDelivery && client.actionIdent != mir176.CMSpell && !client.actionAt.IsZero() {
+		if !lateDelivery && !struckDelayActive && client.actionIdent != mir176.CMSpell && !client.actionAt.IsZero() {
 			actionIntervalDelay := actionInterval - now.Sub(client.actionAt)
 			if client.actionIdent == mir176.CMRun && client.actionDir != direction {
 				actionIntervalDelay = runMagicInterval - now.Sub(client.actionAt)
@@ -945,7 +967,7 @@ func (s *Server) processSpellDelivery(conn net.Conn, activeChar *storage.Charact
 				delay = actionIntervalDelay
 			}
 		}
-		if !lateDelivery && !client.spellActionAt.IsZero() && now.Sub(client.spellActionAt) < client.spellActionInterval {
+		if !lateDelivery && !struckDelayActive && !client.spellActionAt.IsZero() && now.Sub(client.spellActionAt) < client.spellActionInterval {
 			client.spellActionCount++
 			spellDelay := client.spellActionInterval - now.Sub(client.spellActionAt)
 			if spellDelay > delay {
@@ -964,15 +986,8 @@ func (s *Server) processSpellDelivery(conn net.Conn, activeChar *storage.Charact
 			}
 		}
 		if !lateDelivery && delay > 0 {
-			s.consumeSpellTick(activeChar)
-			if client.pendingSpellMessages >= maxPendingSpellMessages {
-				client.spellActionCount = 0
-				client.mu.Unlock()
-				s.sendActionFail(conn)
-				return
-			}
-			client.spellActionCount = 0
 			if !struckDelayActive {
+				client.spellActionCount = 0
 				client.actionIdent = mir176.CMSpell
 				client.actionDir = direction
 			}
@@ -1001,14 +1016,17 @@ func (s *Server) processSpellDelivery(conn net.Conn, activeChar *storage.Charact
 			if result.ManaConsumed && result.Character.ID != "" {
 				s.sendHealthSpellChanged(conn, world.CharacterActorID(result.Character), s.world.AbilityStats(result.Character))
 			}
-			s.handleSpellEvent(conn, activeChar, skillID, skill, world.SpellEvent{Kind: world.SpellEventMagicFireFail, Character: *activeChar})
-			if result.SkillID != "" || skillID != "" {
+			if result.SkillID != "" {
+				s.handleSpellEvent(conn, activeChar, skillID, skill, world.SpellEvent{Kind: world.SpellEventMagicFireFail, Character: *activeChar})
 				s.recordClientAction(conn, mir176.CMSpell, direction)
 				s.sendActionOK(conn)
 				return
 			}
 			s.sendActionFail(conn)
 			return
+		}
+		if result.Character.ID != "" {
+			*activeChar = result.Character
 		}
 		for _, event := range result.Events {
 			s.handleSpellEvent(conn, activeChar, skillID, skill, event)
@@ -1091,6 +1109,10 @@ func (s *Server) queueDelayedSpell(conn net.Conn, request spellRequest, delay ti
 			return
 		}
 		client.mu.Lock()
+		if client.closed {
+			client.mu.Unlock()
+			return
+		}
 		if client.pendingSpellMessages > 0 {
 			client.pendingSpellMessages--
 		}
@@ -1112,9 +1134,9 @@ func (s *Server) handleSpellEvent(conn net.Conn, activeChar *storage.Character, 
 	case world.SpellEventStart:
 		s.dispatchSpellStart(spellStartEvent{caster: event.Caster, magicID: event.MagicID, effect: event.Effect, targetX: event.TargetX, targetY: event.TargetY, targetID: event.TargetID})
 	case world.SpellEventItemDelete:
-		s.sendDelItemList(conn, []storage.UserItem{event.DeletedItem})
+		s.sendDelItem(conn, event.Character, event.DeletedItem)
 	case world.SpellEventDurability:
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMDuraChange, Recog: int32(event.Durability.Dura), Param: uint16(event.Durability.Slot), Tag: uint16(event.Durability.DuraMax), Series: uint16(uint32(event.Durability.DuraMax) >> 16)}, nil)
+		s.sendCommand(conn, DurabilityCommand(event.Durability), nil)
 	case world.SpellEventMagicFireFail:
 		for _, client := range s.spellRefClients(event.Character) {
 			if client.character().ID == event.Character.ID && client.conn == conn {
@@ -1207,9 +1229,10 @@ func (s *Server) handleSpellEvent(conn net.Conn, activeChar *storage.Character, 
 			} else {
 				s.broadcastMonsterStruck(clients, hit)
 				if hit.Dead {
-					s.broadcastMonsterDeath(clients, hit)
+					deathClients := s.monsterDeathClients(hit)
+					s.broadcastMonsterDeath(deathClients, hit)
 					if len(hit.Drops) > 0 {
-						s.broadcastDropAppear(clients, hit.Drops)
+						s.broadcastDropAppear(deathClients, hit.Drops)
 					}
 				}
 			}
@@ -1221,6 +1244,9 @@ func (s *Server) handleSpellEvent(conn net.Conn, activeChar *storage.Character, 
 		s.dispatchSpellMonsterActionExcept(event.MonsterAction, conn)
 	case world.SpellEventCharacterHit:
 		hit := event.CharacterHit
+		if client, ok := s.ClientByCharacterID(hit.Character.ID); ok {
+			s.sendCharacterDeletedItems(client.conn, hit.Character, hit.DeletedItems)
+		}
 		if hit.FeatureChanged {
 			s.updateClientByCharacterID(hit.Character)
 			if client, ok := s.ClientByCharacterID(hit.Character.ID); ok {
@@ -1230,7 +1256,7 @@ func (s *Server) handleSpellEvent(conn net.Conn, activeChar *storage.Character, 
 		}
 		for _, durability := range hit.Durability {
 			if client, ok := s.ClientByCharacterID(hit.Character.ID); ok {
-				s.sendCommand(client.conn, mir176.Command{Ident: mir176.SMDuraChange, Recog: int32(durability.Dura), Param: uint16(durability.Slot), Tag: uint16(durability.DuraMax), Series: uint16(uint32(durability.DuraMax) >> 16)}, nil)
+				s.sendCommand(client.conn, DurabilityCommand(durability), nil)
 			}
 		}
 		clients := s.spellRefClients(hit.Character)
@@ -1249,6 +1275,8 @@ func (s *Server) handleSpellEvent(conn net.Conn, activeChar *storage.Character, 
 				s.sendCharacterStruck(clients, hit)
 			}
 		}
+	case world.SpellEventCharacterNameColor:
+		s.broadcastCharacterNameColor(event.Character)
 	case world.SpellEventAffectedCharacter:
 		s.handleAffectedSpellCharacter(conn, activeChar, event)
 	case world.SpellEventCharacterPush:
@@ -1257,9 +1285,9 @@ func (s *Server) handleSpellEvent(conn net.Conn, activeChar *storage.Character, 
 		s.broadcastCharacterPushExcept(event.CharacterPush, conn)
 	case world.SpellEventHealingGauge:
 		if event.Character.ID != "" {
-			if client, ok := s.ClientByCharacterID(event.Character.ID); ok {
-				client.enqueueSpellMessage(s, spellObjectMessage{kind: spellObjectMessageHealGauge, gauge: event.Character})
-			}
+			s.sendInstanceHealGauge(conn, event.Character)
+		} else if event.Monster.ID != "" {
+			s.sendInstanceHealGaugeMonster(conn, event.Monster)
 		}
 	case world.SpellEventExperience:
 		s.sendWinExp(conn, event.Experience, event.CurrentExp)
@@ -1270,12 +1298,29 @@ func (s *Server) handleSpellEvent(conn net.Conn, activeChar *storage.Character, 
 		if delay <= 0 {
 			delay = time.Second
 		}
-		time.AfterFunc(delay, func() {
-			if client, ok := s.ClientByCharacterID(event.Character.ID); ok {
-				client.enqueueSpellMessage(s, spellObjectMessage{kind: spellObjectMessageSkillExp, skillExp: spellSkillExpEvent{magicID: event.MagicID, skillLevel: event.SkillLevel, skillTrain: event.SkillTrain}})
-			}
-		})
+		s.scheduleSkillExp(event.Character.ID, event.MagicID, event.SkillLevel, event.SkillTrain, delay, event.SkillExpReplacePending)
 	}
+}
+
+func (s *Server) scheduleSkillExp(characterID string, magicID uint16, level byte, train int, delay time.Duration, replacePending bool) {
+	key := fmt.Sprintf("%s:%d", characterID, magicID)
+	s.skillExpMu.Lock()
+	if replacePending {
+		s.skillExpGen[key]++
+	}
+	generation := s.skillExpGen[key]
+	s.skillExpMu.Unlock()
+	time.AfterFunc(delay, func() {
+		s.skillExpMu.Lock()
+		current := s.skillExpGen[key]
+		s.skillExpMu.Unlock()
+		if current != generation {
+			return
+		}
+		if client, ok := s.ClientByCharacterID(characterID); ok {
+			client.enqueueSpellMessage(s, spellObjectMessage{kind: spellObjectMessageSkillExp, skillExp: spellSkillExpEvent{magicID: magicID, skillLevel: level, skillTrain: train}})
+		}
+	})
 }
 
 func (s *Server) broadcastSpellRush(rush world.SpellRush) {
@@ -1356,7 +1401,7 @@ func (s *Server) handleAffectedSpellCharacter(conn net.Conn, activeChar *storage
 		s.broadcastCharacterHealthSpellChanged(ch)
 	}
 	if event.SendUserState {
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendUserState}, EncodeBuffer(UserStateBody(s.world, ch)))
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendUserState}, EncodeBuffer(UserStateBody(s.world, *activeChar, ch)))
 	}
 }
 
@@ -1423,6 +1468,12 @@ func (s *Server) sendRawFrame(conn net.Conn, text string) {
 	response := mir176.WrapFrame([]byte(text))
 	if client := s.clientForConn(conn); client != nil {
 		client.enqueueOutput(response)
+		return
+	}
+	s.clientMu.Lock()
+	_, closed := s.closed[conn]
+	s.clientMu.Unlock()
+	if closed {
 		return
 	}
 	_, _ = conn.Write(response)
@@ -2640,15 +2691,15 @@ func (s *Server) handleQueryBagItems(conn net.Conn, activeChar *storage.Characte
 func (s *Server) sendAbilityRefresh(conn net.Conn, ch storage.Character, okIdent uint16) {
 	feature := s.world.HumanFeatureForCharacter(ch)
 	job := world.Plain6ClassID(ch.Class)
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMAbility, Recog: int32(ch.Gold), Param: makeWord(byte(job), 99), Tag: uint16(ch.PremiumGold), Series: uint16(uint32(ch.PremiumGold) >> 16)}, EncodeBuffer(Ability(s.world.AbilityStats(ch))))
-	s.sendCommand(conn, SubAbilityCommand(ch.Class), nil)
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMAbility, Recog: int32(ch.Gold), Param: makeWord(byte(job), 99), Tag: uint16(ch.PremiumGold), Series: uint16(uint32(ch.PremiumGold) >> 16)}, EncodeBuffer(s.abilityBody(ch)))
+	s.sendCommand(conn, SubAbilityCommand(s.world.SubAbilityStats(ch)), nil)
 	s.sendCommand(conn, mir176.Command{Ident: okIdent, Recog: feature}, nil)
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMFeatureChanged, Recog: world.CharacterActorID(ch), Param: uint16(feature), Tag: uint16(uint32(feature) >> 16)}, nil)
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMFeatureChanged, Recog: world.CharacterActorID(ch), Param: uint16(feature), Tag: uint16(uint32(feature) >> 16), Series: uint16(s.world.CharacterFeatureEx(ch))}, nil)
 }
 
 func (s *Server) sendAbilityOnly(conn net.Conn, ch storage.Character) {
 	job := world.Plain6ClassID(ch.Class)
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMAbility, Recog: int32(ch.Gold), Param: makeWord(byte(job), 99), Tag: uint16(ch.PremiumGold), Series: uint16(uint32(ch.PremiumGold) >> 16)}, EncodeBuffer(Ability(s.world.AbilityStats(ch))))
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMAbility, Recog: int32(ch.Gold), Param: makeWord(byte(job), 99), Tag: uint16(ch.PremiumGold), Series: uint16(uint32(ch.PremiumGold) >> 16)}, EncodeBuffer(s.abilityBody(ch)))
 }
 
 func (s *Server) sendWinExp(conn net.Conn, exp int, currentExp int) {
@@ -2658,8 +2709,8 @@ func (s *Server) sendWinExp(conn net.Conn, exp int, currentExp int) {
 func (s *Server) sendLevelUp(conn net.Conn, ch storage.Character) {
 	stats := s.world.AbilityStats(ch)
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMLevelUp, Recog: int32(stats.Exp), Param: uint16(stats.Level)}, nil)
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMAbility, Recog: int32(ch.Gold), Param: makeWord(byte(world.Plain6ClassID(ch.Class)), 99), Tag: uint16(ch.PremiumGold), Series: uint16(uint32(ch.PremiumGold) >> 16)}, EncodeBuffer(Ability(stats)))
-	s.sendCommand(conn, SubAbilityCommand(ch.Class), nil)
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMAbility, Recog: int32(ch.Gold), Param: makeWord(byte(world.Plain6ClassID(ch.Class)), 99), Tag: uint16(ch.PremiumGold), Series: uint16(uint32(ch.PremiumGold) >> 16)}, EncodeBuffer(s.abilityBody(ch)))
+	s.sendCommand(conn, SubAbilityCommand(s.world.SubAbilityStats(ch)), nil)
 }
 
 func (s *Server) sendMagicLevelExp(conn net.Conn, magicID uint16, level byte, train int) {
@@ -2673,8 +2724,8 @@ func (s *Server) sendMagicLevelExp(conn net.Conn, magicID uint16, level byte, tr
 }
 
 func (s *Server) sendInitialLoginState(conn net.Conn, ch storage.Character) {
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMAbility, Recog: int32(ch.Gold), Param: makeWord(byte(world.Plain6ClassID(ch.Class)), 99), Tag: uint16(ch.PremiumGold), Series: uint16(uint32(ch.PremiumGold) >> 16)}, EncodeBuffer(Ability(s.world.AbilityStats(ch))))
-	s.sendCommand(conn, SubAbilityCommand(ch.Class), nil)
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMAbility, Recog: int32(ch.Gold), Param: makeWord(byte(world.Plain6ClassID(ch.Class)), 99), Tag: uint16(ch.PremiumGold), Series: uint16(uint32(ch.PremiumGold) >> 16)}, EncodeBuffer(s.abilityBody(ch)))
+	s.sendCommand(conn, SubAbilityCommand(s.world.SubAbilityStats(ch)), nil)
 	s.sendCommand(conn, DayChangingCommand(0, 0), nil)
 	s.sendEquippedItems(conn, ch)
 	s.sendBagItems(conn, ch)
@@ -2823,7 +2874,7 @@ func (s *Server) handleSpellMagicFire(conn net.Conn, event spellMagicFireEvent) 
 		Recog:  world.CharacterActorID(event.caster),
 		Param:  uint16(event.targetX),
 		Tag:    uint16(event.targetY),
-		Series: uint16(event.skill.EffectType) | uint16(event.skill.Effect)<<8,
+		Series: uint16(makeWord(byte(event.skill.EffectType), byte(event.skill.Effect))),
 	}
 	s.sendCommand(conn, cmd, body)
 }
@@ -2863,7 +2914,11 @@ func (s *Server) handleQueryUserName(conn net.Conn, activeChar *storage.Characte
 		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGhost, Recog: targetID, Param: uint16(x), Tag: uint16(y)}, nil)
 		return
 	}
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMUserName, Recog: targetID, Param: s.world.CharacterNameColor(targetChar)}, EncodeString(s.world.CharacterDisplayName(targetChar)))
+	observer := storage.Character{}
+	if activeChar != nil {
+		observer = *activeChar
+	}
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMUserName, Recog: targetID, Param: s.world.CharacterNameColorFor(observer, targetChar)}, EncodeString(s.world.CharacterDisplayName(targetChar)))
 }
 
 func (s *Server) handleQueryUserState(conn net.Conn, activeChar *storage.Character, cmd mir176.Command) {
@@ -2882,19 +2937,23 @@ func (s *Server) handleQueryUserState(conn net.Conn, activeChar *storage.Charact
 	if !world.CanInspectCharacterAt(targetChar, x, y) {
 		return
 	}
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendUserState}, EncodeBuffer(UserStateBody(s.world, targetChar)))
+	observer := storage.Character{}
+	if activeChar != nil {
+		observer = *activeChar
+	}
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendUserState}, EncodeBuffer(UserStateBody(s.world, observer, targetChar)))
 }
 
 func NoticeBody() []byte {
 	return EncodeString("OpenMir2 \x1b")
 }
 
-func UserStateBody(w *world.World, ch storage.Character) []byte {
+func UserStateBody(w *world.World, observer, ch storage.Character) []byte {
 	body := bytes.NewBuffer(make([]byte, 0, 1024))
 	writeI32(body, w.HumanFeatureForCharacter(ch))
 	writeGBKAsciiString(body, w.CharacterDisplayName(ch), 14)
 	writeByte(body, 0)
-	writeU32(body, uint32(w.CharacterNameColor(ch)))
+	writeU32(body, uint32(w.CharacterNameColorFor(observer, ch)))
 	writeGBKAsciiString(body, "", 20)
 	writeGBKAsciiString(body, "", 14)
 	for slot := 0; slot < 13; slot++ {
@@ -3103,6 +3162,15 @@ func (s *Server) sendInstanceHealGaugeMonster(conn net.Conn, mon world.Monster) 
 	}, nil)
 }
 
+func DurabilityCommand(durability world.SpellDurability) mir176.Command {
+	return mir176.Command{
+		Ident: mir176.SMDuraChange,
+		Recog: int32(durability.Dura),
+		Param: uint16(durability.Slot),
+		Tag:   durability.DuraMax,
+	}
+}
+
 func (s *Server) broadcastCharacterOpenHealth(ch storage.Character) {
 	clients := s.spellRefClients(ch)
 	if len(clients) == 0 {
@@ -3268,7 +3336,7 @@ func (c *Client) sendCharacterAppear(s *Server, ch storage.Character) {
 	nameCmd := mir176.Command{
 		Ident: mir176.SMUserName,
 		Recog: actorID,
-		Param: s.world.CharacterNameColor(ch),
+		Param: s.world.CharacterNameColorFor(c.character(), ch),
 	}
 	logonBody := EncodeBuffer(LogonBody(feature, s.world.CharacterStatus(ch), ch.AllowGroup, s.world.CharacterFeatureEx(ch)))
 	nameBody := EncodeString(s.world.CharacterDisplayName(ch))
@@ -3456,6 +3524,15 @@ func (s *Server) applyWorldTick(result world.TickResult, now time.Time) {
 			client.enqueueSpellMessage(s, spellObjectMessage{kind: spellObjectMessageHealth, health: ch})
 		}
 	}
+	for _, ch := range result.CharacterDeaths {
+		clients := s.spellRefClients(ch)
+		for _, client := range clients {
+			client.enqueueSpellMessage(s, spellObjectMessage{kind: spellObjectMessageCharacterDeath, characterDeath: ch})
+		}
+	}
+	for _, ch := range result.NameColorCharacters {
+		s.broadcastCharacterNameColor(ch)
+	}
 	for _, event := range result.OrderedStatusRefreshes {
 		if event.Character != nil {
 			if _, ordered := orderedStatusEventIDs["character:"+event.Character.ID]; ordered {
@@ -3551,7 +3628,7 @@ func (s *Server) applyWorldTick(result world.TickResult, now time.Time) {
 		if _, ordered := orderedMonsterDeathIDs[death.MonsterID]; ordered {
 			continue
 		}
-		clients := s.ClientsAround(death.MonsterMapID, death.MonsterX, death.MonsterY, playerViewRange)
+		clients := s.monsterDeathClients(death)
 		if len(clients) > 0 {
 			s.broadcastMonsterDeath(clients, death)
 			if len(death.Drops) > 0 {
@@ -3613,6 +3690,9 @@ func (s *Server) applyOrderedSpellEvents(events []world.OrderedSpellEvent) {
 			}
 		case world.OrderedSpellEventCharacterHit:
 			hit := event.CharacterHit
+			if client, ok := s.ClientByCharacterID(hit.Character.ID); ok {
+				s.sendCharacterDeletedItems(client.conn, hit.Character, hit.DeletedItems)
+			}
 			if hit.FeatureChanged {
 				s.updateClientByCharacterID(hit.Character)
 				if client, ok := s.ClientByCharacterID(hit.Character.ID); ok {
@@ -3622,7 +3702,7 @@ func (s *Server) applyOrderedSpellEvents(events []world.OrderedSpellEvent) {
 			}
 			for _, durability := range hit.Durability {
 				if client, ok := s.ClientByCharacterID(hit.Character.ID); ok {
-					s.sendCommand(client.conn, mir176.Command{Ident: mir176.SMDuraChange, Recog: int32(durability.Dura), Param: uint16(durability.Slot), Tag: uint16(durability.DuraMax), Series: uint16(uint32(durability.DuraMax) >> 16)}, nil)
+					s.sendCommand(client.conn, DurabilityCommand(durability), nil)
 				}
 			}
 			clients := s.spellRefClients(hit.Character)
@@ -3658,6 +3738,8 @@ func (s *Server) expireFireHitStates(now time.Time) {
 		}
 		client.fireHitArmed = false
 		client.mu.Unlock()
+		ch := client.character()
+		s.sendSystemMessageStyle(client.conn, ch, "召唤烈火精灵结束...", 0xFF, 0x38)
 		s.sendRawFrame(client.conn, "+UFIR")
 	}
 }
@@ -4022,6 +4104,8 @@ func (c *Client) handleQueuedSpellMessage(s *Server, message spellObjectMessage)
 		}, body)
 	case spellObjectMessageState:
 		c.sendCharacterStateRefresh(s, message.state)
+	case spellObjectMessageCharacterNameColor:
+		c.writeCommand(s, mir176.Command{Ident: mir176.SMChangeNameColor, Recog: world.CharacterActorID(message.characterNameColor), Param: s.world.CharacterNameColorFor(c.character(), message.characterNameColor)}, nil)
 	case spellObjectMessageMonsterState:
 		c.sendMonsterFeatureRefresh(s, message.monsterState)
 	case spellObjectMessageMonsterStatus:
@@ -4043,7 +4127,7 @@ func (c *Client) handleQueuedSpellMessage(s *Server, message spellObjectMessage)
 	case spellObjectMessageAbility:
 		s.sendAbilityOnly(c.conn, message.ability)
 	case spellObjectMessageDurability:
-		c.writeCommand(s, mir176.Command{Ident: mir176.SMDuraChange, Recog: int32(message.durability.Dura), Param: uint16(message.durability.Slot), Tag: uint16(message.durability.DuraMax), Series: uint16(uint32(message.durability.DuraMax) >> 16)}, nil)
+		c.writeCommand(s, DurabilityCommand(message.durability), nil)
 	case spellObjectMessageExperience:
 		s.sendWinExp(c.conn, message.experience, message.currentExp)
 	case spellObjectMessageLevelUp:
@@ -4064,6 +4148,9 @@ func (c *Client) handleQueuedSpellMessage(s *Server, message spellObjectMessage)
 		} else {
 			s.sendCloseHealth(c.conn, message.health)
 		}
+	case spellObjectMessageCharacterDeath:
+		ch := message.characterDeath
+		c.writeCommand(s, CharacterDeathCommand(ch), EncodeBuffer(CharDesc(s.world.HumanFeatureForCharacter(ch), s.world.CharacterStatus(ch))))
 	case spellObjectMessageHealGauge:
 		if message.gaugeMonster.ID != "" {
 			s.sendInstanceHealGaugeMonster(c.conn, message.gaugeMonster)
@@ -4078,6 +4165,11 @@ func (c *Client) handleQueuedSpellMessage(s *Server, message spellObjectMessage)
 		c.sendMonsterHealthSpellChanged(s, message.monsterHit)
 	case spellObjectMessageMonsterHit:
 		s.broadcastMonsterStruck([]*Client{c}, message.monsterHit)
+		if message.monsterHit.Magic {
+			normalHit := message.monsterHit
+			normalHit.Magic = false
+			s.broadcastMonsterStruck([]*Client{c}, normalHit)
+		}
 	case spellObjectMessageMonsterDeath:
 		s.broadcastMonsterDeath([]*Client{c}, message.monsterHit)
 		for _, drop := range message.drops {
@@ -4105,7 +4197,7 @@ func (c *Client) handleSpellStart(s *Server, event spellStartEvent) {
 		Recog:  world.CharacterActorID(event.caster),
 		Param:  uint16(event.targetX),
 		Tag:    uint16(event.targetY),
-		Series: uint16(event.effect),
+		Series: uint16(byte(event.effect)),
 	}
 	c.writeCommand(s, cmd, body)
 }
@@ -4144,6 +4236,12 @@ func (c *Client) sendCharacterStateRefresh(s *Server, ch storage.Character) {
 
 func (s *Server) broadcastCharacterStatusChanged(ch storage.Character) {
 	s.broadcastCharacterStatusChangedExcept(ch, "")
+}
+
+func (s *Server) broadcastCharacterNameColor(ch storage.Character) {
+	for _, client := range s.spellRefClients(ch) {
+		client.enqueueSpellMessage(s, spellObjectMessage{kind: spellObjectMessageCharacterNameColor, characterNameColor: ch})
+	}
 }
 
 func (s *Server) broadcastCharacterStatusChangedExcept(ch storage.Character, exceptID string) {
@@ -4254,6 +4352,9 @@ func (c *Client) sendMonsterUsername(s *Server, mon world.Monster) {
 
 func (s *Server) broadcastHitImpact(clients []*Client, result world.AttackResult) {
 	if result.Magic {
+		if result.Damage <= 0 {
+			return
+		}
 		for _, client := range clients {
 			if result.MonsterHealthChanged {
 				client.enqueueSpellMessage(s, spellObjectMessage{kind: spellObjectMessageMonsterHealth, monsterHit: result})
@@ -4267,15 +4368,26 @@ func (s *Server) broadcastHitImpact(clients []*Client, result world.AttackResult
 	}
 	if result.Dead {
 		s.broadcastMonsterStruck(clients, result)
-		s.broadcastMonsterDeath(clients, result)
+		deathClients := s.monsterDeathClients(result)
+		s.broadcastMonsterDeath(deathClients, result)
 		if len(result.Drops) > 0 {
-			s.broadcastDropAppear(clients, result.Drops)
+			s.broadcastDropAppear(deathClients, result.Drops)
 		}
 		return
 	}
 	delay := s.hitImpactDelay
 	if result.ImpactDelay > 0 {
 		delay = result.ImpactDelay
+	}
+	if result.ImmediateImpact {
+		s.broadcastMonsterStruck(clients, result)
+		if delay <= 0 {
+			return
+		}
+		time.AfterFunc(delay, func() {
+			s.broadcastMonsterStruck(clients, result)
+		})
+		return
 	}
 	if delay <= 0 {
 		s.broadcastMonsterStruck(clients, result)
@@ -4311,7 +4423,10 @@ func (s *Server) broadcastCharacterStruck(clients []*Client, hit world.Character
 }
 
 func (s *Server) sendCharacterStruck(clients []*Client, hit world.CharacterHit) {
-	attackerID := world.MonsterActorID(world.Monster{ID: hit.AttackerID})
+	attackerID := hit.AttackerActor
+	if attackerID == 0 {
+		attackerID = world.MonsterActorID(world.Monster{ID: hit.AttackerID})
+	}
 	if attacker, ok := s.ClientByCharacterID(hit.AttackerID); ok {
 		attackerID = world.CharacterActorID(attacker.character())
 	}
@@ -4322,13 +4437,16 @@ func (s *Server) sendCharacterStruck(clients []*Client, hit world.CharacterHit) 
 			client.mu.Unlock()
 		}
 		client.writeCommand(s, CharacterStruckCommand(hit), EncodeBuffer(MessageBodyWL(s.world.HumanFeatureForCharacter(hit.Character), s.world.CharacterStatus(hit.Character), attackerID, 0)))
-		if hit.Dead {
+		if hit.Dead && !hit.DeathDeferred {
 			client.writeCommand(s, CharacterDeathCommand(hit.Character), EncodeBuffer(CharDesc(s.world.HumanFeatureForCharacter(hit.Character), s.world.CharacterStatus(hit.Character))))
 		}
 	}
 }
 
 func (s *Server) sendCharacterSpellStruck(clients []*Client, caster storage.Character, hit world.CharacterHit) {
+	if hit.Damage <= 0 {
+		return
+	}
 	for _, client := range clients {
 		isTarget := client.character().ID == hit.Character.ID
 		if isTarget {
@@ -4346,8 +4464,8 @@ func (s *Server) sendCharacterSpellStruck(clients []*Client, caster storage.Char
 				Series: uint16(stats.MaxHP),
 			}, nil)
 		}
-		client.writeCommand(s, CharacterStruckCommand(hit), EncodeBuffer(MessageBodyWL(s.world.HumanFeatureForCharacter(hit.Character), s.world.CharacterStatus(hit.Character), world.CharacterActorID(caster), 1)))
-		if hit.Dead {
+		client.writeCommand(s, CharacterSpellStruckCommand(hit), EncodeBuffer(MessageBodyWL(s.world.HumanFeatureForCharacter(hit.Character), s.world.CharacterStatus(hit.Character), world.CharacterActorID(caster), 1)))
+		if hit.Dead && !hit.DeathDeferred {
 			client.writeCommand(s, CharacterDeathCommand(hit.Character), EncodeBuffer(CharDesc(s.world.HumanFeatureForCharacter(hit.Character), s.world.CharacterStatus(hit.Character))))
 		}
 	}
@@ -4366,6 +4484,10 @@ func (s *Server) broadcastMonsterStruck(clients []*Client, result world.AttackRe
 		}
 		client.writeCommand(s, MonsterStruckCommand(result), EncodeBuffer(MessageBodyWL(feature, result.MonsterStatus, attackerID, magic)))
 	}
+}
+
+func (s *Server) monsterDeathClients(result world.AttackResult) []*Client {
+	return s.spellRefClientsFor("monster:"+result.MonsterID, result.MonsterMapID, result.MonsterX, result.MonsterY)
 }
 
 func (s *Server) broadcastMonsterDeath(clients []*Client, result world.AttackResult) {
@@ -4405,6 +4527,10 @@ func (s *Server) registerClient(conn net.Conn, ch storage.Character) *Client {
 		client.visibleMonsters[mon.ID] = mon
 	}
 	s.clientMu.Lock()
+	if s.closed == nil {
+		s.closed = map[net.Conn]struct{}{}
+	}
+	delete(s.closed, conn)
 	s.clients[conn] = client
 	s.clientMu.Unlock()
 	go client.runSpellMessages(s)
@@ -4422,16 +4548,21 @@ func (s *Server) unregisterClient(conn net.Conn) {
 	s.clientMu.Lock()
 	client := s.clients[conn]
 	delete(s.clients, conn)
+	if s.closed == nil {
+		s.closed = map[net.Conn]struct{}{}
+	}
+	s.closed[conn] = struct{}{}
 	s.clientMu.Unlock()
 	if client != nil {
+		client.mu.Lock()
+		client.closed = true
 		if client.spellQueueCond != nil {
-			client.mu.Lock()
 			close(client.spellMessagesDone)
 			client.spellQueueCond.Broadcast()
-			client.mu.Unlock()
 		} else {
 			close(client.spellMessagesDone)
 		}
+		client.mu.Unlock()
 		s.handleClientDisconnect(client.character())
 	}
 }
@@ -4670,17 +4801,7 @@ func (s *Server) clientsByIDs(ids map[string]struct{}, mapID string, x, y, viewR
 }
 
 func (s *Server) clientsForCharacterHit(ch storage.Character) []*Client {
-	clients := s.ClientsAround(ch.MapID, ch.X, ch.Y, playerViewRange)
-	target, ok := s.ClientByCharacterID(ch.ID)
-	if !ok {
-		return clients
-	}
-	for _, client := range clients {
-		if client == target {
-			return clients
-		}
-	}
-	return append(clients, target)
+	return s.spellRefClients(ch)
 }
 
 func (s *Server) ClientsAroundExcept(mapID string, x, y, viewRange int, except net.Conn) []*Client {
@@ -4803,7 +4924,12 @@ func (c *Client) forgetMissingMonsters(s *Server, current map[string]struct{}) {
 		if _, ok := current[monsterID]; ok {
 			continue
 		}
-		s.sendCommand(c.conn, MonsterDisappearCommand(mon), nil)
+		if !mon.Alive {
+			death := world.AttackResult{MonsterID: mon.ID, MonsterDir: mon.Dir, MonsterX: mon.X, MonsterY: mon.Y}
+			c.writeCommandLocked(s, MonsterDeathRefreshCommand(death), EncodeBuffer(CharDesc(world.MonsterFeature(mon), world.MonsterStatus(mon, time.Now()))))
+		} else {
+			s.sendCommand(c.conn, MonsterDisappearCommand(mon), nil)
+		}
 		delete(c.visibleMonsters, monsterID)
 	}
 }
@@ -4882,6 +5008,12 @@ func (s *Server) sendCommand(conn net.Conn, cmd mir176.Command, text []byte) {
 		client.enqueueOutput(response)
 		return
 	}
+	s.clientMu.Lock()
+	_, closed := s.closed[conn]
+	s.clientMu.Unlock()
+	if closed {
+		return
+	}
 	_, _ = conn.Write(response)
 }
 
@@ -4916,13 +5048,13 @@ func LogonBody(feature, status int32, allowGroup bool, featureEx int32) []byte {
 	return body
 }
 
-func SubAbilityCommand(class string) mir176.Command {
+func SubAbilityCommand(stats world.SubAbilityStats) mir176.Command {
 	return mir176.Command{
 		Ident:  mir176.SMSubAbility,
-		Recog:  int32(makeWord(1, 0)),
-		Param:  makeWord(5, world.SubAbilitySpeed(class)),
-		Tag:    makeWord(0, 0),
-		Series: makeWord(0, 0),
+		Recog:  int32(makeWord(byte(stats.AntiMagic), 0)),
+		Param:  makeWord(byte(stats.HitPoint), byte(stats.SpeedPoint)),
+		Tag:    makeWord(byte(stats.AntiPoison), byte(stats.PoisonRecover)),
+		Series: makeWord(byte(stats.HealthRecover), byte(stats.SpellRecover)),
 	}
 }
 
@@ -5163,7 +5295,7 @@ func MonsterHitCommand(action world.MonsterAction) mir176.Command {
 func CharacterHitCommand(ch storage.Character, clientIdent uint16) mir176.Command {
 	return mir176.Command{
 		Ident:  HitServerIdent(clientIdent),
-		Recog:  ActorID,
+		Recog:  world.CharacterActorID(ch),
 		Param:  uint16(ch.X),
 		Tag:    uint16(ch.Y),
 		Series: uint16(ch.Dir),
@@ -5199,13 +5331,23 @@ func CharacterStruckCommand(hit world.CharacterHit) mir176.Command {
 	}
 }
 
+func CharacterSpellStruckCommand(hit world.CharacterHit) mir176.Command {
+	return mir176.Command{
+		Ident:  mir176.SMStruck,
+		Recog:  world.CharacterActorID(hit.Character),
+		Param:  uint16(hit.Character.HP),
+		Tag:    uint16(hit.Character.MaxHP),
+		Series: uint16(hit.Damage),
+	}
+}
+
 func CharacterDeathCommand(ch storage.Character) mir176.Command {
 	return mir176.Command{
 		Ident:  mir176.SMNowDeath,
 		Recog:  world.CharacterActorID(ch),
-		Param:  uint16(ch.X),
-		Tag:    uint16(ch.Y),
-		Series: uint16(ch.Dir),
+		Param:  uint16(ch.Dir),
+		Tag:    uint16(ch.X),
+		Series: 1,
 	}
 }
 
@@ -5260,9 +5402,19 @@ func MonsterDeathCommand(result world.AttackResult) mir176.Command {
 	return mir176.Command{
 		Ident:  mir176.SMNowDeath,
 		Recog:  world.MonsterActorID(world.Monster{ID: result.MonsterID}),
-		Param:  uint16(result.MonsterX),
-		Tag:    uint16(result.MonsterY),
-		Series: uint16(result.MonsterDir),
+		Param:  uint16(result.MonsterDir),
+		Tag:    uint16(result.MonsterX),
+		Series: 1,
+	}
+}
+
+func MonsterDeathRefreshCommand(result world.AttackResult) mir176.Command {
+	return mir176.Command{
+		Ident:  mir176.SMDeath,
+		Recog:  world.MonsterActorID(world.Monster{ID: result.MonsterID}),
+		Param:  uint16(result.MonsterDir),
+		Tag:    uint16(result.MonsterX),
+		Series: 0,
 	}
 }
 
@@ -5385,6 +5537,50 @@ func Ability(s world.AbilityStats) []byte {
 	body[38] = byte(s.HandWeight)
 	body[39] = byte(s.MaxHandWeight)
 	return body
+}
+
+func OldAbility(s world.AbilityStats) []byte {
+	body := make([]byte, 40)
+	binary.LittleEndian.PutUint16(body[0:2], uint16(s.Level))
+	for i, value := range []int{s.AC, s.MAC, s.DC, s.MC, s.SC} {
+		binary.LittleEndian.PutUint16(body[2+i*2:4+i*2], oldAbilityPackedWord(value))
+	}
+	for i, value := range []int{s.HP, s.MP, s.MaxHP, s.MaxMP} {
+		binary.LittleEndian.PutUint16(body[12+i*2:14+i*2], uint16(value))
+	}
+	binary.LittleEndian.PutUint32(body[24:28], uint32(s.Exp))
+	binary.LittleEndian.PutUint32(body[28:32], uint32(s.MaxExp))
+	binary.LittleEndian.PutUint16(body[32:34], uint16(s.Weight))
+	binary.LittleEndian.PutUint16(body[34:36], uint16(s.MaxWeight))
+	body[36] = byte(clampAbilityByte(s.WearWeight))
+	body[37] = byte(clampAbilityByte(s.MaxWearWeight))
+	body[38] = byte(clampAbilityByte(s.HandWeight))
+	body[39] = byte(clampAbilityByte(s.MaxHandWeight))
+	return body
+}
+
+func oldAbilityPackedWord(value int) uint16 {
+	low := clampAbilityByte(value & 0xffff)
+	high := clampAbilityByte((value >> 16) & 0xffff)
+	return uint16(low) | uint16(high)<<8
+}
+
+func clampAbilityByte(value int) int {
+	if value < 0 {
+		return 0
+	}
+	if value > 255 {
+		return 255
+	}
+	return value
+}
+
+func (s *Server) abilityBody(ch storage.Character) []byte {
+	stats := s.world.AbilityStats(ch)
+	if ch.SoftVersionDate == 0 && ch.ClientTick == 0 {
+		return OldAbility(stats)
+	}
+	return Ability(stats)
 }
 
 func makeWord(lo, hi byte) uint16 {

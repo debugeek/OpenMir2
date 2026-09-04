@@ -17,7 +17,7 @@ func QueueRecovery(ch storage.Character, hp, mp int) storage.Character {
 }
 
 func QueueHealing(ch storage.Character, hp int) storage.Character {
-	if hp <= 0 || ch.HP <= 0 || ch.HP >= ch.MaxHP {
+	if hp <= 0 {
 		return ch
 	}
 	ch.IncHealing += hp
@@ -46,11 +46,14 @@ func ApplyQueuedRecovery(ch storage.Character, now time.Time) (storage.Character
 	if overrun > 200*time.Millisecond {
 		overrun = 200 * time.Millisecond
 	}
-	perTickHP := ch.Level/10 + 5
+	perTickHP := ch.PerHealth
 	if perTickHP <= 0 {
-		perTickHP = 1
+		perTickHP = 5
 	}
-	perTickMP := perTickHP
+	perTickMP := ch.PerSpell
+	if perTickMP <= 0 {
+		perTickMP = 5
+	}
 	perTickHealing := 5
 	hp := ch.IncHealth
 	if hp > perTickHP {
@@ -69,6 +72,8 @@ func ApplyQueuedRecovery(ch storage.Character, now time.Time) (storage.Character
 	next.IncSpell -= mp
 	next.IncHealing -= healing
 	next.IncHealthSpellAt = now.Add(overrun).UnixMilli()
+	next.PerHealth = ch.Level/10 + 5
+	next.PerSpell = ch.Level/10 + 5
 	if next.HP == next.MaxHP {
 		next.IncHealth = 0
 		next.IncHealing = 0

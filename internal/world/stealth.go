@@ -12,7 +12,7 @@ func characterTransparentActive(ch storage.Character, now time.Time) bool {
 	if ch.TransparentUntil <= 0 {
 		return false
 	}
-	return now.UnixNano() < ch.TransparentUntil
+	return now.UnixNano() <= ch.TransparentUntil
 }
 
 func characterTransparentStatePresent(ch storage.Character) bool {
@@ -94,6 +94,7 @@ func (w *World) breakNearbyMonsterTargetsForStealthLocked(ch storage.Character) 
 		}
 		if abs(mon.X-ch.X) > 1 || abs(mon.Y-ch.Y) > 1 || w.rand.Intn(2) == 0 {
 			mon.TargetCharacterID = ""
+			mon.TargetFocusAt = time.Time{}
 		}
 	}
 }
@@ -127,12 +128,13 @@ func (w *World) breakNearbyMonsterTargetsForMonsterStealthLocked(target *Monster
 		}
 		if abs(mon.X-target.X) > 1 || abs(mon.Y-target.Y) > 1 || w.rand.Intn(2) == 0 {
 			mon.TargetCharacterID = ""
+			mon.TargetFocusAt = time.Time{}
 		}
 	}
 }
 
 func (w *World) applyCharacterStealthTickLocked(ch storage.Character, now time.Time) (storage.Character, bool) {
-	if ch.TransparentUntil <= 0 || now.UnixNano() < ch.TransparentUntil {
+	if ch.TransparentUntil <= 0 || now.UnixNano() <= ch.TransparentUntil {
 		return ch, false
 	}
 	next := ch
@@ -142,7 +144,7 @@ func (w *World) applyCharacterStealthTickLocked(ch storage.Character, now time.T
 
 func (w *World) stealthAffectedTargetsLocked(caster storage.Character, players []storage.Character, targetX, targetY int) []spellAreaTarget {
 	affected := make([]spellAreaTarget, 0, 8)
-	for _, areaTarget := range w.spellAreaTargetsIncludingDeadLocked(players, caster.MapID, targetX, targetY, 1) {
+	for _, areaTarget := range w.spellAreaTargetsLocked(players, caster.MapID, targetX, targetY, 1) {
 		if areaTarget.Character != nil {
 			target := *areaTarget.Character
 			if target.ID != "" && w.isProperFriendLocked(caster, target) {
