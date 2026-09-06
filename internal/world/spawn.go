@@ -175,6 +175,9 @@ func (w *World) rollDropsLocked(mon *Monster, ownerID string, blockers ...storag
 			continue
 		}
 		instance := w.createUserItemFromStd(item, 0, [14]byte{})
+		if item.StdMode == 40 && mon.MeatQuality >= 0 {
+			instance.Dura = uint16(minInt(mon.MeatQuality, int(^uint16(0))))
+		}
 		out = append(out, GroundDrop{
 			ID:        id,
 			MapID:     mon.MapID,

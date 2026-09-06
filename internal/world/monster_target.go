@@ -22,6 +22,10 @@ func (w *World) monsterIsStickLocked(mon *Monster) bool {
 	return mon.Race == 85
 }
 
+func (w *World) monsterCannotBePushedLocked(mon *Monster) bool {
+	return mon.Race == 85 || mon.Race == 103 || mon.Race == 107 || mon.Race == 116
+}
+
 func (w *World) monsterIsCentipedeLocked(mon *Monster) bool {
 	return mon.Race == 107
 }

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 type Store struct {
@@ -43,9 +44,9 @@ type Character struct {
 	X                   int                 `json:"x"`
 	Y                   int                 `json:"y"`
 	Dir                 int                 `json:"dir"`
-	TargetID            string              `json:"target_id,omitempty"`
-	Sitting             bool                `json:"sitting"`
-	SpellBlocked        bool                `json:"spell_blocked,omitempty"`
+	TargetID            string              `json:"-"`
+	Sitting             bool                `json:"-"`
+	SpellBlocked        bool                `json:"-"`
 	ParalyzedUntil      int64               `json:"paralyzed_until,omitempty"`
 	HP                  int                 `json:"hp"`
 	MaxHP               int                 `json:"max_hp"`
@@ -57,30 +58,38 @@ type Character struct {
 	IncHealthSpellAt    int64               `json:"inc_health_spell_at,omitempty"`
 	PerHealth           int                 `json:"-"`
 	PerSpell            int                 `json:"-"`
+	PerHealing          int                 `json:"-"`
+	HealthTick          int                 `json:"-"`
+	HealthTickAt        int64               `json:"-"`
 	SpellTick           int                 `json:"-"`
 	SpellTickAt         int64               `json:"-"`
 	Gold                int                 `json:"gold,omitempty"`
 	PremiumGold         int                 `json:"game_gold,omitempty"`
 	PremiumPoint        int                 `json:"game_point,omitempty"`
 	AttackMode          int                 `json:"attack_mode,omitempty"`
-	AdminMode           bool                `json:"admin_mode,omitempty"`
-	StoneMode           bool                `json:"stone_mode,omitempty"`
+	AdminMode           bool                `json:"-"`
+	StoneMode           bool                `json:"-"`
 	PKPoint             int                 `json:"pk_point,omitempty"`
-	PKFlag              bool                `json:"pk_flag,omitempty"`
+	PKFlag              bool                `json:"-"`
 	PKFlagUntil         int64               `json:"-"`
 	LastHitterID        string              `json:"-"`
 	LastHitterAt        int64               `json:"-"`
-	FreePKArea          bool                `json:"free_pk_area,omitempty"`
-	MapMoveAt           int64               `json:"map_move_at,omitempty"`
+	FireHitArmed        bool                `json:"-"`
+	FireHitLatestAt     int64               `json:"-"`
+	PowerHitArmed       bool                `json:"-"`
+	FreePKArea          bool                `json:"-"`
+	MapMoveAt           int64               `json:"-"`
+	TeleportRingAt      int64               `json:"-"`
 	ObjectOrder         uint64              `json:"object_order,omitempty"`
 	AntiPoison          int                 `json:"anti_poison,omitempty"`
-	ThrustingDisabled   bool                `json:"thrusting_disabled,omitempty"`
-	HalfMoonDisabled    bool                `json:"half_moon_disabled,omitempty"`
+	ThrustingDisabled   bool                `json:"-"`
+	HalfMoonDisabled    bool                `json:"-"`
 	BonusPoint          int                 `json:"bonus_point,omitempty"`
 	BonusAbil           BonusAbility        `json:"bonus_abil,omitempty"`
 	ExtraAbil           [7]uint16           `json:"extra_abil,omitempty"`
 	ExtraAbilTimes      [7]int64            `json:"extra_abil_times,omitempty"`
 	SoftVersionDate     int                 `json:"soft_version_date,omitempty"`
+	SoftVersionDateEx   int                 `json:"-"`
 	ClientTick          int                 `json:"-"`
 	EquippedItems       map[int]UserItem    `json:"equipped_items,omitempty"`
 	BagItems            []UserItem          `json:"bag_items"`
@@ -97,6 +106,7 @@ type Character struct {
 	MagDefenceUpUntil   int64               `json:"mag_defence_up_until,omitempty"`
 	BubbleDefenceLevel  byte                `json:"bubble_defence_level,omitempty"`
 	BubbleDefenceUntil  int64               `json:"bubble_defence_until,omitempty"`
+	BubbleDefenceActive *bool               `json:"-"`
 	PoisonHealthLevel   byte                `json:"poison_health_level,omitempty"`
 	PoisonHealthStartAt int64               `json:"poison_health_start_at,omitempty"`
 	PoisonHealthUntil   int64               `json:"poison_health_until,omitempty"`
@@ -105,9 +115,116 @@ type Character struct {
 	PoisonArmorStartAt  int64               `json:"poison_armor_start_at,omitempty"`
 	PoisonArmorUntil    int64               `json:"poison_armor_until,omitempty"`
 	TransparentUntil    int64               `json:"transparent_until,omitempty"`
+	TransparentHideMode *bool               `json:"-"`
 	ShowHPOpenAt        int64               `json:"show_hp_open_at,omitempty"`
 	ShowHPDuration      int64               `json:"show_hp_duration,omitempty"`
 	ShowHPUntil         int64               `json:"show_hp_until,omitempty"`
+}
+
+const characterStatusTimeFormat = "remaining_ms"
+
+type characterJSON Character
+
+func (ch Character) MarshalJSON() ([]byte, error) {
+	b, err := json.Marshal(characterJSON(ch))
+	if err != nil {
+		return nil, err
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return nil, err
+	}
+	delete(raw, "bubble_defence_level")
+	raw["status_time_format"] = json.RawMessage(`"` + characterStatusTimeFormat + `"`)
+	now := time.Now().UnixNano()
+	for key, deadline := range map[string]int64{
+		"paralyzed_until":      ch.ParalyzedUntil,
+		"defence_up_until":     ch.DefenceUpUntil,
+		"mag_defence_up_until": ch.MagDefenceUpUntil,
+		"bubble_defence_until": ch.BubbleDefenceUntil,
+		"poison_health_until":  ch.PoisonHealthUntil,
+		"poison_armor_until":   ch.PoisonArmorUntil,
+		"transparent_until":    ch.TransparentUntil,
+		"show_hp_until":        ch.ShowHPUntil,
+	} {
+		remaining := int64(0)
+		if deadline > now {
+			remaining = (deadline - now) / int64(time.Millisecond)
+			if remaining == 0 {
+				remaining = 1
+			}
+		}
+		value, err := json.Marshal(remaining)
+		if err != nil {
+			return nil, err
+		}
+		raw[key] = value
+	}
+	for _, key := range []string{
+		"inc_health_spell_at",
+		"poison_health_level",
+		"poison_armor_level",
+		"poison_health_start_at",
+		"poison_health_tick_at",
+		"poison_armor_start_at",
+		"show_hp_open_at",
+		"show_hp_duration",
+		"show_hp_until",
+	} {
+		raw[key] = json.RawMessage(`0`)
+	}
+	return json.Marshal(raw)
+}
+
+func (ch *Character) UnmarshalJSON(data []byte) error {
+	var value characterJSON
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*ch = Character(value)
+	transparentHideMode := false
+	ch.TransparentHideMode = &transparentHideMode
+	bubbleDefenceActive := false
+	ch.BubbleDefenceActive = &bubbleDefenceActive
+	ch.BubbleDefenceLevel = 0
+	var meta struct {
+		StatusTimeFormat string `json:"status_time_format"`
+	}
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return err
+	}
+	if meta.StatusTimeFormat != characterStatusTimeFormat {
+		return nil
+	}
+	ch.IncHealthSpellAt = 0
+	ch.PoisonHealthLevel = 0
+	ch.PoisonArmorLevel = 0
+	ch.ShowHPUntil = 0
+	now := time.Now()
+	for _, remaining := range []*int64{
+		&ch.ParalyzedUntil,
+		&ch.DefenceUpUntil,
+		&ch.MagDefenceUpUntil,
+		&ch.BubbleDefenceUntil,
+		&ch.PoisonHealthUntil,
+		&ch.PoisonArmorUntil,
+		&ch.TransparentUntil,
+		&ch.ShowHPUntil,
+	} {
+		if *remaining > 0 {
+			*remaining = now.Add(time.Duration(*remaining) * time.Millisecond).UnixNano()
+		} else {
+			*remaining = 0
+		}
+	}
+	if ch.PoisonHealthUntil > 0 {
+		ch.PoisonHealthStartAt = 0
+		ch.PoisonHealthTickAt = now.UnixNano()
+	}
+	if ch.PoisonArmorUntil > 0 {
+		ch.PoisonArmorStartAt = 0
+	}
+	return nil
 }
 
 type WeaponUpgradeState struct {
@@ -322,8 +439,17 @@ func (s *Store) SaveCharacter(ch Character) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	normalizeCharacterForSave(&ch)
+	previous, existed := s.db.Characters[ch.ID]
 	s.db.Characters[ch.ID] = ch
-	return s.saveLocked()
+	if err := s.saveLocked(); err != nil {
+		if existed {
+			s.db.Characters[ch.ID] = previous
+		} else {
+			delete(s.db.Characters, ch.ID)
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Store) saveLocked() error {

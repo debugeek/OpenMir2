@@ -168,6 +168,7 @@ type StdMap struct {
 	ID               string             `json:"id"`
 	Name             string             `json:"name"`
 	Safe             bool               `json:"safe,omitempty"`
+	NoPositionMove   bool               `json:"no_position_move,omitempty"`
 	Light            int                `json:"light,omitempty"`
 	Width            int                `json:"width"`
 	Height           int                `json:"height"`

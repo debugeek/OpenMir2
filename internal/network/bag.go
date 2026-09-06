@@ -24,7 +24,7 @@ func (s *Server) sendBagAddItem(conn net.Conn, ch storage.Character, itemID stri
 		}
 		item = world.UpgradeClientItemForDisplay(item, entry, true)
 		dura, duraMax := bagItemDurability(item, entry)
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMAddItem, Recog: world.CharacterActorID(ch), Series: 1}, EncodeBuffer(ClientItemBody(item, entry.Desc, entry.MakeIndex, dura, duraMax)))
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMAddItem, Recog: world.CharacterActorID(ch), Series: 1}, EncodeBuffer(itemBodyForAdd(ch, item, entry.Desc, entry.MakeIndex, dura, duraMax)))
 		return true
 	}
 	return false
@@ -36,7 +36,11 @@ func (s *Server) sendDelItem(conn net.Conn, ch storage.Character, removed storag
 		return false
 	}
 	item = world.UpgradeClientItemForDisplay(item, removed, false)
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMDelItem, Recog: world.CharacterActorID(ch), Series: 1}, EncodeBuffer(ClientItemBody(item, removed.Desc, removed.MakeIndex, removed.Dura, removed.DuraMax)))
+	body := ClientItemBody(item, removed.Desc, removed.MakeIndex, removed.Dura, removed.DuraMax)
+	if !clientUsesModernProtocol(ch) {
+		body = LegacyClientItemBody(item, removed.MakeIndex, removed.Dura, removed.DuraMax)
+	}
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMDelItem, Recog: world.CharacterActorID(ch), Series: 1}, EncodeBuffer(body))
 	return true
 }
 
@@ -75,7 +79,7 @@ func EquippedItemsBody(w *world.World, ch storage.Character) []byte {
 		}
 		item = world.UpgradeClientItemForDisplay(item, equipped, false)
 		dura, duraMax := bagItemDurability(item, equipped)
-		client := ClientItemBody(item, equipped.Desc, equipped.MakeIndex, dura, duraMax)
+		client := itemBodyForEquipped(ch, item, equipped.Desc, equipped.MakeIndex, dura, duraMax)
 		encoded := EncodeBuffer(client)
 		if len(encoded) == 0 {
 			continue
@@ -99,7 +103,7 @@ func BagItemsBodyAndCount(w *world.World, ch storage.Character) ([]byte, int) {
 		item = world.UpgradeClientItemForDisplay(item, entry, false)
 		makeIndex := entry.MakeIndex
 		dura, duraMax := bagItemDurability(item, entry)
-		client := ClientItemBody(item, entry.Desc, makeIndex, dura, duraMax)
+		client := itemBodyForBag(ch, item, entry.Desc, makeIndex, dura, duraMax)
 		encoded := EncodeBuffer(client)
 		if len(encoded) == 0 {
 			continue
@@ -123,6 +127,27 @@ func equippedItem(ch storage.Character, slot int) (storage.UserItem, bool) {
 		return storage.UserItem{}, false
 	}
 	return item, true
+}
+
+func itemBodyForAdd(ch storage.Character, item data.StdItem, desc [14]byte, makeIndex int32, dura, duraMax uint16) []byte {
+	if ch.SoftVersionDateEx == 0 {
+		return LegacyClientItemBody(item, makeIndex, dura, duraMax)
+	}
+	return ClientItemBody(item, desc, makeIndex, dura, duraMax)
+}
+
+func itemBodyForBag(ch storage.Character, item data.StdItem, desc [14]byte, makeIndex int32, dura, duraMax uint16) []byte {
+	if ch.SoftVersionDateEx == 0 {
+		return LegacyClientItemBody(item, makeIndex, dura, duraMax)
+	}
+	return ClientItemBody(item, desc, makeIndex, dura, duraMax)
+}
+
+func itemBodyForEquipped(ch storage.Character, item data.StdItem, desc [14]byte, makeIndex int32, dura, duraMax uint16) []byte {
+	if ch.SoftVersionDateEx == 0 && ch.ClientTick == 0 {
+		return LegacyClientItemBody(item, makeIndex, dura, duraMax)
+	}
+	return ClientItemBody(item, desc, makeIndex, dura, duraMax)
 }
 
 func bagItemDurability(item data.StdItem, entry storage.UserItem) (uint16, uint16) {

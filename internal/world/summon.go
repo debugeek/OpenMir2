@@ -10,18 +10,22 @@ func (w *World) monsterIsSummonedLocked(mon *Monster) bool {
 	return mon != nil && mon.MasterID != ""
 }
 
-func (w *World) summonedMonsterOwnerLocked(mon *Monster, players map[string]storage.Character, now time.Time) (storage.Character, bool) {
+func (w *World) summonedMonsterOwnerLocked(mon *Monster, players map[string]storage.Character, now time.Time) (storage.Character, bool, bool) {
 	if mon == nil || mon.MasterID == "" {
-		return storage.Character{}, false
+		return storage.Character{}, false, false
 	}
 	master, ok := players[mon.MasterID]
-	if !ok || master.MapID != mon.MapID {
-		return storage.Character{}, false
+	if ok {
+		if !mon.MasterExpiresAt.IsZero() && now.After(mon.MasterExpiresAt) {
+			return storage.Character{}, false, false
+		}
+		return master, true, false
 	}
-	if !mon.MasterExpiresAt.IsZero() && now.After(mon.MasterExpiresAt) {
-		return storage.Character{}, false
+	ghost, ok := w.disconnectedCharacters[mon.MasterID]
+	if !ok || now.After(ghost.Until) || !mon.MasterExpiresAt.IsZero() && now.After(mon.MasterExpiresAt) {
+		return storage.Character{}, false, false
 	}
-	return master, true
+	return ghost.Character, true, true
 }
 
 func (w *World) findClosestMonsterTargetExceptLocked(mon *Monster, players map[string]storage.Character, viewRange int, excludeID string, now time.Time) (storage.Character, bool) {
@@ -78,10 +82,24 @@ func (w *World) findClosestMonsterTargetAgainstMasterFriendsLocked(mon *Monster,
 }
 
 func (w *World) tickSummonedMonsterLocked(mon *Monster, players map[string]storage.Character, now time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
-	master, ok := w.summonedMonsterOwnerLocked(mon, players, now)
+	master, ok, ghost := w.summonedMonsterOwnerLocked(mon, players, now)
 	if !ok {
 		w.removeMonsterLocked(mon, false)
 		return nil, nil, nil, nil
+	}
+	if ghost {
+		return nil, nil, nil, nil
+	}
+	if master.MapID != mon.MapID {
+		previousMapID, previousX, previousY := mon.MapID, mon.X, mon.Y
+		if !w.recallSummonedMonsterNearCharacterLocked(mon, master, characterListFromMap(players)) {
+			return nil, nil, nil, nil
+		}
+		action := w.monsterActionLocked(mon, MonsterActionSpaceMove)
+		action.PreviousMapID = previousMapID
+		action.PreviousX = previousX
+		action.PreviousY = previousY
+		return []MonsterAction{action}, nil, nil, nil
 	}
 	if master.HP <= 0 {
 		if mon.MasterDeadSince.IsZero() {
@@ -146,7 +164,11 @@ func (w *World) recallSummonedMonsterNearCharacterLocked(mon *Monster, master st
 	if !w.canOccupyLocked(mp, occupied, master.MapID, x, y, mon.ID) {
 		return false
 	}
-	w.moveMonsterLocked(mon, x, y)
+	w.vacateMonsterLocked(mon)
+	mon.MapID = master.MapID
+	mon.X = x
+	mon.Y = y
+	w.occupyMonsterLocked(mon)
 	mon.Dir = dir
 	mon.TargetCharacterID = ""
 	mon.TargetFocusAt = time.Time{}

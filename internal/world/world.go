@@ -14,27 +14,30 @@ import (
 )
 
 type World struct {
-	mu                     sync.Mutex
-	data                   data.StdBundle
-	store                  *storage.Store
-	monsters               map[string]*Monster
-	occupied               map[monsterPosition]string
-	drops                  map[string]GroundDrop
-	fireFields             map[fireFieldKey]fireField
-	groundEvents           map[int32]SpellGroundEvent
-	spawns                 map[string]*spawnState
-	npcActors              map[string]int32
-	merchantStocks         map[string][]storage.UserItem
-	merchantNextID         map[string]int32
-	pendingSpells          []pendingSpell
-	pendingCharacterDeaths map[string]struct{}
-	nextID                 int
-	nextObjectOrder        uint64
-	nextNPCID              int32
-	nextEventID            int32
-	nextFireFieldID        uint64
-	rand                   *rand.Rand
-	gameplay               config.Gameplay
+	mu                       sync.Mutex
+	data                     data.StdBundle
+	store                    *storage.Store
+	monsters                 map[string]*Monster
+	occupied                 map[monsterPosition]string
+	drops                    map[string]GroundDrop
+	fireFields               map[fireFieldKey]fireField
+	groundEvents             map[int32]SpellGroundEvent
+	spawns                   map[string]*spawnState
+	npcActors                map[string]int32
+	merchantStocks           map[string][]storage.UserItem
+	merchantNextID           map[string]int32
+	disconnectedCharacters   map[string]disconnectedCharacter
+	pendingSpells            []pendingSpell
+	pendingCharacterDeaths   map[string]struct{}
+	finalizedCharacterDeaths map[string]struct{}
+	lastCharacterRevivalAt   map[string]int64
+	nextID                   int
+	nextObjectOrder          uint64
+	nextNPCID                int32
+	nextEventID              int32
+	nextFireFieldID          uint64
+	rand                     *rand.Rand
+	gameplay                 config.Gameplay
 }
 
 func (w *World) CanSpellWhileParalyzed() bool {
@@ -43,9 +46,20 @@ func (w *World) CanSpellWhileParalyzed() bool {
 	return w.gameplay.Combat.ParalyCanSpell
 }
 
+func (w *World) CanHitWhileParalyzed() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.gameplay.Combat.ParalyCanHit
+}
+
 type spawnState struct {
 	spawn       data.StdSpawn
 	activeCount int
+}
+
+type disconnectedCharacter struct {
+	Character storage.Character
+	Until     time.Time
 }
 
 type monsterPosition struct {
@@ -95,8 +109,12 @@ type Monster struct {
 	WalkWait            int
 	AttackIntervalMS    int
 	Experience          int
+	IncHealth           int
+	IncSpell            int
 	IncHealing          int
 	PerHealing          int
+	PerHealth           int
+	PerSpell            int
 	IncHealthSpellAt    int64
 	DropTable           string
 	Alive               bool
@@ -107,6 +125,7 @@ type Monster struct {
 	AdminMode           bool
 	StoneMode           bool
 	Animal              bool
+	MeatQuality         int
 	NoTame              bool
 	FleeOnSight         bool
 	RunAwayMode         bool
@@ -189,7 +208,16 @@ func (w *World) GroundEventsAround(mapID string, x, y, radius int, now time.Time
 		}
 		events = append(events, event)
 	}
-	sort.Slice(events, func(i, j int) bool { return events[i].ID < events[j].ID })
+	sort.Slice(events, func(i, j int) bool {
+		left, right := events[i], events[j]
+		if left.MapID != right.MapID {
+			return left.MapID < right.MapID
+		}
+		if left.X != right.X {
+			return left.X < right.X
+		}
+		return left.Y < right.Y
+	})
 	return events
 }
 
@@ -211,12 +239,16 @@ type EquipResult struct {
 	Character     storage.Character
 	SwappedOut    storage.UserItem
 	HasSwappedOut bool
+	AddedSkills   []storage.SkillState
+	RemovedSkills []string
 }
 
 type UnequipResult struct {
 	Character      storage.Character
 	RemovedItem    storage.UserItem
 	HasRemovedItem bool
+	AddedSkills    []storage.SkillState
+	RemovedSkills  []string
 }
 
 type AttackResult struct {
@@ -225,7 +257,6 @@ type AttackResult struct {
 	Magic                bool
 	MonsterHealthChanged bool
 	ImpactDelay          time.Duration
-	ImmediateImpact      bool
 	Damage               int
 	MonsterHP            int
 	MonsterMaxHP         int
@@ -276,6 +307,7 @@ type TickResult struct {
 	MonsterActions           []MonsterAction
 	CharacterHits            []CharacterHit
 	CharacterDeaths          []storage.Character
+	CharacterRevivals        []CharacterRevival
 	MonsterHits              []AttackResult
 	MonsterDeaths            []AttackResult
 	AffectedMonsters         []Monster
@@ -295,6 +327,7 @@ type TickResult struct {
 	HealingCharacters        []string
 	GroundEvents             []SpellGroundEvent
 	GroundEventHides         []int32
+	GroundEventHideDetails   []SpellGroundEvent
 	Characters               []storage.Character
 	SpellExperience          []SpellExperience
 	PoisonNotifications      []PoisonNotification
@@ -353,6 +386,9 @@ type MonsterAction struct {
 	Dir           int
 	Status        int32
 	Kind          MonsterActionKind
+	PreviousMapID string
+	PreviousX     int
+	PreviousY     int
 }
 
 type MonsterActionKind int
@@ -364,6 +400,7 @@ const (
 	MonsterActionReveal
 	MonsterActionHide
 	MonsterActionPush
+	MonsterActionSpaceMove
 )
 
 type CharacterHit struct {
@@ -386,6 +423,13 @@ type CharacterHit struct {
 	DeathDeferred            bool
 }
 
+type CharacterRevival struct {
+	Character    storage.Character
+	Durabilities []SpellDurability
+	RemovedItems []storage.UserItem
+	Message      string
+}
+
 func New(bundle data.StdBundle, store *storage.Store, gameplayConfig ...config.Gameplay) *World {
 	gameplay := config.DefaultGameplay()
 	if len(gameplayConfig) > 0 {
@@ -393,24 +437,27 @@ func New(bundle data.StdBundle, store *storage.Store, gameplayConfig ...config.G
 	}
 	bundle = normalizeStdBundle(bundle)
 	w := &World{
-		data:                   bundle,
-		store:                  store,
-		monsters:               map[string]*Monster{},
-		occupied:               map[monsterPosition]string{},
-		drops:                  map[string]GroundDrop{},
-		fireFields:             map[fireFieldKey]fireField{},
-		groundEvents:           map[int32]SpellGroundEvent{},
-		spawns:                 map[string]*spawnState{},
-		npcActors:              map[string]int32{},
-		merchantStocks:         map[string][]storage.UserItem{},
-		merchantNextID:         map[string]int32{},
-		pendingCharacterDeaths: map[string]struct{}{},
-		nextID:                 1,
-		nextObjectOrder:        1,
-		nextNPCID:              300000,
-		nextEventID:            400000,
-		rand:                   rand.New(rand.NewSource(1)),
-		gameplay:               gameplay,
+		data:                     bundle,
+		store:                    store,
+		monsters:                 map[string]*Monster{},
+		occupied:                 map[monsterPosition]string{},
+		drops:                    map[string]GroundDrop{},
+		fireFields:               map[fireFieldKey]fireField{},
+		groundEvents:             map[int32]SpellGroundEvent{},
+		spawns:                   map[string]*spawnState{},
+		npcActors:                map[string]int32{},
+		merchantStocks:           map[string][]storage.UserItem{},
+		merchantNextID:           map[string]int32{},
+		disconnectedCharacters:   map[string]disconnectedCharacter{},
+		pendingCharacterDeaths:   map[string]struct{}{},
+		finalizedCharacterDeaths: map[string]struct{}{},
+		lastCharacterRevivalAt:   map[string]int64{},
+		nextID:                   1,
+		nextObjectOrder:          1,
+		nextNPCID:                300000,
+		nextEventID:              400000,
+		rand:                     rand.New(rand.NewSource(1)),
+		gameplay:                 gameplay,
 	}
 	w.initNPCActors()
 	w.spawnInitial()
@@ -420,8 +467,98 @@ func New(bundle data.StdBundle, store *storage.Store, gameplayConfig ...config.G
 func (w *World) RegisterCharacter(ch storage.Character) storage.Character {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	delete(w.disconnectedCharacters, ch.ID)
+	w.applyStealthRingStateLocked(&ch, time.Now())
 	w.refreshCharacterObjectOrderLocked(&ch)
 	return ch
+}
+
+func (w *World) ClearDisconnectedCharacter(id string) {
+	if id == "" {
+		return
+	}
+	w.mu.Lock()
+	delete(w.disconnectedCharacters, id)
+	w.mu.Unlock()
+}
+
+func (w *World) HandleCharacterDisconnect(ch storage.Character, now time.Time) {
+	if ch.ID == "" {
+		return
+	}
+	w.mu.Lock()
+	w.disconnectedCharacters[ch.ID] = disconnectedCharacter{Character: ch, Until: now.Add(time.Second)}
+	w.mu.Unlock()
+}
+
+func (w *World) reviveCharacterLocked(ch *storage.Character, now time.Time) (CharacterRevival, bool, error) {
+	if ch == nil || ch.ID == "" || ch.HP > 0 {
+		return CharacterRevival{}, false, nil
+	}
+	last := w.lastCharacterRevivalAt[ch.ID]
+	revivalTime := w.gameplay.Recovery.RevivalTimeMS
+	if revivalTime <= 0 {
+		revivalTime = 60 * 1000
+	}
+	if last > 0 && now.UnixMilli()-last <= int64(revivalTime) {
+		return CharacterRevival{}, false, nil
+	}
+	durabilities := make([]SpellDurability, 0)
+	removedItems := make([]storage.UserItem, 0)
+	for slot, entry := range ch.EquippedItems {
+		item, ok := w.data.Items[entry.ItemID]
+		if !ok || !revivalItem(item, slot) {
+			continue
+		}
+		removedItem := entry
+		if entry.Dura <= 1000 {
+			entry.Dura = 0
+			delete(ch.EquippedItems, slot)
+			removedItem.Dura = 0
+			removedItems = append(removedItems, removedItem)
+		} else {
+			entry.Dura -= 1000
+			ch.EquippedItems[slot] = entry
+		}
+		durabilities = append(durabilities, SpellDurability{Slot: slot, Dura: entry.Dura, DuraMax: entry.DuraMax})
+	}
+	if len(durabilities) == 0 {
+		return CharacterRevival{}, false, nil
+	}
+	ch.HP = ch.MaxHP
+	ch.IncHealth = 0
+	ch.IncSpell = 0
+	ch.IncHealing = 0
+	w.lastCharacterRevivalAt[ch.ID] = now.UnixMilli()
+	if err := w.store.SaveCharacter(*ch); err != nil {
+		return CharacterRevival{}, false, err
+	}
+	return CharacterRevival{
+		Character:    *ch,
+		Durabilities: durabilities,
+		RemovedItems: removedItems,
+		Message:      "复活戒指恢复有效，生命恢复。",
+	}, true, nil
+}
+
+func (w *World) characterHasUnrevivalItemLocked(ch storage.Character) bool {
+	for slot, entry := range ch.EquippedItems {
+		item, ok := w.data.Items[entry.ItemID]
+		if !ok {
+			continue
+		}
+		if item.Shape == 144 || ((slot == SlotWeapon || slot == SlotRightHand) && item.AniCount == 144) {
+			return true
+		}
+	}
+	return false
+}
+
+func revivalItem(item data.StdItem, slot int) bool {
+	if item.Shape == 114 || item.Shape == 160 || item.Shape == 161 || item.Shape == 162 {
+		return true
+	}
+	return (slot == SlotWeapon || slot == SlotRightHand) && (item.AniCount == 114 || item.AniCount == 160 || item.AniCount == 161 || item.AniCount == 162)
 }
 
 func (w *World) deferCharacterDeathLocked(ch storage.Character) {

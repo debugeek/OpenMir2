@@ -5,6 +5,23 @@ import (
 	"time"
 )
 
+func (w *World) MonsterSnapshot(id string) (Monster, bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	mon, ok := w.monsters[id]
+	if !ok || mon == nil || !mon.Alive {
+		return Monster{}, false
+	}
+	return *mon, true
+}
+
+func (w *World) MonsterTracked(id string) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	_, ok := w.monsters[id]
+	return ok
+}
+
 func (w *World) SnapshotAround(mapID string, x, y, viewRange int) ([]Monster, []GroundDrop) {
 	w.mu.Lock()
 	defer w.mu.Unlock()

@@ -100,11 +100,15 @@ func (w *World) removeMonsterLocked(mon *Monster, adjustSpawn bool) {
 }
 
 func (w *World) setMonsterLastHitterLocked(mon *Monster, attackerID string) {
+	w.setMonsterLastHitterAtLocked(mon, attackerID, time.Now())
+}
+
+func (w *World) setMonsterLastHitterAtLocked(mon *Monster, attackerID string, now time.Time) {
 	if mon == nil || attackerID == "" {
 		return
 	}
 	mon.LastHitterID = attackerID
-	mon.LastHitterAt = time.Now()
+	mon.LastHitterAt = now
 	if mon.ExpHitterID == "" {
 		mon.ExpHitterID = attackerID
 		mon.ExpHitterAt = mon.LastHitterAt
@@ -131,9 +135,7 @@ func (w *World) monsterStruckLocked(mon *Monster, now time.Time) {
 	if mon == nil {
 		return
 	}
-	if mon.Animal {
-		w.rand.Intn(300)
-	}
+	w.decayMonsterMeatQualityLocked(mon, 0)
 	hitDelay := 150 - minInt(130, mon.Level*4)
 	if hitDelay < 0 {
 		hitDelay = 0
@@ -142,6 +144,31 @@ func (w *World) monsterStruckLocked(mon *Monster, now time.Time) {
 		mon.LastAttackAt = now.Add(time.Duration(hitDelay) * time.Millisecond)
 	} else {
 		mon.LastAttackAt = mon.LastAttackAt.Add(time.Duration(hitDelay) * time.Millisecond)
+	}
+}
+
+func (w *World) monsterMagicDamageRecoveryResetLocked(mon *Monster) {
+	if mon == nil {
+		return
+	}
+	mon.PerHealth--
+	mon.PerSpell--
+}
+
+func (w *World) decayMonsterMeatQualityLocked(mon *Monster, magicDamage int) {
+	if mon == nil || mon.MeatQuality <= 0 {
+		return
+	}
+	decrement := magicDamage * 1000
+	if magicDamage == 0 {
+		if w.rand == nil {
+			return
+		}
+		decrement = w.rand.Intn(300)
+	}
+	mon.MeatQuality -= decrement
+	if mon.MeatQuality < 0 {
+		mon.MeatQuality = 0
 	}
 }
 

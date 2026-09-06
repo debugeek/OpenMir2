@@ -16,7 +16,44 @@ func characterTransparentActive(ch storage.Character, now time.Time) bool {
 }
 
 func characterTransparentStatePresent(ch storage.Character) bool {
-	return ch.TransparentUntil > 0
+	if ch.TransparentUntil <= 0 {
+		return false
+	}
+	if ch.TransparentHideMode != nil {
+		return *ch.TransparentHideMode
+	}
+	return true
+}
+
+func setCharacterTransparentRuntime(ch *storage.Character, active bool) {
+	if ch == nil {
+		return
+	}
+	ch.TransparentHideMode = &active
+}
+
+func (w *World) applyStealthRingStateLocked(ch *storage.Character, now time.Time) bool {
+	if ch == nil {
+		return false
+	}
+	for slot := 0; slot < useSlotCount; slot++ {
+		entry, ok := w.equippedItemLocked(*ch, slot)
+		if !ok {
+			continue
+		}
+		item, ok := w.data.Items[entry.ItemID]
+		if !ok || (item.Shape != 111 && item.AniCount != 111) {
+			continue
+		}
+		until := now.Add(60 * time.Second).UnixNano()
+		setCharacterTransparentRuntime(ch, true)
+		if until > ch.TransparentUntil {
+			ch.TransparentUntil = until
+			return true
+		}
+		return false
+	}
+	return false
 }
 
 func monsterCanSeeTransparent(mon *Monster) bool {
@@ -56,6 +93,7 @@ func setCharacterTransparentLocked(ch *storage.Character, until time.Time) bool 
 	if until.UnixNano() <= ch.TransparentUntil {
 		return false
 	}
+	setCharacterTransparentRuntime(ch, true)
 	ch.TransparentUntil = until.UnixNano()
 	return true
 }
@@ -64,6 +102,7 @@ func clearCharacterTransparentLocked(ch *storage.Character) bool {
 	if ch.TransparentUntil == 0 {
 		return false
 	}
+	setCharacterTransparentRuntime(ch, false)
 	ch.TransparentUntil = 0
 	return true
 }
@@ -138,6 +177,7 @@ func (w *World) applyCharacterStealthTickLocked(ch storage.Character, now time.T
 		return ch, false
 	}
 	next := ch
+	setCharacterTransparentRuntime(&next, false)
 	next.TransparentUntil = 0
 	return next, true
 }

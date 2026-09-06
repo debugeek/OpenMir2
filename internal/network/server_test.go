@@ -46,13 +46,255 @@ func WireString(t *testing.T, text string) []byte {
 	return payload
 }
 
-func TestCharacterStruckCommandUsesTargetActor(t *testing.T) {
-	hit := world.CharacterHit{Character: storage.Character{ID: "target-7", HP: 80, MaxHP: 100}, Damage: 12}
+func TestCharacterStruckCommandUsesTargetFields(t *testing.T) {
+	hit := world.CharacterHit{Character: storage.Character{ID: "target-7", HP: 80, MaxHP: 100}, AttackerActor: 123456, Damage: 12}
 
 	cmd := CharacterStruckCommand(hit)
-	if cmd.Recog != world.CharacterActorID(hit.Character) {
-		t.Fatalf("SM_STRUCK recog = %d, want target actor %d", cmd.Recog, world.CharacterActorID(hit.Character))
+	if cmd.Recog != world.CharacterActorID(hit.Character) || cmd.Param != uint16(hit.Character.HP) || cmd.Tag != uint16(hit.Character.MaxHP) || cmd.Series != uint16(hit.Damage) {
+		t.Fatalf("SM_STRUCK command = %+v, want target=%d hp=%d maxhp=%d damage=%d", cmd, world.CharacterActorID(hit.Character), hit.Character.HP, hit.Character.MaxHP, hit.Damage)
 	}
+}
+
+func TestVisibleHealthBroadcastIncludesTargetSelf(t *testing.T) {
+	s := newTestServer(t)
+	serverConn, clientConn := net.Pipe()
+	defer serverConn.Close()
+	defer clientConn.Close()
+	observerServer, observerConn := net.Pipe()
+	defer observerServer.Close()
+	defer observerConn.Close()
+	now := time.Now()
+	ch := storage.Character{ID: "visible-health-target", Name: "target", MapID: testMapID, X: 10, Y: 10, HP: 80, MaxHP: 100, ShowHPUntil: now.Add(time.Minute).UnixNano()}
+	observer := storage.Character{ID: "visible-health-observer", Name: "observer", MapID: testMapID, X: 11, Y: 10, HP: 80, MaxHP: 100}
+	s.registerClient(serverConn, ch)
+	defer s.unregisterClient(serverConn)
+	s.registerClient(observerServer, observer)
+	defer s.unregisterClient(observerServer)
+
+	done := make(chan struct{})
+	go func() {
+		s.sendHealthSpellChanged(serverConn, world.CharacterActorID(ch), s.world.AbilityStats(ch))
+		s.broadcastCharacterHealthSpellChanged(ch)
+		close(done)
+	}()
+	<-done
+
+	count := 0
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		frame, ok := readFrameWithTimeout(t, clientConn, 100*time.Millisecond)
+		if !ok {
+			break
+		}
+		cmd, _, err := decodeMessageLikeClient(frame)
+		if err != nil {
+			t.Fatalf("decode health frame error = %v", err)
+		}
+		if cmd.Ident == mir176.SMHealthSpellChanged {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Fatalf("visible self health frame count = %d, want direct and reference-visible self updates", count)
+	}
+	observerFrame, ok := readFrameWithTimeout(t, observerConn, time.Second)
+	if !ok {
+		t.Fatal("visible observer did not receive health frame")
+	}
+	observerCmd, _, err := decodeMessageLikeClient(observerFrame)
+	if err != nil {
+		t.Fatalf("decode observer health frame error = %v", err)
+	}
+	if observerCmd.Ident != mir176.SMHealthSpellChanged || observerCmd.Recog != world.CharacterActorID(ch) {
+		t.Fatalf("observer health frame = %+v, want target health update", observerCmd)
+	}
+	if extra, ok := readFrameWithTimeout(t, observerConn, 100*time.Millisecond); ok {
+		t.Fatalf("observer received duplicate health frame: %x", extra)
+	}
+}
+
+func TestBroadcastMonsterSpaceMoveHidesOldObserversWithoutNewObservers(t *testing.T) {
+	s := newTestServer(t)
+	serverConn, clientConn := net.Pipe()
+	defer serverConn.Close()
+	defer clientConn.Close()
+	ch := storage.Character{ID: "space-observer", Name: "observer", MapID: testMapID, X: 10, Y: 10, HP: 100, MaxHP: 100}
+	s.registerClient(serverConn, ch)
+	defer s.unregisterClient(serverConn)
+	action := world.MonsterAction{
+		MonsterID:     "space-monster",
+		PreviousMapID: testMapID,
+		PreviousX:     10,
+		PreviousY:     10,
+		MapID:         "missing-map",
+		X:             1,
+		Y:             1,
+	}
+	done := make(chan struct{})
+	go func() {
+		s.broadcastMonsterSpaceMove(action)
+		close(done)
+	}()
+	frame, ok := readFrameWithTimeout(t, clientConn, time.Second)
+	if !ok {
+		t.Fatal("missing old-map monster space move hide frame")
+	}
+	cmd, _, err := decodeMessageLikeClient(frame)
+	if err != nil {
+		t.Fatalf("decode monster space move hide frame error = %v", err)
+	}
+	if cmd.Ident != mir176.SMSpacemoveHide2 || cmd.Recog != world.MonsterActorID(world.Monster{ID: action.MonsterID}) {
+		t.Fatalf("monster space move hide command = %+v", cmd)
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("broadcastMonsterSpaceMove did not finish")
+	}
+}
+
+func TestStruckDisplayConfigSuppressesOnlyConfiguredRecipients(t *testing.T) {
+	tests := []struct {
+		name         string
+		disableAll   bool
+		disableSelf  bool
+		recipientID  string
+		targetID     string
+		wantSuppress bool
+	}{
+		{name: "self", disableSelf: true, recipientID: "target", targetID: "target", wantSuppress: true},
+		{name: "observer", disableSelf: true, recipientID: "observer", targetID: "target", wantSuppress: false},
+		{name: "all", disableAll: true, recipientID: "observer", targetID: "target", wantSuppress: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gameplay := config.DefaultGameplay()
+			gameplay.Combat.DisableStruck = tt.disableAll
+			gameplay.Combat.DisableSelfStruck = tt.disableSelf
+			s := newTestServerWithGameplay(t, gameplay)
+			serverConn, clientConn := net.Pipe()
+			defer serverConn.Close()
+			defer clientConn.Close()
+			client := s.registerClient(serverConn, storage.Character{ID: tt.recipientID, MapID: testMapID, X: 10, Y: 10})
+			defer s.unregisterClient(serverConn)
+			hit := world.CharacterHit{Character: storage.Character{ID: tt.targetID, MapID: testMapID, X: 10, Y: 10}, Damage: 1}
+			done := make(chan struct{})
+			go func() {
+				s.sendCharacterStruck([]*Client{client}, hit)
+				close(done)
+			}()
+			if err := clientConn.SetReadDeadline(time.Now().Add(100 * time.Millisecond)); err != nil {
+				t.Fatalf("SetReadDeadline() error = %v", err)
+			}
+			sawStruck := false
+			for {
+				frame, ok := readFrameWithTimeout(t, clientConn, 100*time.Millisecond)
+				if !ok {
+					break
+				}
+				cmd, _, decodeErr := decodeMessageLikeClient(frame)
+				if decodeErr != nil {
+					t.Fatalf("decode struck configuration frame error = %v", decodeErr)
+				}
+				if cmd.Ident == mir176.SMStruck {
+					sawStruck = true
+				}
+			}
+			<-done
+			if sawStruck != !tt.wantSuppress {
+				t.Fatalf("struck frame present = %t, want %t", sawStruck, !tt.wantSuppress)
+			}
+		})
+	}
+}
+
+func TestSelfStruckSuppressionRefreshesTargetAndPreservesObserverStruck(t *testing.T) {
+	gameplay := config.DefaultGameplay()
+	gameplay.Combat.DisableSelfStruck = true
+	s := newTestServerWithGameplay(t, gameplay)
+	targetServer, targetClient := net.Pipe()
+	observerServer, observerClient := net.Pipe()
+	defer targetServer.Close()
+	defer targetClient.Close()
+	defer observerServer.Close()
+	defer observerClient.Close()
+	target := s.registerClient(targetServer, storage.Character{ID: "target", MapID: testMapID, X: 10, Y: 10, HP: 70, MaxHP: 100})
+	defer s.unregisterClient(targetServer)
+	observer := s.registerClient(observerServer, storage.Character{ID: "observer", MapID: testMapID, X: 10, Y: 11})
+	defer s.unregisterClient(observerServer)
+	hit := world.CharacterHit{Character: target.character(), Damage: 5}
+	done := make(chan struct{})
+	go func() {
+		s.sendCharacterStruck([]*Client{target, observer}, hit)
+		close(done)
+	}()
+	targetCmd, _, err := decodeMessageLikeClient(readFrame(t, targetClient))
+	if err != nil {
+		t.Fatalf("decode target suppressed frame error = %v", err)
+	}
+	if targetCmd.Ident != mir176.SMHealthSpellChanged || targetCmd.Recog != world.CharacterActorID(hit.Character) {
+		t.Fatalf("target suppressed frame = %+v, want target health refresh", targetCmd)
+	}
+	observerHealth, _, err := decodeMessageLikeClient(readFrame(t, observerClient))
+	if err != nil {
+		t.Fatalf("decode observer health frame error = %v", err)
+	}
+	if observerHealth.Ident != mir176.SMHealthSpellChanged || observerHealth.Recog != world.CharacterActorID(hit.Character) {
+		t.Fatalf("observer health frame = %+v, want target health refresh", observerHealth)
+	}
+	observerStruck, _, err := decodeMessageLikeClient(readFrame(t, observerClient))
+	if err != nil {
+		t.Fatalf("decode observer struck frame error = %v", err)
+	}
+	if observerStruck.Ident != mir176.SMStruck {
+		t.Fatalf("observer struck frame = %+v, want struck frame", observerStruck)
+	}
+	<-done
+}
+
+func TestSelfMagicStruckSuppressionRefreshesTargetAndPreservesObserverStruck(t *testing.T) {
+	gameplay := config.DefaultGameplay()
+	gameplay.Combat.DisableSelfStruck = true
+	s := newTestServerWithGameplay(t, gameplay)
+	targetServer, targetClient := net.Pipe()
+	observerServer, observerClient := net.Pipe()
+	defer targetServer.Close()
+	defer targetClient.Close()
+	defer observerServer.Close()
+	defer observerClient.Close()
+	target := s.registerClient(targetServer, storage.Character{ID: "magic-target", MapID: testMapID, X: 10, Y: 10, HP: 70, MaxHP: 100})
+	defer s.unregisterClient(targetServer)
+	observer := s.registerClient(observerServer, storage.Character{ID: "magic-observer", MapID: testMapID, X: 10, Y: 11})
+	defer s.unregisterClient(observerServer)
+	caster := storage.Character{ID: "magic-caster"}
+	hit := world.CharacterHit{Character: target.character(), Damage: 5, Magic: true}
+	done := make(chan struct{})
+	go func() {
+		s.sendCharacterSpellStruck([]*Client{target, observer}, caster, hit)
+		close(done)
+	}()
+	for _, recipient := range []struct {
+		name string
+		conn net.Conn
+		want int
+	}{{name: "target", conn: targetClient, want: 2}, {name: "observer", conn: observerClient, want: 2}} {
+		for i := 0; i < recipient.want; i++ {
+			cmd, _, err := decodeMessageLikeClient(readFrame(t, recipient.conn))
+			if err != nil {
+				t.Fatalf("decode %s suppressed magic frame error = %v", recipient.name, err)
+			}
+			if recipient.name == "observer" && i == 1 {
+				if cmd.Ident != mir176.SMStruck {
+					t.Fatalf("observer suppressed magic frame = %+v, want struck frame", cmd)
+				}
+				continue
+			}
+			if cmd.Ident != mir176.SMHealthSpellChanged || cmd.Recog != world.CharacterActorID(hit.Character) {
+				t.Fatalf("%s suppressed magic frame = %+v, want target health refresh", recipient.name, cmd)
+			}
+		}
+	}
+	<-done
 }
 
 func TestCharacterHitCommandUsesAttackerActor(t *testing.T) {
@@ -61,6 +303,31 @@ func TestCharacterHitCommandUsesAttackerActor(t *testing.T) {
 	cmd := CharacterHitCommand(ch, mir176.CMFireHit)
 	if cmd.Recog != world.CharacterActorID(ch) || cmd.Param != 12 || cmd.Tag != 34 || cmd.Series != 5 {
 		t.Fatalf("hit command = %+v, want attacker actor %d and position/direction", cmd, world.CharacterActorID(ch))
+	}
+}
+
+func TestCharacterHitCommandMapsAllStandardAttackActions(t *testing.T) {
+	tests := []struct {
+		name string
+		cm   uint16
+		sm   uint16
+	}{
+		{name: "normal", cm: mir176.CMHit, sm: mir176.SMHit},
+		{name: "heavy", cm: mir176.CMHeavyHit, sm: mir176.SMHeavyHit},
+		{name: "big", cm: mir176.CMBigHit, sm: mir176.SMBigHit},
+		{name: "power", cm: mir176.CMPowerHit, sm: mir176.SMPowerHit},
+		{name: "long", cm: mir176.CMLongHit, sm: mir176.SMLongHit},
+		{name: "wide", cm: mir176.CMWideHit, sm: mir176.SMWideHit},
+		{name: "fire", cm: mir176.CMFireHit, sm: mir176.SMFireHit},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ch := storage.Character{ID: "attack-action-" + tt.name, X: 12, Y: 34, Dir: 5}
+			cmd := CharacterHitCommand(ch, tt.cm)
+			if cmd.Ident != tt.sm || cmd.Recog != world.CharacterActorID(ch) || cmd.Param != 12 || cmd.Tag != 34 || cmd.Series != 5 {
+				t.Fatalf("hit command = %+v, want ident=%d actor=%d position=(12,34) dir=5", cmd, tt.sm, world.CharacterActorID(ch))
+			}
+		})
 	}
 }
 
@@ -85,12 +352,193 @@ func TestCharacterStruckUsesCapturedAttackerActorAfterDisconnect(t *testing.T) {
 	assertMessageBodyWL(t, body, s.world.HumanFeatureForCharacter(hit.Character), s.world.CharacterStatus(hit.Character), 123456, 0)
 }
 
-func TestCharacterSpellStruckCommandUsesTargetActor(t *testing.T) {
-	hit := world.CharacterHit{Character: storage.Character{ID: "target-7", HP: 80, MaxHP: 100}, Damage: 12}
+func TestCharacterStruckPreservesEmptyAttackerForSelfDamage(t *testing.T) {
+	s := newTestServer(t)
+	serverConn, clientConn := net.Pipe()
+	defer serverConn.Close()
+	defer clientConn.Close()
+	client := s.registerClient(serverConn, storage.Character{ID: "target", MapID: testMapID, X: 10, Y: 10})
+	defer s.unregisterClient(serverConn)
+	hit := world.CharacterHit{Character: client.character(), Damage: 1}
+	s.sendCharacterStruck([]*Client{client}, hit)
+	_, body, err := decodeMessageLikeClient(readFrame(t, clientConn))
+	if err != nil {
+		t.Fatalf("decode struck frame error = %v", err)
+	}
+	assertMessageBodyWL(t, body, s.world.HumanFeatureForCharacter(hit.Character), s.world.CharacterStatus(hit.Character), 0, 0)
+}
+
+func TestDelayedCharacterStruckRecomputesVisibleRecipients(t *testing.T) {
+	s := newTestServer(t)
+	s.SetHitImpactDelay(30 * time.Millisecond)
+	targetServer, targetClient := net.Pipe()
+	observerServer, observerClient := net.Pipe()
+	defer targetServer.Close()
+	defer targetClient.Close()
+	defer observerServer.Close()
+	defer observerClient.Close()
+	target := s.registerClient(targetServer, storage.Character{ID: "target", MapID: testMapID, X: 10, Y: 10})
+	defer s.unregisterClient(targetServer)
+	observer := s.registerClient(observerServer, storage.Character{ID: "observer", MapID: testMapID, X: 10, Y: 11})
+	defer s.unregisterClient(observerServer)
+	hit := world.CharacterHit{Character: target.character(), Damage: 1}
+	s.broadcastCharacterStruck([]*Client{target, observer}, hit)
+	observer.mu.Lock()
+	observer.ch.X = 100
+	observer.ch.Y = 100
+	observer.mu.Unlock()
+	newObserverServer, newObserverClient := net.Pipe()
+	defer newObserverServer.Close()
+	defer newObserverClient.Close()
+	s.registerClient(newObserverServer, storage.Character{ID: "observer-new", MapID: testMapID, X: 10, Y: 12})
+	defer s.unregisterClient(newObserverServer)
+	if frame, ok := readFrameWithTimeout(t, observerClient, 200*time.Millisecond); ok {
+		t.Fatalf("observer received delayed frame after leaving range: %x", frame)
+	}
+	if frame, ok := readFrameWithTimeout(t, newObserverClient, 200*time.Millisecond); !ok {
+		t.Fatal("new observer did not receive delayed struck frame after entering range")
+	} else if _, _, err := decodeMessageLikeClient(frame); err != nil {
+		t.Fatalf("decode new observer delayed frame error = %v", err)
+	}
+	if frame, ok := readFrameWithTimeout(t, targetClient, 200*time.Millisecond); !ok {
+		t.Fatal("target did not receive delayed struck frame")
+	} else if _, _, err := decodeMessageLikeClient(frame); err != nil {
+		t.Fatalf("decode target delayed frame error = %v", err)
+	}
+}
+
+func TestDelayedCharacterStruckUsesCurrentTargetPosition(t *testing.T) {
+	s := newTestServer(t)
+	s.SetHitImpactDelay(30 * time.Millisecond)
+	targetServer, targetClient := net.Pipe()
+	oldObserverServer, oldObserverClient := net.Pipe()
+	newObserverServer, newObserverClient := net.Pipe()
+	defer targetServer.Close()
+	defer targetClient.Close()
+	defer oldObserverServer.Close()
+	defer oldObserverClient.Close()
+	defer newObserverServer.Close()
+	defer newObserverClient.Close()
+	target := s.registerClient(targetServer, storage.Character{ID: "moving-target", MapID: testMapID, X: 10, Y: 10, HP: 90, MaxHP: 100})
+	defer s.unregisterClient(targetServer)
+	s.registerClient(oldObserverServer, storage.Character{ID: "old-observer", MapID: testMapID, X: 10, Y: 11})
+	defer s.unregisterClient(oldObserverServer)
+	hit := world.CharacterHit{Character: target.character(), Damage: 1}
+	s.broadcastCharacterStruck([]*Client{target}, hit)
+	target.mu.Lock()
+	target.ch.X = 100
+	target.ch.Y = 100
+	target.ch.HP = 77
+	target.ch.MaxHP = 123
+	target.mu.Unlock()
+	s.registerClient(newObserverServer, storage.Character{ID: "new-observer", MapID: testMapID, X: 100, Y: 101})
+	defer s.unregisterClient(newObserverServer)
+	if frame, ok := readFrameWithTimeout(t, oldObserverClient, 200*time.Millisecond); ok {
+		t.Fatalf("old-position observer received delayed frame after target moved: %x", frame)
+	}
+	if frame, ok := readFrameWithTimeout(t, newObserverClient, 200*time.Millisecond); !ok {
+		t.Fatal("new-position observer did not receive delayed struck frame")
+	} else if _, _, err := decodeMessageLikeClient(frame); err != nil {
+		t.Fatalf("decode new-position delayed frame error = %v", err)
+	}
+	if frame, ok := readFrameWithTimeout(t, targetClient, 200*time.Millisecond); !ok {
+		t.Fatal("moving target did not receive delayed struck frame")
+	} else if cmd, _, err := decodeMessageLikeClient(frame); err != nil {
+		t.Fatalf("decode target delayed frame error = %v", err)
+	} else if cmd.Param != 77 || cmd.Tag != 123 {
+		t.Fatalf("delayed target HP fields = %d/%d, want current 77/123", cmd.Param, cmd.Tag)
+	}
+}
+
+func TestDelayedMonsterStruckRecomputesVisibleRecipients(t *testing.T) {
+	s := newTestServer(t)
+	s.SetHitImpactDelay(30 * time.Millisecond)
+	targetServer, targetClient := net.Pipe()
+	observerServer, observerClient := net.Pipe()
+	defer targetServer.Close()
+	defer targetClient.Close()
+	defer observerServer.Close()
+	defer observerClient.Close()
+	target := s.registerClient(targetServer, storage.Character{ID: "target", MapID: testMapID, X: 10, Y: 10})
+	defer s.unregisterClient(targetServer)
+	observer := s.registerClient(observerServer, storage.Character{ID: "observer", MapID: testMapID, X: 10, Y: 11})
+	defer s.unregisterClient(observerServer)
+	result := world.AttackResult{MonsterID: "delayed-monster", MonsterMapID: testMapID, MonsterX: 10, MonsterY: 10, MonsterHP: 99, MonsterMaxHP: 100, Damage: 1}
+	s.broadcastHitImpact([]*Client{target, observer}, result)
+	observer.mu.Lock()
+	observer.ch.X = 100
+	observer.ch.Y = 100
+	observer.mu.Unlock()
+	newObserverServer, newObserverClient := net.Pipe()
+	defer newObserverServer.Close()
+	defer newObserverClient.Close()
+	s.registerClient(newObserverServer, storage.Character{ID: "observer-new", MapID: testMapID, X: 10, Y: 12})
+	defer s.unregisterClient(newObserverServer)
+	if frame, ok := readFrameWithTimeout(t, observerClient, 200*time.Millisecond); ok {
+		t.Fatalf("observer received delayed monster frame after leaving range: %x", frame)
+	}
+	if frame, ok := readFrameWithTimeout(t, newObserverClient, 200*time.Millisecond); !ok {
+		t.Fatal("new observer did not receive delayed monster frame after entering range")
+	} else if _, _, err := decodeMessageLikeClient(frame); err != nil {
+		t.Fatalf("decode new observer delayed monster frame error = %v", err)
+	}
+	if frame, ok := readFrameWithTimeout(t, targetClient, 200*time.Millisecond); !ok {
+		t.Fatal("target did not receive delayed monster frame")
+	} else if _, _, err := decodeMessageLikeClient(frame); err != nil {
+		t.Fatalf("decode target delayed monster frame error = %v", err)
+	}
+}
+
+func TestApplyWorldTickUsesReferenceCacheForPhysicalMonsterHit(t *testing.T) {
+	s := newTestServer(t)
+	serverConn, clientConn := net.Pipe()
+	defer serverConn.Close()
+	defer clientConn.Close()
+	client := s.registerClient(serverConn, storage.Character{ID: "physical-cache-observer", MapID: testMapID, X: 30, Y: 30})
+	defer s.unregisterClient(serverConn)
+
+	s.spellRefClientsFor("monster:physical-cache-monster", testMapID, 10, 10)
+	client.mu.Lock()
+	client.ch.X = 20
+	client.ch.Y = 10
+	client.mu.Unlock()
+
+	s.applyWorldTick(world.TickResult{MonsterHits: []world.AttackResult{{
+		MonsterID: "physical-cache-monster", MonsterMapID: testMapID, MonsterX: 10, MonsterY: 10,
+		MonsterHP: 9, MonsterMaxHP: 10, Damage: 1,
+	}}}, time.Now())
+	if frame, ok := readFrameWithTimeout(t, clientConn, 50*time.Millisecond); ok {
+		t.Fatalf("physical monster hit ignored the reference cache: %x", frame)
+	}
+}
+
+func TestDelayedSpellUsesReconnectedCharacter(t *testing.T) {
+	s := newTestServer(t)
+	oldServer, oldClient := net.Pipe()
+	defer oldClient.Close()
+	character := storage.Character{ID: "caster-reconnect", MapID: testMapID, X: 10, Y: 10, HP: 100, MaxHP: 100}
+	s.registerClient(oldServer, character)
+
+	s.queueDelayedSpell(oldServer, character.ID, spellRequest{magicID: 0xffff}, 10*time.Millisecond)
+	s.unregisterClient(oldServer)
+	_ = oldServer.Close()
+
+	newServer, newClient := net.Pipe()
+	defer newClient.Close()
+	s.registerClient(newServer, character)
+	defer s.unregisterClient(newServer)
+	if err := newClient.SetReadDeadline(time.Now().Add(500 * time.Millisecond)); err != nil {
+		t.Fatalf("SetReadDeadline() error = %v", err)
+	}
+	assertActionFail(t, readFrame(t, newClient))
+}
+
+func TestCharacterSpellStruckCommandUsesTargetFields(t *testing.T) {
+	hit := world.CharacterHit{Character: storage.Character{ID: "target-7", HP: 80, MaxHP: 100}, AttackerActor: 123456, Damage: 12}
 
 	cmd := CharacterSpellStruckCommand(hit)
-	if cmd.Recog != world.CharacterActorID(hit.Character) || cmd.Param != 80 || cmd.Tag != 100 || cmd.Series != 12 {
-		t.Fatalf("magic SM_STRUCK command = %+v, want target=%d hp=80 maxhp=100 damage=12", cmd, world.CharacterActorID(hit.Character))
+	if cmd.Recog != world.CharacterActorID(hit.Character) || cmd.Param != uint16(hit.Character.HP) || cmd.Tag != uint16(hit.Character.MaxHP) || cmd.Series != uint16(hit.Damage) {
+		t.Fatalf("magic SM_STRUCK command = %+v, want target=%d hp=%d maxhp=%d damage=%d", cmd, world.CharacterActorID(hit.Character), hit.Character.HP, hit.Character.MaxHP, hit.Damage)
 	}
 }
 
@@ -124,6 +572,144 @@ func TestMagicStruckBodyUsesTargetStateAndAttackerID(t *testing.T) {
 	assertMessageBodyWL(t, body, s.world.HumanFeatureForCharacter(target), s.world.CharacterStatus(target), world.CharacterActorID(caster), 1)
 }
 
+func TestMagicCharacterStruckSendsTargetHealthBeforeImpact(t *testing.T) {
+	s := newTestServer(t)
+	caster := storage.Character{ID: "magic-order-caster", MapID: testMapID, X: 10, Y: 10}
+	target := storage.Character{ID: "magic-order-target", MapID: testMapID, X: 10, Y: 11, HP: 80, MaxHP: 100, MP: 7}
+	server, clientConn := net.Pipe()
+	defer server.Close()
+	defer clientConn.Close()
+	client := s.registerClient(server, target)
+	defer s.unregisterClient(server)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.sendCharacterSpellStruck([]*Client{client}, caster, world.CharacterHit{Character: target, Damage: 4, AttackerID: caster.ID, Magic: true})
+	}()
+	health, _, err := decodeMessageLikeClient(readFrame(t, clientConn))
+	if err != nil {
+		t.Fatalf("decode magic health frame error = %v", err)
+	}
+	maxHP := s.world.AbilityStats(target).MaxHP
+	if health.Ident != mir176.SMHealthSpellChanged || health.Recog != world.CharacterActorID(target) || health.Param != uint16(target.HP) || health.Tag != uint16(target.MP) || health.Series != uint16(maxHP) {
+		t.Fatalf("magic health frame = %+v, want target health before impact", health)
+	}
+	struck, _, err := decodeMessageLikeClient(readFrame(t, clientConn))
+	if err != nil {
+		t.Fatalf("decode magic struck frame error = %v", err)
+	}
+	if struck.Ident != mir176.SMStruck {
+		t.Fatalf("magic struck ident = %d, want SM_STRUCK (%d)", struck.Ident, mir176.SMStruck)
+	}
+	<-done
+}
+
+func TestMagicCharacterStruckUsesTargetHealthVisibilityBoundary(t *testing.T) {
+	s := newTestServer(t)
+	targetServer, targetClient := net.Pipe()
+	observerServer, observerClient := net.Pipe()
+	hiddenServer, hiddenClient := net.Pipe()
+	defer targetServer.Close()
+	defer targetClient.Close()
+	defer observerServer.Close()
+	defer observerClient.Close()
+	defer hiddenServer.Close()
+	defer hiddenClient.Close()
+	target := s.registerClient(targetServer, storage.Character{ID: "magic-visible-target", MapID: testMapID, X: 10, Y: 10, HP: 80, MaxHP: 100})
+	defer s.unregisterClient(targetServer)
+	observer := s.registerClient(observerServer, storage.Character{ID: "magic-visible-observer", MapID: testMapID, X: 10, Y: 11})
+	defer s.unregisterClient(observerServer)
+	s.registerClient(hiddenServer, storage.Character{ID: "magic-hidden-observer", MapID: testMapID, X: 40, Y: 40})
+	defer s.unregisterClient(hiddenServer)
+	hit := world.CharacterHit{Character: target.character(), Damage: 4, AttackerID: "magic-caster", Magic: true}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.sendCharacterSpellStruck(s.spellRefClients(target.character()), storage.Character{ID: "magic-caster"}, hit)
+	}()
+
+	targetHealth, _, err := decodeMessageLikeClient(readFrame(t, targetClient))
+	if err != nil {
+		t.Fatalf("decode target health frame error = %v", err)
+	}
+	if targetHealth.Ident != mir176.SMHealthSpellChanged {
+		t.Fatalf("target first frame ident = %d, want SM_HEALTHSPELLCHANGED", targetHealth.Ident)
+	}
+	targetStruck, _, err := decodeMessageLikeClient(readFrame(t, targetClient))
+	if err != nil {
+		t.Fatalf("decode target struck frame error = %v", err)
+	}
+	if targetStruck.Ident != mir176.SMStruck {
+		t.Fatalf("target second frame ident = %d, want SM_STRUCK", targetStruck.Ident)
+	}
+	observerStruck, _, err := decodeMessageLikeClient(readFrame(t, observerClient))
+	if err != nil {
+		t.Fatalf("decode observer struck frame error = %v", err)
+	}
+	if observerStruck.Ident != mir176.SMStruck {
+		t.Fatalf("observer frame ident = %d, want SM_STRUCK", observerStruck.Ident)
+	}
+	if frame, ok := readFrameWithTimeout(t, observerClient, 30*time.Millisecond); ok {
+		t.Fatalf("observer received unexpected second frame: %x", frame)
+	}
+	if frame, ok := readFrameWithTimeout(t, hiddenClient, 30*time.Millisecond); ok {
+		t.Fatalf("hidden observer received magic struck frame: %x", frame)
+	}
+	<-done
+	_ = observer
+}
+
+func TestDelayedMagicSelfStruckRefreshesObserversBeforeImpact(t *testing.T) {
+	gameplay := config.DefaultGameplay()
+	gameplay.Combat.DisableSelfStruck = true
+	s := newTestServerWithGameplay(t, gameplay)
+	targetServer, targetClient := net.Pipe()
+	observerServer, observerClient := net.Pipe()
+	defer targetServer.Close()
+	defer targetClient.Close()
+	defer observerServer.Close()
+	defer observerClient.Close()
+	target := s.registerClient(targetServer, storage.Character{ID: "delayed-self-target", MapID: testMapID, X: 10, Y: 10, HP: 70, MaxHP: 100})
+	defer s.unregisterClient(targetServer)
+	observer := s.registerClient(observerServer, storage.Character{ID: "delayed-self-observer", MapID: testMapID, X: 10, Y: 11})
+	defer s.unregisterClient(observerServer)
+	_ = observer
+	hit := world.CharacterHit{Character: target.character(), Damage: 5, Magic: true}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleSpellEvent(targetServer, new(storage.Character), "火球术", data.StdSkill{}, world.SpellEvent{
+			Kind:         world.SpellEventCharacterHit,
+			Character:    storage.Character{ID: "delayed-self-caster"},
+			CharacterHit: hit,
+		})
+	}()
+	for i := 0; i < 2; i++ {
+		cmd, _, err := decodeMessageLikeClient(readFrame(t, targetClient))
+		if err != nil {
+			t.Fatalf("decode target delayed self-struck frame %d error = %v", i, err)
+		}
+		if cmd.Ident != mir176.SMHealthSpellChanged {
+			t.Fatalf("target delayed self-struck frame %d = %+v, want health refresh", i, cmd)
+		}
+	}
+	observerHealth, _, err := decodeMessageLikeClient(readFrame(t, observerClient))
+	if err != nil {
+		t.Fatalf("decode observer delayed self-struck health error = %v", err)
+	}
+	if observerHealth.Ident != mir176.SMHealthSpellChanged || observerHealth.Recog != world.CharacterActorID(hit.Character) {
+		t.Fatalf("observer delayed self-struck health = %+v, want target health refresh", observerHealth)
+	}
+	observerStruck, _, err := decodeMessageLikeClient(readFrame(t, observerClient))
+	if err != nil {
+		t.Fatalf("decode observer delayed self-struck hit error = %v", err)
+	}
+	if observerStruck.Ident != mir176.SMStruck {
+		t.Fatalf("observer delayed self-struck hit = %+v, want struck", observerStruck)
+	}
+	<-done
+}
+
 func TestMonsterStruckAndDeathBodiesIncludeStatus(t *testing.T) {
 	s := newTestServer(t)
 	server, clientConn := net.Pipe()
@@ -141,9 +727,12 @@ func TestMonsterStruckAndDeathBodiesIncludeStatus(t *testing.T) {
 		s.broadcastMonsterStruck([]*Client{client}, result)
 		close(struckDone)
 	}()
-	_, struckBody, err := decodeMessageLikeClient(readFrame(t, clientConn))
+	struck, struckBody, err := decodeMessageLikeClient(readFrame(t, clientConn))
 	if err != nil {
 		t.Fatalf("decode monster struck frame error = %v", err)
+	}
+	if struck.Ident != mir176.SMStruck || struck.Recog != world.MonsterActorID(world.Monster{ID: result.MonsterID}) || struck.Param != uint16(result.MonsterHP) || struck.Tag != uint16(result.MonsterMaxHP) || struck.Series != uint16(result.Damage) {
+		t.Fatalf("monster struck command = %+v, want target actor/hp/maxhp/damage", struck)
 	}
 	assertMessageBodyWL(t, struckBody, world.MonsterFeature(world.Monster{RaceImg: 1}), result.MonsterStatus, ActorID, 0)
 	<-struckDone
@@ -159,6 +748,58 @@ func TestMonsterStruckAndDeathBodiesIncludeStatus(t *testing.T) {
 	}
 	assertCharDesc(t, deathBody, world.MonsterFeature(world.Monster{RaceImg: 1}), result.MonsterStatus)
 	<-deathDone
+}
+
+func TestMonsterStruckDoesNotSendHealthRefreshForPhysicalHit(t *testing.T) {
+	s := newTestServer(t)
+	server, clientConn := net.Pipe()
+	defer server.Close()
+	defer clientConn.Close()
+	client := s.registerClient(server, storage.Character{ID: "monster-health-observer", MapID: testMapID, X: 10, Y: 10})
+	defer s.unregisterClient(server)
+	result := world.AttackResult{
+		MonsterID:            "physical-visible-health",
+		MonsterHP:            37,
+		MonsterMaxHP:         100,
+		MonsterMP:            12,
+		MonsterHealthChanged: true,
+		Damage:               4,
+	}
+	done := make(chan struct{})
+	go func() {
+		s.broadcastMonsterStruck([]*Client{client}, result)
+		close(done)
+	}()
+	struck, _, err := decodeMessageLikeClient(readFrame(t, clientConn))
+	if err != nil {
+		t.Fatalf("decode monster struck frame error = %v", err)
+	}
+	if struck.Ident != mir176.SMStruck {
+		t.Fatalf("monster struck frame ident = %d, want SM_STRUCK", struck.Ident)
+	}
+	if _, ok := readFrameWithTimeout(t, clientConn, 30*time.Millisecond); ok {
+		t.Fatal("physical monster hit emitted an extra health refresh")
+	}
+	<-done
+}
+
+func TestMonsterStruckIgnoresPlayerStruckSuppression(t *testing.T) {
+	gameplay := config.DefaultGameplay()
+	gameplay.Combat.DisableStruck = true
+	s := newTestServerWithGameplay(t, gameplay)
+	server, clientConn := net.Pipe()
+	defer server.Close()
+	defer clientConn.Close()
+	client := s.registerClient(server, storage.Character{ID: "monster-struck-observer", MapID: testMapID, X: 10, Y: 10})
+	defer s.unregisterClient(server)
+	s.broadcastMonsterStruck([]*Client{client}, world.AttackResult{MonsterID: "monster-display", MonsterHP: 40, MonsterMaxHP: 100, Damage: 5})
+	cmd, _, err := decodeMessageLikeClient(readFrame(t, clientConn))
+	if err != nil {
+		t.Fatalf("decode monster struck frame error = %v", err)
+	}
+	if cmd.Ident != mir176.SMStruck {
+		t.Fatalf("monster struck ident = %d, want SM_STRUCK", cmd.Ident)
+	}
 }
 
 func TestSecondaryMonsterHitUsesReferenceImpactDelay(t *testing.T) {
@@ -187,28 +828,6 @@ func TestSecondaryMonsterHitUsesReferenceImpactDelay(t *testing.T) {
 	}
 	if cmd.Ident != mir176.SMStruck {
 		t.Fatalf("delayed monster hit ident = %d, want SM_STRUCK", cmd.Ident)
-	}
-}
-
-func TestMonsterHitWithImmediateImpactSendsImmediateAndDelayedStruck(t *testing.T) {
-	s := newTestServer(t)
-	s.SetHitImpactDelay(0)
-	serverConn, clientConn := net.Pipe()
-	defer serverConn.Close()
-	defer clientConn.Close()
-	client := s.registerClient(serverConn, storage.Character{ID: "immediate-monster-hit-observer", MapID: testMapID, X: 10, Y: 10})
-	defer s.unregisterClient(serverConn)
-	result := world.AttackResult{
-		MonsterID: "immediate-monster", MonsterRaceImg: 1, MonsterHP: 80, MonsterMaxHP: 100,
-		Damage: 20, ImmediateImpact: true, ImpactDelay: 40 * time.Millisecond,
-		Character: storage.Character{ID: "attacker", MapID: testMapID},
-	}
-	s.broadcastHitImpact([]*Client{client}, result)
-	if _, ok := readFrameWithTimeout(t, clientConn, 10*time.Millisecond); !ok {
-		t.Fatal("immediate monster hit was not sent immediately")
-	}
-	if _, ok := readFrameWithTimeout(t, clientConn, 100*time.Millisecond); !ok {
-		t.Fatal("delayed monster hit was not sent after reference delay")
 	}
 }
 
@@ -261,6 +880,30 @@ func TestSpellEventSecondaryMonsterHitUsesReferenceImpactDelay(t *testing.T) {
 	_ = client
 }
 
+func TestSpellEventPhysicalMonsterHitUsesReferenceCache(t *testing.T) {
+	s := newTestServer(t)
+	serverConn, clientConn := net.Pipe()
+	defer serverConn.Close()
+	defer clientConn.Close()
+	client := s.registerClient(serverConn, storage.Character{ID: "spell-cache-observer", MapID: testMapID, X: 30, Y: 30})
+	defer s.unregisterClient(serverConn)
+
+	s.spellRefClientsFor("monster:spell-cache-monster", testMapID, 10, 10)
+	client.mu.Lock()
+	client.ch.X = 20
+	client.ch.Y = 10
+	client.mu.Unlock()
+
+	caster := storage.Character{ID: "spell-cache-caster", MapID: testMapID, X: 9, Y: 10}
+	s.handleSpellEvent(serverConn, &caster, "半月弯刀", data.StdSkill{}, world.SpellEvent{Kind: world.SpellEventMonsterHit, MonsterHit: world.AttackResult{
+		MonsterID: "spell-cache-monster", MonsterMapID: testMapID, MonsterX: 10, MonsterY: 10,
+		MonsterHP: 9, MonsterMaxHP: 10, Damage: 1,
+	}})
+	if frame, ok := readFrameWithTimeout(t, clientConn, 50*time.Millisecond); ok {
+		t.Fatalf("spell event physical monster hit ignored the reference cache: %x", frame)
+	}
+}
+
 func TestSpellEventSecondaryCharacterHitUsesReferenceImpactDelay(t *testing.T) {
 	s := newTestServer(t)
 	s.SetHitImpactDelay(0)
@@ -268,7 +911,9 @@ func TestSpellEventSecondaryCharacterHitUsesReferenceImpactDelay(t *testing.T) {
 	defer serverConn.Close()
 	defer clientConn.Close()
 	caster := storage.Character{ID: "secondary-character-caster", MapID: testMapID, X: 10, Y: 10, HP: 80, MaxHP: 100}
-	s.registerClient(serverConn, caster)
+	registered := caster
+	registered.HP = 100
+	s.registerClient(serverConn, registered)
 	defer s.unregisterClient(serverConn)
 	hit := world.CharacterHit{Character: caster, Damage: 20, ImpactDelay: 40 * time.Millisecond}
 	s.handleSpellEvent(serverConn, &caster, "半月弯刀", data.StdSkill{}, world.SpellEvent{Kind: world.SpellEventCharacterHit, Character: caster, CharacterHit: hit})
@@ -285,6 +930,9 @@ func TestSpellEventSecondaryCharacterHitUsesReferenceImpactDelay(t *testing.T) {
 	}
 	if cmd.Ident != mir176.SMStruck {
 		t.Fatalf("spell event delayed character hit ident = %d, want SM_STRUCK", cmd.Ident)
+	}
+	if cmd.Param != uint16(caster.HP) {
+		t.Fatalf("spell event delayed character HP = %d, want %d", cmd.Param, caster.HP)
 	}
 }
 
@@ -356,30 +1004,38 @@ func TestMagicMonsterHitSendsHealthBeforeStruck(t *testing.T) {
 		t.Fatalf("monster struck ident = %d, want SM_STRUCK", struck.Ident)
 	}
 	assertMessageBodyWL(t, struckBody, world.MonsterFeature(world.Monster{RaceImg: result.MonsterRaceImg, MonsterWeapon: result.MonsterWeapon, Appr: result.MonsterAppr}), 0, world.CharacterActorID(result.Character), 1)
-	normalStruck, normalBody, err := decodeMessageLikeClient(readFrame(t, clientConn))
-	if err != nil {
-		t.Fatalf("decode normal monster struck frame error = %v", err)
-	}
-	if normalStruck.Ident != mir176.SMStruck {
-		t.Fatalf("normal monster struck ident = %d, want SM_STRUCK", normalStruck.Ident)
-	}
-	assertMessageBodyWL(t, normalBody, world.MonsterFeature(world.Monster{RaceImg: result.MonsterRaceImg, MonsterWeapon: result.MonsterWeapon, Appr: result.MonsterAppr}), 0, world.CharacterActorID(result.Character), 0)
 	<-done
 }
 
-func TestCharacterDeathCommandUsesTargetActor(t *testing.T) {
+func TestCharacterDeathCommandUsesReferenceFields(t *testing.T) {
 	ch := storage.Character{ID: "dead-target-7", X: 12, Y: 13, Dir: 4}
 	cmd := CharacterDeathCommand(ch)
-	if cmd.Ident != mir176.SMNowDeath || cmd.Recog != world.CharacterActorID(ch) || cmd.Param != 4 || cmd.Tag != 12 || cmd.Series != 1 {
-		t.Fatalf("SM_NOWDEATH command = %+v, want target actor, direction, x, and immediate marker", cmd)
+	if cmd.Ident != mir176.SMNowDeath || cmd.Recog != world.CharacterActorID(ch) || cmd.Param != 12 || cmd.Tag != 13 || cmd.Series != 4 {
+		t.Fatalf("SM_NOWDEATH command = %+v, want target actor, x, y, and direction", cmd)
 	}
 }
 
-func TestMonsterDeathCommandUsesDirectionAndImmediateMarker(t *testing.T) {
-	result := world.AttackResult{MonsterID: "dead-monster-7", MonsterX: 12, MonsterDir: 4}
+func TestMonsterDeathCommandUsesReferenceFields(t *testing.T) {
+	result := world.AttackResult{MonsterID: "dead-monster-7", MonsterX: 12, MonsterY: 13, MonsterDir: 4}
 	cmd := MonsterDeathCommand(result)
-	if cmd.Ident != mir176.SMNowDeath || cmd.Recog != world.MonsterActorID(world.Monster{ID: result.MonsterID}) || cmd.Param != 4 || cmd.Tag != 12 || cmd.Series != 1 {
-		t.Fatalf("monster SM_NOWDEATH command = %+v, want target actor, direction, x, and immediate marker", cmd)
+	if cmd.Ident != mir176.SMNowDeath || cmd.Recog != world.MonsterActorID(world.Monster{ID: result.MonsterID}) || cmd.Param != 12 || cmd.Tag != 13 || cmd.Series != 4 {
+		t.Fatalf("monster SM_NOWDEATH command = %+v, want target actor, x, y, and direction", cmd)
+	}
+}
+
+func TestMonsterDeathRefreshCommandUsesReferenceFields(t *testing.T) {
+	result := world.AttackResult{MonsterID: "dead-refresh-monster", MonsterX: 11, MonsterY: 12, MonsterDir: 3}
+	cmd := MonsterDeathRefreshCommand(result)
+	if cmd.Ident != mir176.SMDeath || cmd.Recog != world.MonsterActorID(world.Monster{ID: result.MonsterID}) || cmd.Param != 11 || cmd.Tag != 12 || cmd.Series != 3 {
+		t.Fatalf("SM_DEATH command = %+v, want target actor, x, y, and direction", cmd)
+	}
+}
+
+func TestCharacterDeathRefreshCommandUsesReferenceFields(t *testing.T) {
+	ch := storage.Character{ID: "dead-refresh-character", X: 11, Y: 12, Dir: 3}
+	cmd := CharacterDeathRefreshCommand(ch)
+	if cmd.Ident != mir176.SMDeath || cmd.Recog != world.CharacterActorID(ch) || cmd.Param != 11 || cmd.Tag != 12 || cmd.Series != 3 {
+		t.Fatalf("SM_DEATH command = %+v, want target actor, x, y, and direction", cmd)
 	}
 }
 
@@ -415,10 +1071,88 @@ func TestMonsterTurnSendsFeatureRefreshAfterTurn(t *testing.T) {
 	if featureCmd.Ident != mir176.SMFeatureChanged || featureCmd.Recog != world.MonsterActorID(mon) {
 		t.Fatalf("feature command = %+v, want SM_FEATURECHANGED for monster", featureCmd)
 	}
+	feature := world.MonsterFeature(mon)
+	if featureCmd.Param != uint16(feature) || featureCmd.Tag != uint16(uint32(feature)>>16) || featureCmd.Series != 0 {
+		t.Fatalf("feature command fields = %+v, want feature=%d and series=0", featureCmd, feature)
+	}
 	if len(featureBody) != 0 {
 		t.Fatalf("feature body len = %d, want 0", len(featureBody))
 	}
 	<-done
+}
+
+func TestBroadcastMonsterFeatureRefreshUsesReferenceViewers(t *testing.T) {
+	s := newTestServer(t)
+	mon := world.Monster{ID: "feature-broadcast-monster", MapID: testMapID, X: 10, Y: 10, RaceImg: 3, Appr: 4}
+	nearServer, nearClient := net.Pipe()
+	defer nearServer.Close()
+	defer nearClient.Close()
+	farServer, farClient := net.Pipe()
+	defer farServer.Close()
+	defer farClient.Close()
+	near := storage.Character{ID: "feature-near", MapID: testMapID, X: 10, Y: 11}
+	far := storage.Character{ID: "feature-far", MapID: testMapID, X: 30, Y: 30}
+	s.registerClient(nearServer, near)
+	defer s.unregisterClient(nearServer)
+	s.registerClient(farServer, far)
+	defer s.unregisterClient(farServer)
+
+	s.broadcastMonsterFeatureRefresh(mon)
+	frame, ok := readFrameWithTimeout(t, nearClient, time.Second)
+	if !ok {
+		t.Fatal("near observer did not receive monster feature refresh")
+	}
+	cmd, body, err := decodeMessageLikeClient(frame)
+	if err != nil {
+		t.Fatalf("decode near feature frame error = %v", err)
+	}
+	feature := world.MonsterFeature(mon)
+	if cmd.Ident != mir176.SMFeatureChanged || cmd.Recog != world.MonsterActorID(mon) || cmd.Param != uint16(feature) || cmd.Tag != uint16(uint32(feature)>>16) || cmd.Series != 0 || len(body) != 0 {
+		t.Fatalf("near feature frame = %+v body=%x, want reference fields", cmd, body)
+	}
+	if frame, ok := readFrameWithTimeout(t, farClient, 100*time.Millisecond); ok {
+		t.Fatalf("far observer received feature refresh: %x", frame)
+	}
+}
+
+func TestBroadcastCharacterNameColorUsesReferenceViewerRelations(t *testing.T) {
+	s := newTestServer(t)
+	source := storage.Character{ID: "name-color-source", MapID: testMapID, X: 10, Y: 10, GuildID: "guild-a", PKFlag: true}
+	sameGuild := storage.Character{ID: "name-color-same-guild", MapID: testMapID, X: 10, Y: 11, GuildID: "guild-a"}
+	otherGuild := storage.Character{ID: "name-color-other-guild", MapID: testMapID, X: 11, Y: 10, GuildID: "guild-b"}
+	far := storage.Character{ID: "name-color-far", MapID: testMapID, X: 30, Y: 30, GuildID: "guild-a"}
+	type connection struct {
+		server net.Conn
+		client net.Conn
+	}
+	connections := make([]connection, 0, 4)
+	for _, ch := range []storage.Character{source, sameGuild, otherGuild, far} {
+		server, client := net.Pipe()
+		connections = append(connections, connection{server: server, client: client})
+		s.registerClient(server, ch)
+		defer s.unregisterClient(server)
+		defer server.Close()
+		defer client.Close()
+	}
+
+	s.broadcastCharacterNameColor(source)
+	want := []uint16{0xB4, 0xB4, 0x2F}
+	for i, wantColor := range want {
+		frame, ok := readFrameWithTimeout(t, connections[i].client, time.Second)
+		if !ok {
+			t.Fatalf("observer %d did not receive name color refresh", i)
+		}
+		cmd, body, err := decodeMessageLikeClient(frame)
+		if err != nil {
+			t.Fatalf("decode name color frame %d error = %v", i, err)
+		}
+		if cmd.Ident != mir176.SMChangeNameColor || cmd.Recog != world.CharacterActorID(source) || cmd.Param != wantColor || len(body) != 0 {
+			t.Fatalf("name color frame %d = %+v body=%x, want color %d", i, cmd, body, wantColor)
+		}
+	}
+	if frame, ok := readFrameWithTimeout(t, connections[3].client, 100*time.Millisecond); ok {
+		t.Fatalf("far observer received name color refresh: %x", frame)
+	}
 }
 
 func TestMonsterTurnCommandIncludesLight(t *testing.T) {
@@ -565,7 +1299,7 @@ func TestSpellHealingGaugeUsesTargetCharacterState(t *testing.T) {
 		t.Fatalf("healing gauge command = %+v, want target actor=%d hp=%d/%d", cmd, world.CharacterActorID(target), target.HP, target.MaxHP)
 	}
 	if _, ok := readFrameWithTimeout(t, targetClient, 50*time.Millisecond); ok {
-		t.Fatal("target received its own healing gauge")
+		t.Fatal("target received the caster-owned healing gauge")
 	}
 	<-done
 }
@@ -639,7 +1373,7 @@ func TestSpellMessageQueueAcceptsBurstWithoutBlocking(t *testing.T) {
 	client.spellQueueCond = sync.NewCond(&client.mu)
 
 	for i := 0; i < 64; i++ {
-		client.enqueueSpellMessage(&Server{}, spellObjectMessage{kind: spellObjectMessageStart, start: spellStartEvent{magicID: uint16(i)}})
+		client.enqueueSpellMessageAsync(&Server{}, spellObjectMessage{kind: spellObjectMessageStart, start: spellStartEvent{magicID: uint16(i)}})
 	}
 
 	client.mu.Lock()
@@ -652,6 +1386,44 @@ func TestSpellMessageQueueAcceptsBurstWithoutBlocking(t *testing.T) {
 			t.Fatalf("queued spell message %d = %d, want %d", i, message.start.magicID, i)
 		}
 	}
+}
+
+func TestOrderedSpellMessagePrecedesFollowingDirectCommand(t *testing.T) {
+	serverConn, clientConn := net.Pipe()
+	defer serverConn.Close()
+	defer clientConn.Close()
+
+	client := &Client{
+		conn:              serverConn,
+		ch:                storage.Character{ID: "observer"},
+		spellMessagesDone: make(chan struct{}),
+		output:            make(chan []byte, 2),
+	}
+	client.spellQueueCond = sync.NewCond(&client.mu)
+	s := &Server{clients: map[net.Conn]*Client{serverConn: client}, closed: map[net.Conn]struct{}{}}
+	go client.runSpellMessages(s)
+	go client.runOutput()
+
+	done := make(chan struct{})
+	go func() {
+		client.enqueueSpellMessage(s, spellObjectMessage{kind: spellObjectMessageStart, start: spellStartEvent{
+			caster:  storage.Character{ID: "caster"},
+			magicID: 1,
+		}})
+		s.sendCommand(serverConn, mir176.Command{Ident: mir176.SMFeatureChanged}, nil)
+		close(done)
+	}()
+
+	first, _, err := decodeMessageLikeClient(readFrame(t, clientConn))
+	if err != nil || first.Ident != mir176.SMSpell {
+		t.Fatalf("first frame = ident:%d err:%v, want SM_SPELL", first.Ident, err)
+	}
+	second, _, err := decodeMessageLikeClient(readFrame(t, clientConn))
+	if err != nil || second.Ident != mir176.SMFeatureChanged {
+		t.Fatalf("second frame = ident:%d err:%v, want SM_FEATURE_CHANGED", second.Ident, err)
+	}
+	<-done
+	close(client.spellMessagesDone)
 }
 
 func TestSendCommandDoesNotWriteAfterClientUnregister(t *testing.T) {
@@ -693,6 +1465,55 @@ func TestPoisonSystemMessageUsesReferenceRedStyle(t *testing.T) {
 	}
 	if got := DecodeString(decoded); got != "你中毒了[时间:5秒，点数:2点]." {
 		t.Fatalf("poison system body = %q", got)
+	}
+	<-done
+}
+
+func TestApplyWorldTickDoesNotDropUnorderedPoisonNotifications(t *testing.T) {
+	s := newTestServer(t)
+	firstServer, firstClient := net.Pipe()
+	secondServer, secondClient := net.Pipe()
+	defer firstServer.Close()
+	defer firstClient.Close()
+	defer secondServer.Close()
+	defer secondClient.Close()
+	first := storage.Character{ID: "poison-first", MapID: testMapID}
+	second := storage.Character{ID: "poison-second", MapID: testMapID}
+	s.registerClient(firstServer, first)
+	s.registerClient(secondServer, second)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.applyWorldTick(world.TickResult{
+			PoisonNotifications: []world.PoisonNotification{
+				{Character: first, Seconds: 5, Points: 1},
+				{Character: second, Seconds: 6, Points: 2},
+			},
+			OrderedSpellEvents: []world.OrderedSpellEvent{{
+				Kind: world.OrderedSpellEventPoisonNotification,
+				PoisonNotification: world.PoisonNotification{
+					Character: first,
+					Seconds:   5,
+					Points:    1,
+				},
+			}},
+		}, time.Now())
+	}()
+
+	firstCommand, _, err := decodeMessageLikeClient(readFrame(t, firstClient))
+	if err != nil {
+		t.Fatalf("decode first poison message error = %v", err)
+	}
+	if firstCommand.Ident != mir176.SMSystemMessage {
+		t.Fatalf("first poison command ident = %d, want SM_SYSTEMMESSAGE (%d)", firstCommand.Ident, mir176.SMSystemMessage)
+	}
+	secondCommand, _, err := decodeMessageLikeClient(readFrame(t, secondClient))
+	if err != nil {
+		t.Fatalf("decode second poison message error = %v", err)
+	}
+	if secondCommand.Ident != mir176.SMSystemMessage {
+		t.Fatalf("second poison command ident = %d, want SM_SYSTEMMESSAGE (%d)", secondCommand.Ident, mir176.SMSystemMessage)
 	}
 	<-done
 }
@@ -815,6 +1636,10 @@ func TestLoginCredentialsObservedOfficialClientTestPassword(t *testing.T) {
 }
 
 func newTestServer(t *testing.T) *Server {
+	return newTestServerWithGameplay(t, config.DefaultGameplay())
+}
+
+func newTestServerWithGameplay(t *testing.T, gameplay config.Gameplay) *Server {
 	t.Helper()
 	bundle, _, err := data.LoadConfigsWithReport(testConfigsDir)
 	if err != nil {
@@ -837,7 +1662,7 @@ func newTestServer(t *testing.T) *Server {
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
-	w := world.New(bundle, store)
+	w := world.New(bundle, store, gameplay)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	s := New("test", nil, store, w, log)
 	s.hitImpactDelay = 0
@@ -1080,6 +1905,105 @@ func TestHandleTurnUpdatesCharacterAndAcks(t *testing.T) {
 	}
 }
 
+func TestHandleTurnQueuesWhenTurnIntervalIsActive(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+	state := s.clientForConn(server)
+	state.mu.Lock()
+	state.turnAt = time.Now()
+	state.mu.Unlock()
+	recog := int32(uint32(x) | uint32(y)<<16)
+	s.handleTurn(server, &ch, mir176.Command{Ident: mir176.CMTurn, Recog: recog, Tag: 5})
+	state.mu.Lock()
+	pending := state.pendingTurnMessages
+	state.mu.Unlock()
+	if pending != 1 {
+		t.Fatalf("pending turn messages = %d, want 1", pending)
+	}
+	frame := readFrame(t, client)
+	assertActionAck(t, frame)
+}
+
+func TestHandleTurnAcknowledgesShortDelayWithoutQueueing(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+	state := s.clientForConn(server)
+	state.mu.Lock()
+	state.turnAt = time.Now().Add(-time.Duration(s.world.Gameplay().Combat.TurnIntervalMS)*time.Millisecond + 5*time.Millisecond)
+	state.mu.Unlock()
+	recog := int32(uint32(x) | uint32(y)<<16)
+	s.handleTurn(server, &ch, mir176.Command{Ident: mir176.CMTurn, Recog: recog, Tag: 5})
+	assertActionAck(t, readFrame(t, client))
+	state.mu.Lock()
+	pending := state.pendingTurnMessages
+	state.mu.Unlock()
+	if pending != 0 {
+		t.Fatalf("pending turn messages = %d, want 0 for short delay", pending)
+	}
+}
+
+func TestHandleTurnBroadcastsTurnAndFeatureToObserver(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	caster, err := s.world.CreateCharacterWithAppearance("test", "turn-caster", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter(caster) error = %v", err)
+	}
+	observer, err := s.world.CreateCharacterWithAppearance("test", "turn-observer", "warrior", 0, 0, mapID, x+1, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter(observer) error = %v", err)
+	}
+	server, client := net.Pipe()
+	observerServer, observerClient := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	defer observerServer.Close()
+	defer observerClient.Close()
+	s.registerClient(server, caster)
+	s.registerClient(observerServer, observer)
+	recog := int32(uint32(x) | uint32(y)<<16)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleTurn(server, &caster, mir176.Command{Ident: mir176.CMTurn, Recog: recog, Tag: 5})
+	}()
+	assertActionAck(t, readFrame(t, client))
+	turnFrame := readFrame(t, observerClient)
+	turnCmd, turnBody, err := decodeMessageLikeClient(turnFrame)
+	if err != nil {
+		t.Fatalf("observer turn frame error = %v", err)
+	}
+	if turnCmd.Ident != mir176.SMTurn || turnCmd.Recog != world.CharacterActorID(caster) || int(turnCmd.Param) != x || int(turnCmd.Tag) != y || byte(turnCmd.Series) != 5 {
+		t.Fatalf("observer turn command = %+v", turnCmd)
+	}
+	assertCharDesc(t, turnBody, s.world.HumanFeatureForCharacter(caster), s.world.CharacterStatus(caster))
+	featureFrame := readFrame(t, observerClient)
+	featureCmd, _, err := decodeMessageLikeClient(featureFrame)
+	if err != nil {
+		t.Fatalf("observer feature frame error = %v", err)
+	}
+	if featureCmd.Ident != mir176.SMFeatureChanged || featureCmd.Recog != world.CharacterActorID(caster) {
+		t.Fatalf("observer feature command = %+v", featureCmd)
+	}
+	<-done
+}
+
 func TestHandleTurnRejectsCoordinateMismatchAndResyncs(t *testing.T) {
 	s := newTestServer(t)
 	mapID, x, y := testDefaultSpawn(t)
@@ -1113,6 +2037,59 @@ func TestHandleTurnRejectsCoordinateMismatchAndResyncs(t *testing.T) {
 	}
 	if ch.Dir != 0 {
 		t.Fatalf("character Dir = %d, want unchanged 0", ch.Dir)
+	}
+}
+
+func TestHandleSitDownQueuesWhenTurnIntervalIsActive(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+	state := s.clientForConn(server)
+	state.mu.Lock()
+	state.sitDownAt = time.Now()
+	state.mu.Unlock()
+	recog := int32(uint32(x) | uint32(y)<<16)
+	s.handleSitDown(server, &ch, mir176.Command{Ident: mir176.CMSitDown, Recog: recog, Tag: 5})
+	state.mu.Lock()
+	pending := state.pendingSitDownMessages
+	state.mu.Unlock()
+	if pending != 1 {
+		t.Fatalf("pending sit-down messages = %d, want 1", pending)
+	}
+	frame := readFrame(t, client)
+	assertActionAck(t, frame)
+}
+
+func TestHandleSitDownAcknowledgesShortDelayWithoutQueueing(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+	state := s.clientForConn(server)
+	state.mu.Lock()
+	state.sitDownAt = time.Now().Add(-time.Duration(s.world.Gameplay().Combat.TurnIntervalMS)*time.Millisecond + 5*time.Millisecond)
+	state.mu.Unlock()
+	recog := int32(uint32(x) | uint32(y)<<16)
+	s.handleSitDown(server, &ch, mir176.Command{Ident: mir176.CMSitDown, Recog: recog, Tag: 5})
+	assertActionAck(t, readFrame(t, client))
+	state.mu.Lock()
+	pending := state.pendingSitDownMessages
+	state.mu.Unlock()
+	if pending != 0 {
+		t.Fatalf("pending sit-down messages = %d, want 0 for short delay", pending)
 	}
 }
 
@@ -1279,8 +2256,8 @@ func TestForgetMissingDeadMonsterSendsReferenceDeathRefresh(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode dead monster refresh error = %v", err)
 	}
-	if cmd.Ident != mir176.SMDeath || cmd.Recog != world.MonsterActorID(world.Monster{ID: "dead-refresh-monster"}) || cmd.Param != 3 || cmd.Tag != 11 || cmd.Series != 0 {
-		t.Fatalf("dead monster refresh command = %+v, want SM_DEATH with direction and coordinates", cmd)
+	if cmd.Ident != mir176.SMDeath || cmd.Recog != world.MonsterActorID(world.Monster{ID: "dead-refresh-monster"}) || cmd.Param != 11 || cmd.Tag != 12 || cmd.Series != 3 {
+		t.Fatalf("dead monster refresh command = %+v, want SM_DEATH with coordinates and direction", cmd)
 	}
 	assertCharDesc(t, body, world.MonsterFeature(world.Monster{RaceImg: 1}), world.MonsterStatus(world.Monster{RaceImg: 1}, time.Now()))
 	<-done
@@ -1363,6 +2340,69 @@ func TestHandleMoveWalkUpdatesCharacterAndAcks(t *testing.T) {
 	}
 }
 
+func TestHandleMoveBroadcastsWalkToObserver(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	caster, err := s.world.CreateCharacterWithAppearance("test", "walk-caster", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter(caster) error = %v", err)
+	}
+	observer, err := s.world.CreateCharacterWithAppearance("test", "walk-observer", "warrior", 0, 0, mapID, x+2, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter(observer) error = %v", err)
+	}
+	server, client := net.Pipe()
+	observerServer, observerClient := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	defer observerServer.Close()
+	defer observerClient.Close()
+	s.registerClient(server, caster)
+	s.registerClient(observerServer, observer)
+	recog := int32(uint32(x+1) | uint32(y)<<16)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleMove(server, &caster, mir176.Command{Ident: mir176.CMWalk, Recog: recog, Tag: 2}, false)
+	}()
+	assertActionAck(t, readFrame(t, client))
+	frame := readFrame(t, observerClient)
+	command, body, err := decodeMessageLikeClient(frame)
+	if err != nil {
+		t.Fatalf("observer walk frame error = %v", err)
+	}
+	if command.Ident != mir176.SMWalk || command.Recog != world.CharacterActorID(caster) || int(command.Param) != x+1 || int(command.Tag) != y || byte(command.Series) != 2 {
+		t.Fatalf("observer walk command = %+v", command)
+	}
+	assertCharDesc(t, body, s.world.HumanFeatureForCharacter(caster), s.world.CharacterStatus(caster))
+	<-done
+}
+
+func TestBroadcastCharacterMoveUsesRunIdent(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch := storage.Character{ID: "run-caster", MapID: mapID, X: x + 2, Y: y, Dir: 3, HP: 100, MaxHP: 100}
+	observer := storage.Character{ID: "run-observer", MapID: mapID, X: x + 3, Y: y, HP: 100, MaxHP: 100}
+	server, client := net.Pipe()
+	observerServer, observerClient := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	defer observerServer.Close()
+	defer observerClient.Close()
+	s.registerClient(server, ch)
+	s.registerClient(observerServer, observer)
+	s.broadcastCharacterMove(server, ch, true)
+	frame := readFrame(t, observerClient)
+	command, body, err := decodeMessageLikeClient(frame)
+	if err != nil {
+		t.Fatalf("observer run frame error = %v", err)
+	}
+	if command.Ident != mir176.SMRun || command.Recog != world.CharacterActorID(ch) || int(command.Param) != ch.X || int(command.Tag) != ch.Y || byte(command.Series) != byte(ch.Dir) {
+		t.Fatalf("observer run command = %+v", command)
+	}
+	assertCharDesc(t, body, s.world.HumanFeatureForCharacter(ch), s.world.CharacterStatus(ch))
+}
+
 func TestHandleMoveRejectsTooFarAndResyncs(t *testing.T) {
 	s := newTestServer(t)
 	mapID, x, y := testDefaultSpawn(t)
@@ -1428,9 +2468,9 @@ func TestHandleHitConnectsAndAcks(t *testing.T) {
 		t.Fatalf("decode monster struck frame error = %v", err)
 	}
 	if struckCmd.Ident != mir176.SMStruck || struckCmd.Recog != world.MonsterActorID(mon) || struckCmd.Param != uint16(mon.HP-4) || struckCmd.Tag != uint16(mon.MaxHP) || struckCmd.Series != 4 {
-		t.Fatalf("monster struck = %+v, want recog=%d hp=%d/%d damage=4", struckCmd, world.MonsterActorID(mon), mon.HP-4, mon.MaxHP)
+		t.Fatalf("monster struck = %+v, want target=%d hp=%d/%d damage=4", struckCmd, world.MonsterActorID(mon), mon.HP-4, mon.MaxHP)
 	}
-	assertMessageBodyWL(t, struckBody, world.MonsterFeature(mon), 0, world.CharacterActorID(ch), 0)
+	assertMessageBodyWL(t, struckBody, world.MonsterFeature(mon), world.MonsterStatus(mon, time.Now()), world.CharacterActorID(ch), 0)
 	assertActionAck(t, readFrame(t, client))
 	<-done
 
@@ -1627,6 +2667,53 @@ func TestSpellPushBroadcastsOnceToNearbyObserver(t *testing.T) {
 	<-done
 }
 
+func TestSpellPushReachesTargetCasterAndObserverOnce(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	caster, err := s.world.CreateCharacterWithAppearance("test", "caster", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() caster error = %v", err)
+	}
+	target, err := s.world.CreateCharacterWithAppearance("test", "target", "warrior", 0, 0, mapID, x+1, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() target error = %v", err)
+	}
+	observer, err := s.world.CreateCharacterWithAppearance("test", "observer", "warrior", 0, 0, mapID, x+3, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() observer error = %v", err)
+	}
+	casterServer, casterClient := net.Pipe()
+	targetServer, targetClient := net.Pipe()
+	observerServer, observerClient := net.Pipe()
+	defer casterServer.Close()
+	defer casterClient.Close()
+	defer targetServer.Close()
+	defer targetClient.Close()
+	defer observerServer.Close()
+	defer observerClient.Close()
+	s.registerClient(casterServer, caster)
+	defer s.unregisterClient(casterServer)
+	s.registerClient(targetServer, target)
+	defer s.unregisterClient(targetServer)
+	s.registerClient(observerServer, observer)
+	defer s.unregisterClient(observerServer)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleSpellEvent(casterServer, &caster, "抗拒火环", data.StdSkill{}, world.SpellEvent{Kind: world.SpellEventCharacterPush, CharacterPush: world.CharacterPush{Character: target, Dir: 2}})
+	}()
+	for name, conn := range map[string]net.Conn{"caster": casterClient, "target": targetClient, "observer": observerClient} {
+		if _, ok := readFrameWithTimeout(t, conn, time.Second); !ok {
+			t.Fatalf("timed out waiting for %s push", name)
+		}
+		if _, ok := readFrameWithTimeout(t, conn, 100*time.Millisecond); ok {
+			t.Fatalf("%s received duplicate push", name)
+		}
+	}
+	<-done
+}
+
 func TestHandleHitBroadcastsDeathWhenMonsterHPReachesZero(t *testing.T) {
 	s := newTestServer(t)
 	mapID, x, y := testDefaultSpawn(t)
@@ -1674,8 +2761,8 @@ func TestHandleHitBroadcastsDeathWhenMonsterHPReachesZero(t *testing.T) {
 				switch cmd.Ident {
 				case mir176.SMStruck:
 					sawStruck = true
-					if cmd.Recog != world.MonsterActorID(mon) || cmd.Param != 0 {
-						t.Fatalf("struck command = %+v, want dead monster", cmd)
+					if cmd.Recog != world.MonsterActorID(mon) || cmd.Param != 0 || cmd.Tag != uint16(mon.MaxHP) {
+						t.Fatalf("struck command = %+v, want target fields", cmd)
 					}
 				}
 			}
@@ -1691,8 +2778,8 @@ func TestHandleHitBroadcastsDeathWhenMonsterHPReachesZero(t *testing.T) {
 			if wantHP < 0 {
 				wantHP = 0
 			}
-			if struckCmd.Ident != mir176.SMStruck || struckCmd.Recog != world.MonsterActorID(mon) || struckCmd.Param != uint16(wantHP) {
-				t.Fatalf("struck frame %d = %+v, want hp %d", i, struckCmd, wantHP)
+			if struckCmd.Ident != mir176.SMStruck || struckCmd.Recog != world.MonsterActorID(mon) || struckCmd.Param != uint16(mon.HP-i*4) || struckCmd.Tag != uint16(mon.MaxHP) {
+				t.Fatalf("struck frame %d = %+v, want target fields %d/%d", i, struckCmd, mon.HP-i*4, mon.MaxHP)
 			}
 			assertActionAck(t, readFrame(t, client))
 		}
@@ -1704,8 +2791,12 @@ func TestHandleHitBroadcastsDeathWhenMonsterHPReachesZero(t *testing.T) {
 			}
 			s.applyWorldTick(tick, time.Now())
 			var sawWinExp, sawDeath, sawDrop bool
-			for frameNo := 0; frameNo < 3; frameNo++ {
-				frame := readFrame(t, client)
+			winExpFrame, deathFrame, dropFrame := -1, -1, -1
+			for frameNo := 0; frameNo < 8; frameNo++ {
+				frame, ok := readFrameWithTimeout(t, client, 200*time.Millisecond)
+				if !ok {
+					break
+				}
 				if body, err := mir176.UnwrapFrame(frame); err == nil && strings.HasPrefix(string(body), "+GOOD/") {
 					continue
 				}
@@ -1716,15 +2807,21 @@ func TestHandleHitBroadcastsDeathWhenMonsterHPReachesZero(t *testing.T) {
 				switch cmd.Ident {
 				case mir176.SMWinExp:
 					sawWinExp = true
+					winExpFrame = frameNo
 				case mir176.SMNowDeath:
 					sawDeath = true
+					deathFrame = frameNo
 					assertCharDesc(t, body, world.MonsterFeature(mon), 0)
 				case mir176.SMItemShow:
 					sawDrop = true
+					dropFrame = frameNo
 				}
 			}
 			if !sawWinExp || !sawDeath || !sawDrop {
 				t.Fatalf("deferred death frames seen winExp=%v death=%v drop=%v", sawWinExp, sawDeath, sawDrop)
+			}
+			if !(winExpFrame < dropFrame && dropFrame < deathFrame) {
+				t.Fatalf("deferred death frame order = exp:%d drop:%d death:%d, want experience then drop then death", winExpFrame, dropFrame, deathFrame)
 			}
 		}
 	}
@@ -1769,6 +2866,7 @@ func TestHandleHitBroadcastsDropWhenMonsterDies(t *testing.T) {
 	}
 	s.applyWorldTick(tick, time.Now())
 	var sawStruck, sawWinExp, sawDeath, sawDrop bool
+	eventOrder := make([]int, 0, 4)
 	var showCmd mir176.Command
 	var showBody []byte
 	for _, frame := range initialFrames {
@@ -1779,12 +2877,16 @@ func TestHandleHitBroadcastsDropWhenMonsterDies(t *testing.T) {
 		switch cmd.Ident {
 		case mir176.SMStruck:
 			sawStruck = true
+			eventOrder = append(eventOrder, 1)
 		case mir176.SMWinExp:
 			sawWinExp = true
+			eventOrder = append(eventOrder, 2)
 		case mir176.SMNowDeath:
 			sawDeath = true
+			eventOrder = append(eventOrder, 4)
 		case mir176.SMItemShow:
 			sawDrop = true
+			eventOrder = append(eventOrder, 3)
 			showCmd = cmd
 			showBody = body
 		}
@@ -1802,18 +2904,33 @@ func TestHandleHitBroadcastsDropWhenMonsterDies(t *testing.T) {
 		switch cmd.Ident {
 		case mir176.SMStruck:
 			sawStruck = true
+			eventOrder = append(eventOrder, 1)
 		case mir176.SMWinExp:
 			sawWinExp = true
+			eventOrder = append(eventOrder, 2)
 		case mir176.SMNowDeath:
 			sawDeath = true
+			eventOrder = append(eventOrder, 4)
 		case mir176.SMItemShow:
 			sawDrop = true
+			eventOrder = append(eventOrder, 3)
 			showCmd = cmd
 			showBody = body
 		}
 	}
 	if !sawStruck || !sawWinExp || !sawDeath || !sawDrop {
 		t.Fatalf("frames seen struck=%v winExp=%v death=%v drop=%v", sawStruck, sawWinExp, sawDeath, sawDrop)
+	}
+	first := func(kind int) int {
+		for index, event := range eventOrder {
+			if event == kind {
+				return index
+			}
+		}
+		return -1
+	}
+	if !(first(2) < first(3) && first(3) < first(4)) {
+		t.Fatalf("immediate death frame order = %v, want experience then drop then death", eventOrder)
 	}
 	dx := int(showCmd.Param) - mon.X
 	dy := int(showCmd.Tag) - mon.Y
@@ -1846,6 +2963,8 @@ func TestHandleHitBroadcastsAttackerActionToObservers(t *testing.T) {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
 	ch.BonusAbil.Hit = 100
+	ch.FireHitArmed = true
+	ch.FireHitLatestAt = time.Now().UnixNano()
 	monsters, _ := s.world.SnapshotAround(ch.MapID, 0, 0, 99999)
 	if len(monsters) == 0 {
 		t.Fatalf("expected monsters")
@@ -1891,8 +3010,82 @@ func TestHandleHitBroadcastsAttackerActionToObservers(t *testing.T) {
 		t.Fatalf("hit action = %+v, want SM_FIREHIT from attacker at (%d,%d) dir=%d", actionCmd, ch.X, ch.Y, dir)
 	}
 	<-done
+	if ch.FireHitArmed {
+		t.Fatal("character fire state remains armed after hit")
+	}
 	readFrame(t, attackerClient)
 	readFrame(t, observerClient)
+}
+
+func TestHandleHitRestoresCachedFireStateBeforeWorldAttack(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.BonusAbil.Hit = 100
+	ch.BonusAbil.DC = 100
+	ch.Skills = storage.SkillStates{{ID: "烈火剑法", Level: 0, Train: 0}}
+	monsters, _ := s.world.SnapshotAround(ch.MapID, 0, 0, 99999)
+	if len(monsters) == 0 {
+		t.Fatalf("expected monsters")
+	}
+	mon := monsters[0]
+	initialMonsterHP := mon.HP
+	ch.X, ch.Y = mon.X-1, mon.Y
+	server, clientConn := net.Pipe()
+	defer server.Close()
+	defer clientConn.Close()
+	s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+	client := s.clientForConn(server)
+	if client == nil {
+		t.Fatal("client state = nil")
+	}
+	client.mu.Lock()
+	client.fireHitArmed = true
+	client.fireHitLatestAt = time.Now()
+	client.mu.Unlock()
+
+	recog := int32(uint32(ch.X) | uint32(ch.Y)<<16)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleHit(server, &ch, mir176.Command{Ident: mir176.CMFireHit, Recog: recog, Tag: 2})
+	}()
+	deadline := time.Now().Add(time.Second)
+	if err := clientConn.SetReadDeadline(deadline); err != nil {
+		t.Fatalf("SetReadDeadline() error = %v", err)
+	}
+	for {
+		frame := readFrame(t, clientConn)
+		body, err := mir176.UnwrapFrame(frame)
+		if err != nil {
+			t.Fatalf("UnwrapFrame() error = %v", err)
+		}
+		if strings.HasPrefix(string(body), "+GOOD/") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for cached fire hit acknowledgement")
+		}
+	}
+	<-done
+	if ch.FireHitArmed {
+		t.Fatal("character fire state remains armed after cached fire hit")
+	}
+	updatedMonsters, _ := s.world.SnapshotAround(ch.MapID, 0, 0, 99999)
+	for _, updated := range updatedMonsters {
+		if updated.ID != mon.ID {
+			continue
+		}
+		if initialMonsterHP-updated.HP < 5 {
+			t.Fatalf("cached fire hit damage = %d, want fire bonus applied", initialMonsterHP-updated.HP)
+		}
+		return
+	}
+	t.Fatalf("monster %q missing after cached fire hit", mon.ID)
 }
 
 func TestFireHitExpiresOnWorldTick(t *testing.T) {
@@ -1902,6 +3095,8 @@ func TestFireHitExpiresOnWorldTick(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
+	ch.FireHitArmed = true
+	ch.FireHitLatestAt = time.Now().Add(-21 * time.Second).UnixNano()
 	server, client := net.Pipe()
 	defer server.Close()
 	defer client.Close()
@@ -1933,6 +3128,44 @@ func TestFireHitExpiresOnWorldTick(t *testing.T) {
 		t.Fatalf("body = %q, want +UFIR", body)
 	}
 	<-done
+}
+
+func TestFireHitStateSurvivesCharacterReconnect(t *testing.T) {
+	s := newTestServer(t)
+	oldServer, oldClient := net.Pipe()
+	defer oldClient.Close()
+	latestAt := time.Now().UnixNano()
+	armed := storage.Character{ID: "fire-reconnect", MapID: testMapID, X: 10, Y: 10, FireHitArmed: true, FireHitLatestAt: latestAt}
+	s.registerClient(oldServer, armed)
+	s.unregisterClient(oldServer)
+	_ = oldServer.Close()
+
+	newServer, newClient := net.Pipe()
+	defer newClient.Close()
+	client := s.registerClient(newServer, storage.Character{ID: armed.ID, MapID: armed.MapID, X: armed.X, Y: armed.Y})
+	defer s.unregisterClient(newServer)
+	restored := client.character()
+	if !restored.FireHitArmed || restored.FireHitLatestAt != latestAt {
+		t.Fatalf("reconnected fire state = armed:%t latest:%d, want armed:%t latest:%d", restored.FireHitArmed, restored.FireHitLatestAt, true, latestAt)
+	}
+}
+
+func TestPowerHitStateSurvivesCharacterReconnect(t *testing.T) {
+	s := newTestServer(t)
+	oldServer, oldClient := net.Pipe()
+	defer oldClient.Close()
+	armed := storage.Character{ID: "power-reconnect", MapID: testMapID, X: 10, Y: 10, PowerHitArmed: true}
+	s.registerClient(oldServer, armed)
+	s.unregisterClient(oldServer)
+	_ = oldServer.Close()
+
+	newServer, newClient := net.Pipe()
+	defer newClient.Close()
+	client := s.registerClient(newServer, storage.Character{ID: armed.ID, MapID: armed.MapID, X: armed.X, Y: armed.Y})
+	defer s.unregisterClient(newServer)
+	if !client.character().PowerHitArmed {
+		t.Fatal("reconnected power hit state = unarmed, want armed")
+	}
 }
 
 func TestFireHitDoesNotExpireWhenUnarmed(t *testing.T) {
@@ -2039,7 +3272,7 @@ func TestHandleSpellKeepsStartedFailureStateInSession(t *testing.T) {
 	}
 }
 
-func TestHandleSpellQueuesMultipleDelayedRequestsLikeReference(t *testing.T) {
+func TestHandleSpellRejectsSecondDelayedRequestAtReferenceLimit(t *testing.T) {
 	s := newTestServer(t)
 	mapID, x, y := testDefaultSpawn(t)
 	ch, err := s.world.CreateCharacterWithAppearance("test", "queued-spells", "wizard", 0, 0, mapID, x, y)
@@ -2060,13 +3293,21 @@ func TestHandleSpellQueuesMultipleDelayedRequestsLikeReference(t *testing.T) {
 
 	request := spellRequest{x: x + 1, y: y, magicID: 1}
 	s.processSpellDelivery(server, &ch, request, false)
-	s.processSpellDelivery(server, &ch, request, false)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.processSpellDelivery(server, &ch, request, false)
+	}()
+	if body, err := mir176.UnwrapFrame(readFrame(t, client)); err != nil || !strings.HasPrefix(string(body), "+FAIL/") {
+		t.Fatalf("second delayed spell response = %q, %v; want +FAIL", body, err)
+	}
+	<-done
 
 	spellClient.mu.Lock()
 	pending := spellClient.pendingSpellMessages
 	spellClient.mu.Unlock()
-	if pending != 2 {
-		t.Fatalf("pending delayed spells = %d, want 2", pending)
+	if pending != 1 {
+		t.Fatalf("pending delayed spells = %d, want 1", pending)
 	}
 }
 
@@ -2084,6 +3325,12 @@ func TestHandleSpellConsumesManaBeforeOutOfRangeFailure(t *testing.T) {
 	defer client.Close()
 	s.registerClient(server, ch)
 	defer s.unregisterClient(server)
+	observerServer, observerClient := net.Pipe()
+	defer observerServer.Close()
+	defer observerClient.Close()
+	observer := storage.Character{ID: "range-observer", Name: "observer", MapID: mapID, X: x + 1, Y: y, HP: 100, MaxHP: 100}
+	s.registerClient(observerServer, observer)
+	defer s.unregisterClient(observerServer)
 
 	done := make(chan struct{})
 	go func() {
@@ -2119,10 +3366,16 @@ func TestHandleSpellConsumesManaBeforeOutOfRangeFailure(t *testing.T) {
 	}
 	<-done
 	if !sawFail || !sawHealth || sawStart {
-		t.Fatalf("out-of-range frames = %+v, want fail+health without spell start", frames)
+		t.Fatalf("out-of-range frames = %+v, want fail+health without caster spell start", frames)
 	}
 	if ch.MP >= 100 {
 		t.Fatalf("caster MP = %d, want consumed resource", ch.MP)
+	}
+	if frame, ok := readFrameWithTimeout(t, observerClient, 100*time.Millisecond); ok {
+		cmd, _, err := decodeMessageLikeClient(frame)
+		if err == nil && cmd.Ident == mir176.SMSpell {
+			t.Fatalf("out-of-range spell start reached observer: %+v", cmd)
+		}
 	}
 }
 
@@ -2166,6 +3419,34 @@ func TestHandleSpellUpdatesCasterDirectionBeforeWorldSpell(t *testing.T) {
 	}
 }
 
+func TestHandleSpellDecodesSignedCoordinateWords(t *testing.T) {
+	negativeX := int16(-1)
+	request := decodeSpellRequest(mir176.Command{Recog: int32(uint32(uint16(negativeX)) | uint32(uint16(37))<<16)})
+	if request.x != -1 || request.y != 37 {
+		t.Fatalf("decoded spell coordinates = (%d,%d), want (-1,37)", request.x, request.y)
+	}
+}
+
+func TestHandleSpellDecodesCoordinateWordBoundaries(t *testing.T) {
+	tests := []struct {
+		name         string
+		x, y         int16
+		wantX, wantY int
+	}{
+		{name: "minimum", x: -32768, y: -32768, wantX: -32768, wantY: -32768},
+		{name: "maximum", x: 32767, y: 32767, wantX: 32767, wantY: 32767},
+		{name: "zero", x: 0, y: 0, wantX: 0, wantY: 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := decodeSpellRequest(mir176.Command{Recog: int32(uint32(uint16(tt.x)) | uint32(uint16(tt.y))<<16)})
+			if request.x != tt.wantX || request.y != tt.wantY {
+				t.Fatalf("decoded spell coordinates = (%d,%d), want (%d,%d)", request.x, request.y, tt.wantX, tt.wantY)
+			}
+		})
+	}
+}
+
 func TestHandleSpellAllowsParalyzedCharacterWhenConfigured(t *testing.T) {
 	bundle, _, err := data.LoadConfigsWithReport(testConfigsDir)
 	if err != nil {
@@ -2197,6 +3478,239 @@ func TestHandleSpellAllowsParalyzedCharacterWhenConfigured(t *testing.T) {
 	if strings.HasPrefix(string(frame), "+FAIL") {
 		t.Fatalf("paralyzed spell was rejected: %q", frame)
 	}
+	<-done
+}
+
+func TestHandleHitRejectsDeadAndParalyzedCharacter(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	recog := int32(uint32(x) | uint32(y)<<16)
+	for _, tc := range []struct {
+		name string
+		set  func(*storage.Character)
+	}{
+		{name: "dead", set: func(ch *storage.Character) { ch.HP = 0 }},
+		{name: "paralyzed", set: func(ch *storage.Character) { ch.ParalyzedUntil = time.Now().Add(time.Minute).UnixNano() }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			candidate := ch
+			tc.set(&candidate)
+			server, client := net.Pipe()
+			defer server.Close()
+			defer client.Close()
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				s.handleHit(server, &candidate, mir176.Command{Ident: mir176.CMHit, Recog: recog, Tag: 2})
+			}()
+			assertActionFail(t, readFrame(t, client))
+			<-done
+		})
+	}
+}
+
+func TestHandleMoveRejectsParalyzedCharacter(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.ParalyzedUntil = time.Now().Add(time.Minute).UnixNano()
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleMove(server, &ch, mir176.Command{Ident: mir176.CMWalk, Recog: int32(uint32(x) | uint32(y)<<16), Tag: 2}, false)
+	}()
+	assertActionFail(t, readFrame(t, client))
+	<-done
+}
+
+func TestRunCommandSeriesMarksLateDelivery(t *testing.T) {
+	if !isLateRunCommand(mir176.Command{Ident: mir176.CMRun, Series: mir176.CMRun}, true) {
+		t.Fatal("CM_RUN Series=CM_RUN was not recognized as late delivery")
+	}
+	if isLateRunCommand(mir176.Command{Ident: mir176.CMRun, Series: 0}, true) {
+		t.Fatal("ordinary CM_RUN was incorrectly recognized as late delivery")
+	}
+	if isLateRunCommand(mir176.Command{Ident: mir176.CMRun, Series: mir176.CMRun}, false) {
+		t.Fatal("non-run command path was incorrectly recognized as late delivery")
+	}
+}
+
+func TestHitDeliveryDelayUsesReferenceActionWindow(t *testing.T) {
+	gameplay := config.DefaultGameplay()
+	gameplay.Combat.DisableStruck = true
+	gameplay.Combat.HitDropOverSpeedMS = 10
+	gameplay.Combat.MaxHitMessages = 1
+	s := newTestServerWithGameplay(t, gameplay)
+	server, clientConn := net.Pipe()
+	defer server.Close()
+	defer clientConn.Close()
+	ch := storage.Character{ID: "hit-throttle", HP: 100, MaxHP: 100}
+	client := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+	client.mu.Lock()
+	client.actionAt = time.Now().Add(-895 * time.Millisecond)
+	client.actionIdent = mir176.CMHit
+	client.hitAt = client.actionAt
+	client.mu.Unlock()
+
+	delay, queue, actionOK := s.hitDeliveryDelay(client, ch, mir176.CMHit, 2)
+	if !queue || delay <= 0 || delay > time.Second {
+		t.Fatalf("hit delivery delay = %s, queue=%v; want positive delay within reference 900ms window", delay, queue)
+	}
+	if actionOK {
+		t.Fatal("ordinary delayed hit unexpectedly returned an action acknowledgement")
+	}
+	client.mu.Lock()
+	client.actionAt = time.Now().Add(-100 * time.Millisecond)
+	client.actionIdent = mir176.CMRun
+	client.actionDir = 1
+	client.hitAt = time.Now().Add(-2 * time.Second)
+	client.mu.Unlock()
+	delay, queue, actionOK = s.hitDeliveryDelay(client, ch, mir176.CMHit, 2)
+	if !queue || delay < 650*time.Millisecond || delay > 800*time.Millisecond {
+		t.Fatalf("run-to-hit directional delay = %s, queue=%v; want reference 800ms window", delay, queue)
+	}
+	if actionOK {
+		t.Fatal("directional delayed hit unexpectedly returned an action acknowledgement")
+	}
+}
+
+func TestHandleHitDoesNotConsumeAttackIntervalForInvalidCoordinates(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("invalid-hit", "invalid-hit", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, clientConn := net.Pipe()
+	defer server.Close()
+	defer clientConn.Close()
+	client := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleHit(server, &ch, mir176.Command{
+			Ident: mir176.CMHit,
+			Recog: int32(uint32(x+1) | uint32(y)<<16),
+			Tag:   2,
+		})
+	}()
+	frame := readFrame(t, clientConn)
+	cmd, _, err := decodeMessageLikeClient(frame)
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() error = %v", err)
+	}
+	<-done
+	if cmd.Ident != mir176.SMMoveFail {
+		t.Fatalf("reply ident = %d, want %d", cmd.Ident, mir176.SMMoveFail)
+	}
+
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	if !client.hitAt.IsZero() {
+		t.Fatalf("invalid hit consumed attack interval at %v", client.hitAt)
+	}
+	if client.actionIdent != mir176.CMHit || client.actionDir != 2 || client.actionAt.IsZero() {
+		t.Fatalf("invalid hit action state = ident %d dir %d at %v", client.actionIdent, client.actionDir, client.actionAt)
+	}
+}
+
+func TestMoveActionIntervalUsesReferenceDirectionalTransitions(t *testing.T) {
+	combat := config.DefaultGameplay().Combat
+	if got := moveActionInterval(combat, true, mir176.CMHit, 1, 2); got != 800*time.Millisecond {
+		t.Fatalf("run after turned hit interval = %s, want 800ms", got)
+	}
+	if got := moveActionInterval(combat, false, mir176.CMSpell, 1, 2); got != 0 {
+		t.Fatalf("walk after spell interval = %s, want no special interval", got)
+	}
+	if got := moveActionInterval(combat, true, mir176.CMSpell, 1, 1); got != 0 {
+		t.Fatalf("same-direction run after spell interval = %s, want no special interval", got)
+	}
+	if got := moveActionInterval(combat, true, mir176.CMSpell, 1, 2); got != 900*time.Millisecond {
+		t.Fatalf("turned run after spell interval = %s, want 900ms", got)
+	}
+	combat.ControlRunMagic = false
+	if got := moveActionInterval(combat, true, mir176.CMSpell, 1, 2); got != 0 {
+		t.Fatalf("disabled run-magic interval = %s, want no special interval", got)
+	}
+}
+
+func TestCompressMoveDelayUsesReferenceIntervalFraction(t *testing.T) {
+	count := 0
+	interval := 600 * time.Millisecond
+	if got := compressMoveDelay(250*time.Millisecond, interval, &count); got != 250*time.Millisecond || count != 0 {
+		t.Fatalf("short move delay = %s/count %d, want unchanged delay and zero count", got, count)
+	}
+	if got := compressMoveDelay(500*time.Millisecond, interval, &count); got != 500*time.Millisecond || count != 0 {
+		t.Fatalf("first long move delay = %s/count %d, want unchanged delay and zero count", got, count)
+	}
+	count = 3
+	if got := compressMoveDelay(500*time.Millisecond, interval, &count); got != 200*time.Millisecond || count != 0 {
+		t.Fatalf("fourth long move delay = %s/count %d, want 200ms/zero", got, count)
+	}
+}
+
+func TestHitDeliveryDelayRejectsOverSpeedInStrictMode(t *testing.T) {
+	gameplay := config.DefaultGameplay()
+	gameplay.Combat.DisableStruck = true
+	gameplay.Combat.SpeedControlMode = 1
+	s := newTestServerWithGameplay(t, gameplay)
+	server, clientConn := net.Pipe()
+	defer server.Close()
+	defer clientConn.Close()
+	ch := storage.Character{ID: "strict-hit-throttle", HP: 100, MaxHP: 100}
+	client := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+	client.mu.Lock()
+	client.hitAt = time.Now().Add(-100 * time.Millisecond)
+	client.actionIdent = mir176.CMHit
+	client.actionAt = client.hitAt
+	client.mu.Unlock()
+
+	delay, queue, actionOK := s.hitDeliveryDelay(client, ch, mir176.CMHit, 2)
+	if delay <= time.Duration(gameplay.Combat.HitDropOverSpeedMS)*time.Millisecond || queue {
+		t.Fatalf("strict hit delay = %s, queue=%v; want over-speed rejection", delay, queue)
+	}
+	if !actionOK {
+		t.Fatal("strict over-speed hit did not preserve reference action acknowledgement")
+	}
+}
+
+func TestHandleHitAcknowledgesStrictOverSpeedDrop(t *testing.T) {
+	gameplay := config.DefaultGameplay()
+	gameplay.Combat.DisableStruck = true
+	gameplay.Combat.SpeedControlMode = 1
+	s := newTestServerWithGameplay(t, gameplay)
+	server, clientConn := net.Pipe()
+	defer server.Close()
+	defer clientConn.Close()
+	ch := storage.Character{ID: "strict-hit-ack", HP: 100, MaxHP: 100}
+	client := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+	client.mu.Lock()
+	client.hitAt = time.Now().Add(-100 * time.Millisecond)
+	client.actionIdent = mir176.CMHit
+	client.actionAt = client.hitAt
+	client.mu.Unlock()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleHit(server, &ch, mir176.Command{Ident: mir176.CMHit, Tag: 2})
+	}()
+	assertActionAck(t, readFrame(t, clientConn))
 	<-done
 }
 
@@ -2284,6 +3798,9 @@ func TestHandleSpellFireHitArmsState(t *testing.T) {
 	if ch.MP != 100 {
 		t.Fatalf("MP = %d, want unchanged for zero-cost fire-hit cast", ch.MP)
 	}
+	if !ch.FireHitArmed || ch.FireHitLatestAt == 0 {
+		t.Fatalf("character fire state = armed:%t latest:%d, want armed with timestamp", ch.FireHitArmed, ch.FireHitLatestAt)
+	}
 	if client := s.clientForConn(server); client != nil {
 		client.mu.Lock()
 		armed := client.fireHitArmed
@@ -2295,6 +3812,58 @@ func TestHandleSpellFireHitArmsState(t *testing.T) {
 		if latestAt.IsZero() {
 			t.Fatal("fireHitLatestAt = zero, want armed timestamp recorded")
 		}
+	}
+}
+
+func TestHandleSpellFireHitInsufficientManaPreservesActionClass(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "fire-no-mana", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.Level = 100
+	ch.Skills = storage.SkillStates{{ID: "烈火剑法", Level: 0}}
+	skill, ok := s.world.Skill("烈火剑法")
+	if !ok {
+		t.Fatal("Skill() missing 烈火剑法")
+	}
+	cost := s.world.SpellCost(skill, ch.Skills[0])
+	ch.MP = cost - 1
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+	spellClient := s.clientForConn(server)
+	spellClient.mu.Lock()
+	spellClient.actionIdent = mir176.CMRun
+	spellClient.actionDir = 6
+	spellClient.actionAt = time.Now().Add(-time.Second)
+	spellClient.mu.Unlock()
+	skillID, ok := s.world.MagicIDByName("烈火剑法")
+	if !ok {
+		t.Fatal("MagicIDByName() missing 烈火剑法")
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleSpell(server, &ch, mir176.Command{Ident: mir176.CMSpell, Recog: int32(uint32(x) | uint32(y)<<16), Tag: skillID})
+	}()
+	for {
+		body, err := mir176.UnwrapFrame(readFrame(t, client))
+		if err != nil {
+			t.Fatalf("UnwrapFrame() error = %v", err)
+		}
+		if strings.HasPrefix(string(body), "+GOOD/") {
+			break
+		}
+	}
+	<-done
+	spellClient.mu.Lock()
+	defer spellClient.mu.Unlock()
+	if spellClient.actionIdent != mir176.CMRun || spellClient.actionDir != 6 {
+		t.Fatalf("fire-hit insufficient mana action = %d/%d, want run/6", spellClient.actionIdent, spellClient.actionDir)
 	}
 }
 
@@ -2400,7 +3969,7 @@ func TestAdvancePowerHitStateKeepsArmedStateAcrossCycleReset(t *testing.T) {
 	}
 }
 
-func TestHandleHitAdvancesPowerHitStateBeforeRejectedSwing(t *testing.T) {
+func TestHandleHitDoesNotAdvancePowerHitStateForRejectedSwing(t *testing.T) {
 	s := newTestServer(t)
 	mapID, x, y := testDefaultSpawn(t)
 	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
@@ -2447,8 +4016,8 @@ func TestHandleHitAdvancesPowerHitStateBeforeRejectedSwing(t *testing.T) {
 
 	clientState.mu.Lock()
 	defer clientState.mu.Unlock()
-	if clientState.powerHitCount != 2 {
-		t.Fatalf("powerHitCount = %d, want decremented before rejection", clientState.powerHitCount)
+	if clientState.powerHitCount != 3 {
+		t.Fatalf("powerHitCount = %d, want unchanged after rejection", clientState.powerHitCount)
 	}
 	if clientState.powerHitArmed {
 		t.Fatal("powerHitArmed = true, want still false after one decrement")
@@ -2543,7 +4112,6 @@ func TestHandleHitBroadcastsCharacterStruckToTarget(t *testing.T) {
 	target.HP = 30
 	target.MaxHP = s.world.AbilityStats(target).MaxHP
 	target.Sitting = true
-	startingHP := target.HP
 
 	attackerServer, attackerClient := net.Pipe()
 	defer attackerServer.Close()
@@ -2582,15 +4150,19 @@ func TestHandleHitBroadcastsCharacterStruckToTarget(t *testing.T) {
 		if err != nil {
 			t.Fatalf("decode target struck frame error = %v", err)
 		}
-		if struckCmd.Ident != mir176.SMChangeNameColor {
-			break
+		if struckCmd.Ident == mir176.SMChangeNameColor || struckCmd.Ident == mir176.SMCharStatusChanged {
+			continue
 		}
+		if struckCmd.Ident == mir176.SMHealthSpellChanged {
+			t.Fatal("physical character hit emitted a health refresh")
+		}
+		if struckCmd.Ident != mir176.SMStruck {
+			continue
+		}
+		break
 	}
 	if struckCmd.Ident != mir176.SMStruck {
 		t.Fatalf("struck ident = %d, want SM_STRUCK (%d)", struckCmd.Ident, mir176.SMStruck)
-	}
-	if struckCmd.Param == 0 || struckCmd.Param >= uint16(startingHP) {
-		t.Fatalf("struck hp = %d, want reduced target hp", struckCmd.Param)
 	}
 	assertMessageBodyWL(t, struckBody, s.world.HumanFeatureForCharacter(target), s.world.CharacterStatus(target), world.CharacterActorID(attacker), 0)
 	var attackerStruckCmd mir176.Command
@@ -2604,8 +4176,8 @@ func TestHandleHitBroadcastsCharacterStruckToTarget(t *testing.T) {
 			break
 		}
 	}
-	if attackerStruckCmd.Ident != mir176.SMStruck || attackerStruckCmd.Recog != world.CharacterActorID(target) {
-		t.Fatalf("attacker struck frame = %+v, want target actor %d", attackerStruckCmd, world.CharacterActorID(target))
+	if attackerStruckCmd.Ident != mir176.SMStruck || attackerStruckCmd.Recog != world.CharacterActorID(target) || attackerStruckCmd.Param == 0 || attackerStruckCmd.Param >= uint16(target.HP) || attackerStruckCmd.Tag != uint16(target.MaxHP) {
+		t.Fatalf("attacker struck frame = %+v, want target fields", attackerStruckCmd)
 	}
 	assertMessageBodyWL(t, attackerStruckBody, s.world.HumanFeatureForCharacter(target), s.world.CharacterStatus(target), world.CharacterActorID(attacker), 0)
 	<-done
@@ -2815,7 +4387,7 @@ func TestHandleHitBroadcastsSpecialWeaponActionsToTargets(t *testing.T) {
 						t.Errorf("decode target follow-up frame error = %v", err)
 						return
 					}
-					if cmd.Ident != mir176.SMChangeNameColor {
+					if cmd.Ident != mir176.SMChangeNameColor && cmd.Ident != mir176.SMHealthSpellChanged {
 						struckFrameCh <- frame
 						return
 					}
@@ -2830,7 +4402,7 @@ func TestHandleHitBroadcastsSpecialWeaponActionsToTargets(t *testing.T) {
 						t.Errorf("decode observer follow-up frame error = %v", err)
 						return
 					}
-					if cmd.Ident != mir176.SMChangeNameColor {
+					if cmd.Ident != mir176.SMChangeNameColor && cmd.Ident != mir176.SMHealthSpellChanged {
 						observerStruckFrameCh <- frame
 						return
 					}
@@ -2847,8 +4419,11 @@ func TestHandleHitBroadcastsSpecialWeaponActionsToTargets(t *testing.T) {
 			wideHealthCount := 0
 			for {
 				frame := readFrame(t, attackerClient)
-				if body, err := mir176.UnwrapFrame(frame); err == nil && strings.HasPrefix(string(body), "+GOOD/") {
-					break
+				if body, err := mir176.UnwrapFrame(frame); err == nil && strings.HasPrefix(string(body), "+") {
+					if strings.HasPrefix(string(body), "+GOOD/") {
+						break
+					}
+					continue
 				}
 				cmd, _, err := decodeMessageLikeClient(frame)
 				if err != nil {
@@ -2873,27 +4448,34 @@ func TestHandleHitBroadcastsSpecialWeaponActionsToTargets(t *testing.T) {
 			}
 			buf := make([]byte, 4096)
 			if n, err := attackerClient.Read(buf); err == nil {
-				nameColorOnly := false
-				winExpCmd, _, err := decodeMessageLikeClient(buf[:n])
-				if err != nil {
-					t.Fatalf("decode win exp frame error = %v", err)
-				}
-				for winExpCmd.Ident == mir176.SMChangeNameColor {
-					n, err = attackerClient.Read(buf)
+				body, unwrapErr := mir176.UnwrapFrame(buf[:n])
+				if unwrapErr == nil && strings.HasPrefix(string(body), "+GOOD/") {
+				} else {
+					nameColorOnly := false
+					winExpCmd, _, err := decodeMessageLikeClient(buf[:n])
 					if err != nil {
-						if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-							nameColorOnly = true
-							break
+						t.Fatalf("decode win exp frame error = %v", err)
+					}
+					for winExpCmd.Ident == mir176.SMChangeNameColor {
+						n, err = attackerClient.Read(buf)
+						if err != nil {
+							if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+								nameColorOnly = true
+								break
+							}
+							t.Fatalf("read win exp frame after name color error = %v", err)
 						}
-						t.Fatalf("read win exp frame after name color error = %v", err)
+						if body, unwrapErr := mir176.UnwrapFrame(buf[:n]); unwrapErr == nil && strings.HasPrefix(string(body), "+") {
+							continue
+						}
+						winExpCmd, _, err = decodeMessageLikeClient(buf[:n])
+						if err != nil {
+							t.Fatalf("decode win exp frame after name color error = %v", err)
+						}
 					}
-					winExpCmd, _, err = decodeMessageLikeClient(buf[:n])
-					if err != nil {
-						t.Fatalf("decode win exp frame after name color error = %v", err)
+					if winExpCmd.Ident != mir176.SMWinExp && !nameColorOnly {
+						t.Fatalf("win exp command = %+v, want SM_WINEXP", winExpCmd)
 					}
-				}
-				if winExpCmd.Ident != mir176.SMWinExp && !nameColorOnly {
-					t.Fatalf("win exp command = %+v, want SM_WINEXP", winExpCmd)
 				}
 			} else if netErr, ok := err.(net.Error); !ok || !netErr.Timeout() {
 				t.Fatalf("Read() error = %v, want timeout or win exp frame", err)
@@ -2921,16 +4503,23 @@ func TestHandleHitBroadcastsSpecialWeaponActionsToTargets(t *testing.T) {
 				if err != nil {
 					t.Fatalf("decode observer struck frame error = %v", err)
 				}
-				if observerStruckCmd.Ident != mir176.SMChangeNameColor {
+				if observerStruckCmd.Ident != mir176.SMChangeNameColor && observerStruckCmd.Ident != mir176.SMHealthSpellChanged {
 					break
 				}
 			}
 			if observerStruckCmd.Ident != mir176.SMStruck {
 				t.Fatalf("observer struck ident = %d, want SMStruck (%d)", observerStruckCmd.Ident, mir176.SMStruck)
 			}
-			struckCmd, struckBody, err := decodeMessageLikeClient(<-struckFrameCh)
-			if err != nil {
-				t.Fatalf("decode target struck frame error = %v", err)
+			var struckCmd mir176.Command
+			var struckBody []byte
+			for {
+				struckCmd, struckBody, err = decodeMessageLikeClient(<-struckFrameCh)
+				if err != nil {
+					t.Fatalf("decode target struck frame error = %v", err)
+				}
+				if struckCmd.Ident != mir176.SMHealthSpellChanged && struckCmd.Ident != mir176.SMChangeNameColor {
+					break
+				}
 			}
 			if struckCmd.Ident != mir176.SMStruck {
 				t.Fatalf("struck ident = %d, want SM_STRUCK (%d)", struckCmd.Ident, mir176.SMStruck)
@@ -2938,7 +4527,7 @@ func TestHandleHitBroadcastsSpecialWeaponActionsToTargets(t *testing.T) {
 			if struckCmd.Param == 0 || struckCmd.Param >= uint16(startingHP) {
 				t.Fatalf("struck hp = %d, want reduced target hp", struckCmd.Param)
 			}
-			assertMessageBodyWL(t, struckBody, s.world.HumanFeatureForCharacter(target), 0, world.CharacterActorID(attacker), 0)
+			assertMessageBodyWL(t, struckBody, s.world.HumanFeatureForCharacter(target), s.world.CharacterStatus(target), world.CharacterActorID(attacker), 0)
 			<-done
 		})
 	}
@@ -2994,8 +4583,8 @@ func TestHandleHitDelaysImpactBroadcast(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode delayed struck frame error = %v", err)
 	}
-	if struckCmd.Ident != mir176.SMStruck || struckCmd.Recog != world.MonsterActorID(mon) {
-		t.Fatalf("delayed impact = %+v, want SM_STRUCK for monster %d", struckCmd, world.MonsterActorID(mon))
+	if struckCmd.Ident != mir176.SMStruck || struckCmd.Recog != world.MonsterActorID(mon) || struckCmd.Param == 0 || struckCmd.Param >= uint16(mon.HP) || struckCmd.Tag != uint16(mon.MaxHP) {
+		t.Fatalf("delayed impact = %+v, want target SM_STRUCK fields", struckCmd)
 	}
 	<-done
 }
@@ -3149,7 +4738,7 @@ func TestHandleSpellConsumesManaAndUpdatesSkillState(t *testing.T) {
 		t.Fatalf("missing spell frames: struck=%v health=%v magic=%v", sawStruck, sawHealth, sawMagic)
 	}
 	observerFrames := <-observerFramesCh
-	frame := observerFrames[0]
+	frame := firstFrameSkippingHealth(t, observerFrames)
 	spellCmd, spellBody, err := decodeMessageLikeClient(frame)
 	if err != nil {
 		t.Fatalf("decode spell frame error = %v", err)
@@ -3166,7 +4755,7 @@ func TestHandleSpellConsumesManaAndUpdatesSkillState(t *testing.T) {
 	if spellCmd.Series != 1 {
 		t.Fatalf("spell series = %d, want effect 1", spellCmd.Series)
 	}
-	magicCmd, magicBody, err := decodeMessageLikeClient(observerFrames[1])
+	magicCmd, magicBody, err := decodeMessageLikeClient(firstFrameWithIdent(t, observerFrames, mir176.SMMagicFire))
 	if err != nil {
 		t.Fatalf("decode magic fire frame error = %v", err)
 	}
@@ -3183,7 +4772,7 @@ func TestHandleSpellConsumesManaAndUpdatesSkillState(t *testing.T) {
 	if len(decodedMagicBody) != 4 || binary.LittleEndian.Uint32(decodedMagicBody) != uint32(world.MonsterActorID(mon)) {
 		t.Fatalf("magic fire target body = %v, want actor id %d", decodedMagicBody, world.MonsterActorID(mon))
 	}
-	frame = observerFrames[2]
+	frame = firstFrameWithIdent(t, observerFrames, mir176.SMStruck)
 	struckCmd, _, err := decodeMessageLikeClient(frame)
 	if err != nil {
 		t.Fatalf("decode struck frame error = %v", err)
@@ -3251,6 +4840,71 @@ func TestRecordSpellCastTimestampPreservesMagicInterval(t *testing.T) {
 	}
 }
 
+func TestHandleSpellPassiveSkillPreservesMagicInterval(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "passive-spell", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.Skills = storage.SkillStates{{ID: "基本剑术", Level: 0}}
+	magicID, ok := s.world.MagicIDByName("基本剑术")
+	if !ok {
+		t.Fatal("MagicIDByName() missing 基本剑术")
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+	spellClient := s.clientForConn(server)
+	spellClient.mu.Lock()
+	spellClient.spellActionAt = time.Now().Add(-time.Second)
+	spellClient.spellActionInterval = 1700 * time.Millisecond
+	spellClient.spellActionCount = 3
+	spellClient.mu.Unlock()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleSpell(server, &ch, mir176.Command{Ident: mir176.CMSpell, Tag: magicID})
+	}()
+	frame := readFrame(t, client)
+	body, err := mir176.UnwrapFrame(frame)
+	if err != nil || !strings.HasPrefix(string(body), "+GOOD/") {
+		t.Fatalf("ack frame = %q, %v; want +GOOD/", body, err)
+	}
+	<-done
+	spellClient.mu.Lock()
+	defer spellClient.mu.Unlock()
+	if spellClient.spellActionInterval != 1700*time.Millisecond || spellClient.spellActionCount != 3 {
+		t.Fatalf("passive spell changed throttle state: interval=%s count=%d", spellClient.spellActionInterval, spellClient.spellActionCount)
+	}
+	if spellClient.spellActionAt.IsZero() {
+		t.Fatal("passive spell left spell action time unset")
+	}
+}
+
+func TestRecordSpellActionTickPreservesPreviousActionClass(t *testing.T) {
+	s := newTestServer(t)
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	state := &Client{conn: server, actionIdent: mir176.CMRun, actionDir: 6}
+	s.clientMu.Lock()
+	s.clients[server] = state
+	s.clientMu.Unlock()
+
+	s.recordSpellActionTick(server)
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if state.actionAt.IsZero() {
+		t.Fatal("recordSpellActionTick() left action time unset")
+	}
+	if state.actionIdent != mir176.CMRun || state.actionDir != 6 {
+		t.Fatalf("previous action = (%d, %d), want run/6", state.actionIdent, state.actionDir)
+	}
+}
+
 func TestHandleSpellRejectsUnlearnedSkillWithActionFail(t *testing.T) {
 	s := newTestServer(t)
 	mapID, x, y := testDefaultSpawn(t)
@@ -3288,7 +4942,7 @@ func TestHandleSpellRejectsUnlearnedSkillWithActionFail(t *testing.T) {
 	}
 }
 
-func TestHandleSpellQueuesSecondPendingDelayedCast(t *testing.T) {
+func TestHandleSpellRejectsSecondPendingDelayedCast(t *testing.T) {
 	s := newTestServer(t)
 	mapID, x, y := testDefaultSpawn(t)
 	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "wizard", 0, 0, mapID, x, y)
@@ -3323,12 +4977,20 @@ func TestHandleSpellQueuesSecondPendingDelayedCast(t *testing.T) {
 	}
 	spellClient.mu.Unlock()
 
-	s.processSpellDelivery(server, &ch, request, false)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.processSpellDelivery(server, &ch, request, false)
+	}()
+	if body, err := mir176.UnwrapFrame(readFrame(t, client)); err != nil || !strings.HasPrefix(string(body), "+FAIL/") {
+		t.Fatalf("second delayed spell response = %q, %v; want +FAIL", body, err)
+	}
+	<-done
 	spellClient.mu.Lock()
 	pending = spellClient.pendingSpellMessages
 	spellClient.mu.Unlock()
-	if pending != 2 {
-		t.Fatalf("pending delayed spells after second request = %d, want 2", pending)
+	if pending != 1 {
+		t.Fatalf("pending delayed spells after second request = %d, want 1", pending)
 	}
 	s.unregisterClient(server)
 }
@@ -3387,8 +5049,256 @@ func TestHandleSpellDelaysAfterRunAction(t *testing.T) {
 	s.unregisterClient(server)
 }
 
-func TestHandleSpellStruckDelayDoesNotAdvanceMagicThrottle(t *testing.T) {
+func TestHandleSpellRunMagicControlUsesConfiguredDirectionalInterval(t *testing.T) {
+	tests := []struct {
+		name            string
+		controlRunMagic bool
+		wantMin         time.Duration
+		wantMax         time.Duration
+	}{
+		{name: "enabled", controlRunMagic: true, wantMin: 750 * time.Millisecond, wantMax: time.Second},
+		{name: "disabled", controlRunMagic: false, wantMin: 300 * time.Millisecond, wantMax: 450 * time.Millisecond},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gameplay := config.DefaultGameplay()
+			gameplay.Combat.ControlRunMagic = tt.controlRunMagic
+			s := newTestServerWithGameplay(t, gameplay)
+			mapID, x, y := testDefaultSpawn(t)
+			ch, err := s.world.CreateCharacterWithAppearance("test", "run-magic-interval", "wizard", 0, 0, mapID, x, y)
+			if err != nil {
+				t.Fatalf("CreateCharacterWithAppearance() error = %v", err)
+			}
+			ch.MP = 100
+			ch.Skills = storage.SkillStates{{ID: "火球术", Level: 0}}
+			server, client := net.Pipe()
+			defer server.Close()
+			defer client.Close()
+			s.registerClient(server, ch)
+			defer s.unregisterClient(server)
+			t.Cleanup(func() {
+				s.delayedMu.Lock()
+				if s.delayedTimer != nil {
+					s.delayedTimer.Stop()
+				}
+				s.delayedEvents = nil
+				s.delayedTimer = nil
+				s.delayedActive = false
+				s.delayedMu.Unlock()
+			})
+
+			spellClient := s.clientForConn(server)
+			spellClient.mu.Lock()
+			spellClient.actionAt = time.Now()
+			spellClient.actionIdent = mir176.CMRun
+			spellClient.actionDir = (world.Direction(ch.X, ch.Y, x+1, y) + 1) % 8
+			spellClient.spellActionAt = time.Now().Add(-2 * time.Second)
+			spellClient.spellActionInterval = time.Second
+			spellClient.mu.Unlock()
+
+			s.processSpellDelivery(server, &ch, spellRequest{x: x + 1, y: y, magicID: 1}, false)
+			s.delayedMu.Lock()
+			if len(s.delayedEvents) != 1 {
+				s.delayedMu.Unlock()
+				t.Fatalf("delayed spell events = %d, want 1", len(s.delayedEvents))
+			}
+			delay := time.Until(s.delayedEvents[0].at)
+			s.delayedMu.Unlock()
+			if delay < tt.wantMin || delay > tt.wantMax {
+				t.Fatalf("directional run-magic delay = %s, want %s..%s", delay, tt.wantMin, tt.wantMax)
+			}
+		})
+	}
+}
+
+func TestHandleSpellMagicThrottleRejectsStrictOverspeed(t *testing.T) {
+	gameplay := config.DefaultGameplay()
+	gameplay.Combat.SpeedControlMode = 1
+	s := newTestServerWithGameplay(t, gameplay)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "strict-spell-throttle", "wizard", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacterWithAppearance() error = %v", err)
+	}
+	ch.MP = 100
+	ch.Skills = storage.SkillStates{{ID: "火球术", Level: 0}}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	spellClient := s.clientForConn(server)
+	spellClient.mu.Lock()
+	spellClient.actionIdent = mir176.CMSpell
+	spellClient.spellActionAt = time.Now()
+	spellClient.spellActionInterval = 2 * time.Second
+	spellClient.mu.Unlock()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.processSpellDelivery(server, &ch, spellRequest{x: x + 1, y: y, magicID: 1}, false)
+	}()
+	assertActionFail(t, readFrame(t, client))
+	<-done
+
+	spellClient.mu.Lock()
+	pending := spellClient.pendingSpellMessages
+	spellClient.mu.Unlock()
+	if pending != 0 {
+		t.Fatalf("pending strict-over-speed spells = %d, want 0", pending)
+	}
+}
+
+func TestHandleSpellLateDeliveryRefreshesMagicThrottle(t *testing.T) {
 	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "late-spell-throttle", "wizard", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.MP = 100
+	ch.SpellTick = 700
+	ch.Skills = storage.SkillStates{{ID: "火球术", Level: 0}}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	spellClient := s.clientForConn(server)
+	oldSpellAt := time.Now()
+	spellClient.mu.Lock()
+	spellClient.spellActionAt = oldSpellAt
+	spellClient.spellActionInterval = 2 * time.Second
+	spellClient.spellActionCount = 3
+	spellClient.mu.Unlock()
+
+	request := spellRequest{x: x + 1, y: y, magicID: 1}
+	s.processSpellDelivery(server, &ch, request, false)
+	spellClient.mu.Lock()
+	if spellClient.pendingSpellMessages != 1 {
+		spellClient.mu.Unlock()
+		t.Fatalf("pending delayed spells = %d, want 1", spellClient.pendingSpellMessages)
+	}
+	spellClient.actionIdent = mir176.CMRun
+	spellClient.actionDir = 6
+	spellClient.mu.Unlock()
+
+	before := time.Now()
+	s.processSpellDelivery(server, &ch, request, true)
+	spellClient.mu.Lock()
+	spellAt := spellClient.spellActionAt
+	spellInterval := spellClient.spellActionInterval
+	spellCount := spellClient.spellActionCount
+	actionIdent := spellClient.actionIdent
+	actionDir := spellClient.actionDir
+	spellClient.mu.Unlock()
+
+	skill, ok := s.world.Skill("火球术")
+	if !ok {
+		t.Fatal("Skill() missing 火球术")
+	}
+	if !spellAt.After(before) || !spellAt.After(oldSpellAt) {
+		t.Fatalf("late spell throttle time = %v, want refreshed after %v", spellAt, before)
+	}
+	wantInterval := time.Duration(s.world.Gameplay().Combat.MagicHitIntervalMS+skill.Delay) * time.Millisecond
+	if spellInterval != wantInterval || spellCount != 0 {
+		t.Fatalf("late spell throttle = time:%v interval:%v count:%d, want interval:%v count:0", spellAt, spellInterval, spellCount, wantInterval)
+	}
+	if actionIdent != mir176.CMRun || actionDir != 6 {
+		t.Fatalf("late spell action = %d/%d, want run/6 from intervening action", actionIdent, actionDir)
+	}
+}
+
+func TestHandleSpellThrottleBurstClampsDelayToReferenceInterval(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "spell-throttle-clamp", "wizard", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.MP = 100
+	ch.Skills = storage.SkillStates{{ID: "火球术", Level: 0}}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+	t.Cleanup(func() {
+		s.delayedMu.Lock()
+		if s.delayedTimer != nil {
+			s.delayedTimer.Stop()
+		}
+		s.delayedEvents = nil
+		s.delayedTimer = nil
+		s.delayedActive = false
+		s.delayedMu.Unlock()
+	})
+
+	spellClient := s.clientForConn(server)
+	spellClient.mu.Lock()
+	spellClient.spellActionAt = time.Now()
+	spellClient.spellActionInterval = 3 * time.Second
+	spellClient.spellActionCount = 3
+	spellClient.mu.Unlock()
+
+	s.processSpellDelivery(server, &ch, spellRequest{x: x + 1, y: y, magicID: 1}, false)
+
+	s.delayedMu.Lock()
+	if len(s.delayedEvents) != 1 {
+		s.delayedMu.Unlock()
+		t.Fatalf("delayed spell events = %d, want 1", len(s.delayedEvents))
+	}
+	delay := time.Until(s.delayedEvents[0].at)
+	s.delayedMu.Unlock()
+	if delay < 200*time.Millisecond || delay > 400*time.Millisecond {
+		t.Fatalf("delayed spell duration = %s, want reference interval/3", delay)
+	}
+}
+
+func TestHandleSpellUsesBaseIntervalAfterSameDirectionRun(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "same-direction-run", "wizard", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacterWithAppearance() error = %v", err)
+	}
+	ch.MP = 100
+	ch.SpellTick = 700
+	ch.Skills = storage.SkillStates{{ID: "火球术", Level: 0, Train: 0}}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+
+	direction := world.Direction(ch.X, ch.Y, ch.X+1, ch.Y)
+	spellClient := s.clientForConn(server)
+	spellClient.mu.Lock()
+	spellClient.actionAt = time.Now().Add(-400 * time.Millisecond)
+	spellClient.actionIdent = mir176.CMRun
+	spellClient.actionDir = direction
+	spellClient.mu.Unlock()
+
+	s.processSpellDelivery(server, &ch, spellRequest{x: x + 1, y: y, magicID: 1}, false)
+
+	spellClient.mu.Lock()
+	pending := spellClient.pendingSpellMessages
+	spellClient.mu.Unlock()
+	if pending != 0 {
+		t.Fatalf("same-direction run pending spells = %d, want immediate delivery", pending)
+	}
+	if ch.SpellTick != 250 {
+		t.Fatalf("SpellTick after same-direction run = %d, want 250", ch.SpellTick)
+	}
+	s.unregisterClient(server)
+}
+
+func TestHandleSpellStruckDelayDoesNotAdvanceMagicThrottle(t *testing.T) {
+	gameplay := config.DefaultGameplay()
+	gameplay.Combat.SpeedControlMode = 1
+	s := newTestServerWithGameplay(t, gameplay)
 	mapID, x, y := testDefaultSpawn(t)
 	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "wizard", 0, 0, mapID, x, y)
 	if err != nil {
@@ -3422,7 +5332,119 @@ func TestHandleSpellStruckDelayDoesNotAdvanceMagicThrottle(t *testing.T) {
 	if !gotSpellAt.Equal(spellAt.Add(-time.Second)) {
 		t.Fatalf("spell action time = %v, want unchanged %v", gotSpellAt, spellAt.Add(-time.Second))
 	}
+	spellClient.mu.Lock()
+	pending := spellClient.pendingSpellMessages
+	spellClient.mu.Unlock()
+	if pending != 1 {
+		t.Fatalf("pending spells during struck delay = %d, want 1 even in strict speed mode", pending)
+	}
 	s.unregisterClient(server)
+}
+
+func TestHandleSpellActionDelayQueuesInStrictSpeedMode(t *testing.T) {
+	gameplay := config.DefaultGameplay()
+	gameplay.Combat.SpeedControlMode = 1
+	s := newTestServerWithGameplay(t, gameplay)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "strict-action-delay", "wizard", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.MP = 100
+	ch.Skills = storage.SkillStates{{ID: "火球术", Level: 0}}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+	spellClient := s.clientForConn(server)
+	spellClient.mu.Lock()
+	spellClient.actionAt = time.Now()
+	spellClient.actionIdent = mir176.CMRun
+	spellClient.actionDir = world.Direction(ch.X, ch.Y, x+1, y)
+	spellClient.mu.Unlock()
+
+	s.processSpellDelivery(server, &ch, spellRequest{x: x + 1, y: y, magicID: 1}, false)
+	spellClient.mu.Lock()
+	pending := spellClient.pendingSpellMessages
+	spellClient.mu.Unlock()
+	if pending != 1 {
+		t.Fatalf("pending spells during action delay = %d, want 1 in strict speed mode", pending)
+	}
+	s.unregisterClient(server)
+}
+
+func TestHandleSpellIgnoresStruckDelayWhenDisabled(t *testing.T) {
+	gameplay := config.DefaultGameplay()
+	gameplay.Combat.DisableStruck = true
+	s := newTestServerWithGameplay(t, gameplay)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "disable-struck-spell", "wizard", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.MP = 100
+	ch.SpellTick = 700
+	ch.Skills = storage.SkillStates{{ID: "火球术", Level: 0}}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	spellClient := s.clientForConn(server)
+	spellClient.mu.Lock()
+	spellClient.struckAt = time.Now()
+	spellClient.mu.Unlock()
+
+	s.processSpellDelivery(server, &ch, spellRequest{x: x + 1, y: y, magicID: 1}, false)
+
+	spellClient.mu.Lock()
+	pending := spellClient.pendingSpellMessages
+	spellClient.mu.Unlock()
+	if pending != 0 {
+		t.Fatalf("pending spells with struck delay disabled = %d, want 0", pending)
+	}
+	if ch.SpellTick != 250 {
+		t.Fatalf("SpellTick = %d, want 250 after immediate delivery", ch.SpellTick)
+	}
+}
+
+func TestHandleSpellIgnoresActionIntervalWhenDisabled(t *testing.T) {
+	gameplay := config.DefaultGameplay()
+	gameplay.Combat.ControlActionInterval = false
+	s := newTestServerWithGameplay(t, gameplay)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "disable-action-interval", "wizard", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.MP = 100
+	ch.SpellTick = 700
+	ch.Skills = storage.SkillStates{{ID: "火球术", Level: 0}}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	spellClient := s.clientForConn(server)
+	spellClient.mu.Lock()
+	spellClient.actionAt = time.Now()
+	spellClient.actionIdent = mir176.CMRun
+	spellClient.actionDir = (world.Direction(ch.X, ch.Y, ch.X+1, ch.Y) + 1) % 8
+	spellClient.mu.Unlock()
+
+	s.processSpellDelivery(server, &ch, spellRequest{x: x + 1, y: y, magicID: 1}, false)
+
+	spellClient.mu.Lock()
+	pending := spellClient.pendingSpellMessages
+	spellClient.mu.Unlock()
+	if pending != 0 {
+		t.Fatalf("pending spells with action interval disabled = %d, want 0", pending)
+	}
+	if ch.SpellTick != 250 {
+		t.Fatalf("SpellTick = %d, want 250 after immediate delivery", ch.SpellTick)
+	}
 }
 
 func TestHandleSpellDelaysAfterWalkAction(t *testing.T) {
@@ -3522,6 +5544,11 @@ func TestHandleSpellPassiveWarriorSkillsOnlyAcknowledge(t *testing.T) {
 			defer client.Close()
 			s.registerClient(server, ch)
 			defer s.unregisterClient(server)
+			spellClient := s.clientForConn(server)
+			spellClient.mu.Lock()
+			spellClient.actionIdent = mir176.CMHit
+			spellClient.actionDir = 2
+			spellClient.mu.Unlock()
 			done := make(chan struct{})
 			go func() {
 				defer close(done)
@@ -3536,11 +5563,10 @@ func TestHandleSpellPassiveWarriorSkillsOnlyAcknowledge(t *testing.T) {
 				t.Fatalf("unexpected extra frame: %x", extra)
 			}
 			<-done
-			spellClient := s.clientForConn(server)
 			spellClient.mu.Lock()
 			defer spellClient.mu.Unlock()
-			if spellClient.actionIdent != mir176.CMSpell {
-				t.Fatalf("passive skill action ident = %d, want CMSpell", spellClient.actionIdent)
+			if spellClient.actionIdent != mir176.CMHit || spellClient.actionDir != 2 {
+				t.Fatalf("passive skill action = %d/%d, want hit/2", spellClient.actionIdent, spellClient.actionDir)
 			}
 		})
 	}
@@ -3572,14 +5598,30 @@ func TestHandleSpellWarriorToggleSkills(t *testing.T) {
 			server, client := net.Pipe()
 			defer server.Close()
 			defer client.Close()
+			s.registerClient(server, ch)
+			defer s.unregisterClient(server)
 			call := func(wantToggle string) {
 				done := make(chan struct{})
 				go func() {
 					defer close(done)
 					s.handleSpell(server, &ch, mir176.Command{Ident: mir176.CMSpell, Tag: magicID})
 				}()
-				frame := readFrame(t, client)
-				body, err := mir176.UnwrapFrame(frame)
+				message, body, err := decodeMessageLikeClient(readFrame(t, client))
+				if err != nil || message.Ident != mir176.SMSystemMessage || message.Param != makeWord(0xDB, 0xFF) || message.Series != 1 {
+					t.Fatalf("toggle system message = %+v, %v", message, err)
+				}
+				decoded, err := mir176.DecodePlain6Payload(body)
+				if err != nil {
+					t.Fatalf("decode toggle system message = %v", err)
+				}
+				wantMessage := map[string]string{
+					"刺杀剑术": map[string]string{"+LNG": "启用刺杀剑法", "+ULNG": "关闭刺杀剑法"}[wantToggle],
+					"半月弯刀": map[string]string{"+WID": "开启半月弯刀", "+UWID": "关闭半月弯刀"}[wantToggle],
+				}[tc.name]
+				if got := DecodeString(decoded); got != wantMessage {
+					t.Fatalf("toggle system message = %q, want %q", got, wantMessage)
+				}
+				body, err = mir176.UnwrapFrame(readFrame(t, client))
 				if err != nil || string(body) != wantToggle {
 					t.Fatalf("toggle response = %q, %v; want %q", body, err, wantToggle)
 				}
@@ -3588,6 +5630,9 @@ func TestHandleSpellWarriorToggleSkills(t *testing.T) {
 					t.Fatalf("ack response = %q, %v", body, err)
 				}
 				<-done
+				if got := s.clientForConn(server).character(); got.ThrustingDisabled != ch.ThrustingDisabled || got.HalfMoonDisabled != ch.HalfMoonDisabled {
+					t.Fatalf("client toggle state = %t/%t, want %t/%t", got.ThrustingDisabled, got.HalfMoonDisabled, ch.ThrustingDisabled, ch.HalfMoonDisabled)
+				}
 			}
 			call(tc.firstFrame)
 			call(tc.secondFrame)
@@ -3646,7 +5691,7 @@ func TestHandleSpellMonsterMagicHitSendsVisibleHealthBeforeStruck(t *testing.T) 
 	if firstCmd.Param != uint16(result.MonsterHP) || firstCmd.Tag != uint16(result.MonsterMP) || firstCmd.Series != uint16(result.MonsterMaxHP) {
 		t.Fatalf("monster health frame = %+v, want hp/mp/maxhp %d/%d/%d", firstCmd, result.MonsterHP, result.MonsterMP, result.MonsterMaxHP)
 	}
-	if secondCmd.Ident != mir176.SMStruck || secondCmd.Recog != world.MonsterActorID(world.Monster{ID: result.MonsterID}) {
+	if secondCmd.Ident != mir176.SMStruck || secondCmd.Recog != world.MonsterActorID(world.Monster{ID: result.MonsterID}) || secondCmd.Param != uint16(result.MonsterHP) || secondCmd.Tag != uint16(result.MonsterMaxHP) {
 		t.Fatalf("second monster magic frame = %+v, want target struck", secondCmd)
 	}
 }
@@ -3752,7 +5797,7 @@ func TestHandleSpellLegacyHighMagicSendsStartThenMagicFireFail(t *testing.T) {
 	}()
 	frames := collectFramesUntilActionAck(t, client, 8)
 	<-done
-	observerFirst := readFrame(t, observerClient)
+	observerFirst := readFrameSkippingHealth(t, observerClient)
 	observerCommand, observerBody, err := decodeMessageLikeClient(observerFirst)
 	if err != nil {
 		t.Fatalf("decode observer spell frame error = %v", err)
@@ -3760,7 +5805,7 @@ func TestHandleSpellLegacyHighMagicSendsStartThenMagicFireFail(t *testing.T) {
 	if observerCommand.Ident != mir176.SMSpell || string(observerBody) != fmt.Sprint(magicID) {
 		t.Fatalf("observer first frame = %+v body=%q, want SM_SPELL magic %d", observerCommand, observerBody, magicID)
 	}
-	observerSecond := readFrame(t, observerClient)
+	observerSecond := readFrameSkippingHealth(t, observerClient)
 	observerFailure, _, err := decodeMessageLikeClient(observerSecond)
 	if err != nil {
 		t.Fatalf("decode observer failure frame error = %v", err)
@@ -3804,16 +5849,25 @@ func TestSpellMagicFireFailReachesVisibleClients(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateCharacter() observer error = %v", err)
 	}
+	hidden, err := s.world.CreateCharacterWithAppearance("test", "hidden-observer", "wizard", 0, 0, mapID, x+20, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() hidden observer error = %v", err)
+	}
 	casterConn, casterClient := net.Pipe()
 	defer casterConn.Close()
 	defer casterClient.Close()
 	observerConn, observerClient := net.Pipe()
 	defer observerConn.Close()
 	defer observerClient.Close()
+	hiddenConn, hiddenClient := net.Pipe()
+	defer hiddenConn.Close()
+	defer hiddenClient.Close()
 	s.registerClient(casterConn, caster)
 	defer s.unregisterClient(casterConn)
 	s.registerClient(observerConn, observer)
 	defer s.unregisterClient(observerConn)
+	s.registerClient(hiddenConn, hidden)
+	defer s.unregisterClient(hiddenConn)
 
 	readFail := func(conn net.Conn, done chan<- error) {
 		frame, ok := readFrameWithTimeout(t, conn, time.Second)
@@ -3854,6 +5908,9 @@ func TestSpellMagicFireFailReachesVisibleClients(t *testing.T) {
 	if observerCmd.Ident != mir176.SMMagicFireFail || observerCmd.Recog != world.CharacterActorID(caster) {
 		t.Fatalf("observer magic fire fail command = %+v", observerCmd)
 	}
+	if _, ok := readFrameWithTimeout(t, hiddenClient, 100*time.Millisecond); ok {
+		t.Fatal("hidden observer received magic fire failure")
+	}
 }
 
 func TestCharacterStatusMessageMatchesReferenceFields(t *testing.T) {
@@ -3879,8 +5936,8 @@ func TestCharacterStatusMessageMatchesReferenceFields(t *testing.T) {
 	if cmd.Ident != mir176.SMCharStatusChanged {
 		t.Fatalf("status ident = %d, want %d", cmd.Ident, mir176.SMCharStatusChanged)
 	}
-	if cmd.Param != 1 || cmd.Tag != 0 {
-		t.Fatalf("status fields = (%d, %d), want (1, 0)", cmd.Param, cmd.Tag)
+	if cmd.Param != 0 || cmd.Tag != 0 {
+		t.Fatalf("status fields = (%d, %d), want (0, 0)", cmd.Param, cmd.Tag)
 	}
 	if cmd.Series != 7 {
 		t.Fatalf("hit speed field = %d, want 7", cmd.Series)
@@ -3932,6 +5989,77 @@ func TestMonsterStatusMessageUsesReferenceFields(t *testing.T) {
 		t.Fatalf("monster status command = %+v, want actor=%d status=0x00800000", cmd, world.MonsterActorID(mon))
 	}
 	<-done
+}
+
+func TestBroadcastMonsterStatusChangedUsesReferenceViewers(t *testing.T) {
+	s := newTestServer(t)
+	mon := world.Monster{ID: "status-broadcast-monster", MapID: testMapID, X: 10, Y: 10, TransparentUntil: time.Now().Add(time.Minute)}
+	nearServer, nearClient := net.Pipe()
+	defer nearServer.Close()
+	defer nearClient.Close()
+	farServer, farClient := net.Pipe()
+	defer farServer.Close()
+	defer farClient.Close()
+	near := storage.Character{ID: "status-near", MapID: testMapID, X: 10, Y: 11}
+	far := storage.Character{ID: "status-far", MapID: testMapID, X: 30, Y: 30}
+	s.registerClient(nearServer, near)
+	defer s.unregisterClient(nearServer)
+	s.registerClient(farServer, far)
+	defer s.unregisterClient(farServer)
+
+	s.broadcastMonsterStatusChanged(mon)
+	frame, ok := readFrameWithTimeout(t, nearClient, time.Second)
+	if !ok {
+		t.Fatal("near observer did not receive monster status refresh")
+	}
+	cmd, body, err := decodeMessageLikeClient(frame)
+	if err != nil {
+		t.Fatalf("decode near status frame error = %v", err)
+	}
+	status := world.MonsterStatus(mon, time.Now())
+	if cmd.Ident != mir176.SMCharStatusChanged || cmd.Recog != world.MonsterActorID(mon) || cmd.Param != uint16(status) || cmd.Tag != uint16(uint32(status)>>16) || cmd.Series != 0 || len(body) != 0 {
+		t.Fatalf("near status frame = %+v body=%x, want reference fields", cmd, body)
+	}
+	if frame, ok := readFrameWithTimeout(t, farClient, 100*time.Millisecond); ok {
+		t.Fatalf("far observer received status refresh: %x", frame)
+	}
+}
+
+func TestBroadcastMonsterUsernameUsesReferenceFields(t *testing.T) {
+	s := newTestServer(t)
+	mon := world.Monster{ID: "username-broadcast-monster", MapID: testMapID, X: 10, Y: 10, Name: "骷髅", MasterName: "owner", CrazyUntil: time.Now().Add(time.Minute)}
+	nearServer, nearClient := net.Pipe()
+	defer nearServer.Close()
+	defer nearClient.Close()
+	farServer, farClient := net.Pipe()
+	defer farServer.Close()
+	defer farClient.Close()
+	near := storage.Character{ID: "username-near", MapID: testMapID, X: 10, Y: 11}
+	far := storage.Character{ID: "username-far", MapID: testMapID, X: 30, Y: 30}
+	s.registerClient(nearServer, near)
+	defer s.unregisterClient(nearServer)
+	s.registerClient(farServer, far)
+	defer s.unregisterClient(farServer)
+
+	s.broadcastMonsterUsername(mon)
+	frame, ok := readFrameWithTimeout(t, nearClient, time.Second)
+	if !ok {
+		t.Fatal("near observer did not receive monster username refresh")
+	}
+	cmd, body, err := decodeMessageLikeClient(frame)
+	if err != nil {
+		t.Fatalf("decode near username frame error = %v", err)
+	}
+	decoded, err := mir176.DecodePlain6Payload(body)
+	if err != nil {
+		t.Fatalf("decode near username body error = %v", err)
+	}
+	if cmd.Ident != mir176.SMUserName || cmd.Recog != world.MonsterActorID(mon) || cmd.Param != 0xF9 || DecodeString(decoded) != "骷髅(owner)" {
+		t.Fatalf("near username frame = %+v body=%q, want reference fields", cmd, DecodeString(decoded))
+	}
+	if frame, ok := readFrameWithTimeout(t, farClient, 100*time.Millisecond); ok {
+		t.Fatalf("far observer received username refresh: %x", frame)
+	}
 }
 
 func TestSpellDurabilityMessageMatchesReferenceFields(t *testing.T) {
@@ -4021,7 +6149,7 @@ func TestSpellCharacterFeatureRefreshPrecedesDurabilityAndStruck(t *testing.T) {
 	}
 	struck, _, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
-		t.Fatalf("decode struck frame error = %v", err)
+		t.Fatalf("decode third frame error = %v", err)
 	}
 	if struck.Ident != mir176.SMStruck {
 		t.Fatalf("third frame ident = %d, want SM_STRUCK (%d)", struck.Ident, mir176.SMStruck)
@@ -4035,6 +6163,7 @@ func TestSpellItemDeleteMessageMatchesReferenceFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
+	ch.SoftVersionDateEx = 1
 	server, clientConn := net.Pipe()
 	defer server.Close()
 	defer clientConn.Close()
@@ -4193,7 +6322,7 @@ func TestHandleSpellBigFireballBroadcastsMonsterHit(t *testing.T) {
 		t.Fatalf("missing delayed frames: struck=%v health=%v", sawStruck, sawHealth)
 	}
 	observerFrames := <-observerFramesCh
-	frame := observerFrames[0]
+	frame := firstFrameSkippingHealth(t, observerFrames)
 	spellCmd, spellBody, err := decodeMessageLikeClient(frame)
 	if err != nil {
 		t.Fatalf("decode spell frame error = %v", err)
@@ -4210,14 +6339,14 @@ func TestHandleSpellBigFireballBroadcastsMonsterHit(t *testing.T) {
 	if spellCmd.Series != 3 {
 		t.Fatalf("spell series = %d, want effect 3", spellCmd.Series)
 	}
-	magicCmd, _, err := decodeMessageLikeClient(observerFrames[1])
+	magicCmd, _, err := decodeMessageLikeClient(firstFrameWithIdent(t, observerFrames, mir176.SMMagicFire))
 	if err != nil {
 		t.Fatalf("decode magic fire frame error = %v", err)
 	}
 	if magicCmd.Ident != mir176.SMMagicFire {
 		t.Fatalf("magic fire ident = %d, want SM_MAGICFIRE (%d)", magicCmd.Ident, mir176.SMMagicFire)
 	}
-	frame = observerFrames[2]
+	frame = firstFrameWithIdent(t, observerFrames, mir176.SMStruck)
 	struckCmd, _, err := decodeMessageLikeClient(frame)
 	if err != nil {
 		t.Fatalf("decode struck frame error = %v", err)
@@ -4234,7 +6363,7 @@ func TestHandleSpellBigFireballBroadcastsMonsterHit(t *testing.T) {
 	}
 }
 
-func TestHandleSpellMagicShieldRefreshesAbilityPanel(t *testing.T) {
+func TestHandleSpellMagicShieldRefreshesStatusWithoutAbilityPanel(t *testing.T) {
 	s := newTestServer(t)
 	mapID, x, y := testDefaultSpawn(t)
 	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "wizard", 0, 0, mapID, x, y)
@@ -4265,8 +6394,9 @@ func TestHandleSpellMagicShieldRefreshesAbilityPanel(t *testing.T) {
 	for len(frames) < 4 {
 		frames = append(frames, readFrame(t, client))
 	}
-	var sawHealth, sawMagic, sawStatus bool
-	for _, frame := range frames {
+	var sawAbility, sawHealth, sawMagic, sawStatus bool
+	statusIndex, magicIndex := -1, -1
+	for index, frame := range frames {
 		if body, err := mir176.UnwrapFrame(frame); err == nil && strings.HasPrefix(string(body), "+GOOD/") {
 			continue
 		}
@@ -4279,16 +6409,23 @@ func TestHandleSpellMagicShieldRefreshesAbilityPanel(t *testing.T) {
 			sawHealth = true
 		case mir176.SMMagicFire:
 			sawMagic = true
+			magicIndex = index
 		case mir176.SMCharStatusChanged:
 			sawStatus = true
+			statusIndex = index
+		case mir176.SMAbility:
+			sawAbility = true
 		case mir176.SMSendMyMagic:
 		case mir176.SMMagicLvExp:
 		default:
 			t.Fatalf("unexpected caster frame ident=%d", cmd.Ident)
 		}
 	}
-	if (cost > 0 && !sawHealth) || !sawMagic || !sawStatus {
-		t.Fatalf("missing frames: health=%v magic=%v status=%v", sawHealth, sawMagic, sawStatus)
+	if (cost > 0 && !sawHealth) || !sawMagic || !sawStatus || sawAbility {
+		t.Fatalf("missing frames: ability=%v health=%v magic=%v status=%v", sawAbility, sawHealth, sawMagic, sawStatus)
+	}
+	if statusIndex < 0 || magicIndex < 0 || statusIndex >= magicIndex {
+		t.Fatalf("magic shield packet order = %+v, want status before magic fire", frames)
 	}
 	<-done
 	if ch.BubbleDefenceUntil == 0 {
@@ -4408,8 +6545,8 @@ func TestHandleSpellHealRefreshesCasterAndObservers(t *testing.T) {
 	if got := caster.HP; got <= max(1, stats.MaxHP/2) {
 		t.Fatalf("caster HP = %d, want recovery after delayed healing is consumed", got)
 	}
-	if caster.IncHealing != 0 {
-		t.Fatalf("caster IncHealing = %d, want recovery queue consumed", caster.IncHealing)
+	if caster.IncHealing < 0 || caster.IncHealing > 1 {
+		t.Fatalf("caster IncHealing = %d, want at most one queued point after one recovery tick", caster.IncHealing)
 	}
 	<-done
 }
@@ -4773,18 +6910,24 @@ func TestHandleSpellLightningBroadcastsCharacterHit(t *testing.T) {
 		t.Fatalf("target health frame index = %d, struck frame index = %d; want health first", targetHealthIndex, targetStruckIndex)
 	}
 
-	var observerSpell bool
+	var observerSpell, observerHealth bool
 	for _, frame := range observerFrames {
 		cmd, _, err := decodeMessageLikeClient(frame)
 		if err != nil {
 			t.Fatalf("decode observer frame error = %v", err)
 		}
-		if cmd.Ident == mir176.SMSpell {
+		switch cmd.Ident {
+		case mir176.SMSpell:
 			observerSpell = true
+		case mir176.SMHealthSpellChanged:
+			observerHealth = true
 		}
 	}
 	if !observerSpell {
 		t.Fatal("missing observer SMSpell frame")
+	}
+	if observerHealth {
+		t.Fatal("unexpected observer SMHealthSpellChanged frame without target show-health state")
 	}
 
 	<-done
@@ -4932,12 +7075,13 @@ func TestHandleSpellExplosionBroadcastsMonsterHits(t *testing.T) {
 		t.Fatalf("caster ack count = %d, want 1", casterAck)
 	}
 	if casterMonsterHits != 2 {
-		t.Fatalf("caster struck count = %d, want 2", casterMonsterHits)
+		t.Fatalf("caster struck count = %d, want 2 for two monster hits", casterMonsterHits)
 	}
 
 	var observerStruck int
 	var observerMonsterHits int
-	for _, frame := range observerFrames {
+	magicFireIndex, firstStruckIndex := -1, -1
+	for index, frame := range observerFrames {
 		cmd, _, err := decodeMessageLikeClient(frame)
 		if err != nil {
 			t.Fatalf("decode observer frame error = %v", err)
@@ -4946,16 +7090,24 @@ func TestHandleSpellExplosionBroadcastsMonsterHits(t *testing.T) {
 		case mir176.SMStruck:
 			observerStruck++
 			observerMonsterHits++
+			if firstStruckIndex < 0 {
+				firstStruckIndex = index
+			}
 			if cmd.Recog != world.MonsterActorID(first.Monsters[0]) && cmd.Recog != world.MonsterActorID(second.Monsters[0]) {
 				t.Fatalf("observer struck recog = %d, want one of target actors", cmd.Recog)
 			}
+		case mir176.SMMagicFire:
+			magicFireIndex = index
 		}
 	}
 	if observerStruck < 2 {
-		t.Fatalf("observer SMStruck count = %d, want at least 2", observerStruck)
+		t.Fatalf("observer SMStruck count = %d, want at least 2 for two monster hits", observerStruck)
 	}
 	if observerMonsterHits != 2 {
-		t.Fatalf("observer struck count = %d, want 2", observerMonsterHits)
+		t.Fatalf("observer struck count = %d, want 2 for two monster hits", observerMonsterHits)
+	}
+	if firstStruckIndex < 0 || magicFireIndex < 0 || firstStruckIndex >= magicFireIndex {
+		t.Fatalf("observer frame order = first struck %d, magic fire %d; want immediate hit before effect", firstStruckIndex, magicFireIndex)
 	}
 
 	<-done
@@ -5086,7 +7238,7 @@ func TestHandleSpellHellfireBroadcastsMonsterHits(t *testing.T) {
 		t.Fatalf("caster ack count = %d, want 1", casterAck)
 	}
 	if casterMonsterHits != 2 {
-		t.Fatalf("caster struck count = %d, want 2", casterMonsterHits)
+		t.Fatalf("caster struck count = %d, want 2 for two monster hits", casterMonsterHits)
 	}
 
 	var observerStruck int
@@ -5106,10 +7258,10 @@ func TestHandleSpellHellfireBroadcastsMonsterHits(t *testing.T) {
 		}
 	}
 	if observerStruck < 2 {
-		t.Fatalf("observer SMStruck count = %d, want at least 2", observerStruck)
+		t.Fatalf("observer SMStruck count = %d, want at least 2 for two monster hits", observerStruck)
 	}
 	if observerMonsterHits != 2 {
-		t.Fatalf("observer struck count = %d, want 2", observerMonsterHits)
+		t.Fatalf("observer struck count = %d, want 2 for two monster hits", observerMonsterHits)
 	}
 
 }
@@ -5251,7 +7403,7 @@ func TestHandleSpellLightningLineBroadcastsHits(t *testing.T) {
 		t.Fatalf("caster ack count = %d, want 1", casterAck)
 	}
 	if casterStruck != 3 {
-		t.Fatalf("caster SMStruck count = %d, want 3 for two monsters and one character", casterStruck)
+		t.Fatalf("caster SMStruck count = %d, want 3 for two monster hits and one character", casterStruck)
 	}
 	wantCasterHealth := 1
 	if cost > 0 {
@@ -5309,7 +7461,7 @@ func TestHandleSpellLightningLineBroadcastsHits(t *testing.T) {
 		t.Fatal("missing observer SMStruck frame")
 	}
 	if observerHealth != 1 {
-		t.Fatalf("observer target SMHealthSpellChanged count = %d, want one", observerHealth)
+		t.Fatalf("observer target SMHealthSpellChanged count = %d, want one with target show-health state", observerHealth)
 	}
 
 }
@@ -5461,6 +7613,7 @@ func TestHandleSpellParalysisBroadcastsSpellOnly(t *testing.T) {
 				t.Fatalf("observer SMChangeNameColor param = %d, want 125", cmd.Param)
 			}
 			observerNameColor++
+		case mir176.SMHealthSpellChanged:
 		}
 	}
 	if observerSpell != 1 {
@@ -5530,9 +7683,9 @@ func TestHandleSpellSummonRefreshesMonsterAppearBroadcast(t *testing.T) {
 	descLen := len(EncodeBuffer(make([]byte, 8)))
 	var casterAck, casterTurn, casterFeature, casterHealth, casterFire bool
 	casterOrder := make([]uint16, 0, len(casterFrames))
-	durabilityIndex := -1
 	turnIndex := -1
-	var observerSpell, observerTurn, observerFeature bool
+	var observerSpell, observerTurn, observerFeature, observerFire bool
+	observerOrder := make([]uint16, 0, len(observerFrames))
 	for index, frame := range casterFrames {
 		if body, err := mir176.UnwrapFrame(frame); err == nil && len(body) > 0 && body[0] == '+' {
 			if strings.HasPrefix(string(body), "+GOOD/") {
@@ -5568,10 +7721,7 @@ func TestHandleSpellSummonRefreshesMonsterAppearBroadcast(t *testing.T) {
 		case mir176.SMHealthSpellChanged:
 			casterHealth = true
 		case mir176.SMDuraChange:
-			durabilityIndex = index
-			if cmd.Recog != 9900 || cmd.Param != uint16(world.SlotBujuk) || cmd.Tag != 10000 || cmd.Series != 0 {
-				t.Fatalf("caster summon durability command = %+v, want dura=9900 slot=%d duramax=10000", cmd, world.SlotBujuk)
-			}
+			t.Fatalf("caster skeleton summon emitted durability command = %+v, want no amulet update", cmd)
 		case mir176.SMMagicFire:
 			casterFire = true
 		}
@@ -5584,6 +7734,7 @@ func TestHandleSpellSummonRefreshesMonsterAppearBroadcast(t *testing.T) {
 		if err != nil {
 			t.Fatalf("decode observer frame error = %v", err)
 		}
+		observerOrder = append(observerOrder, cmd.Ident)
 		switch cmd.Ident {
 		case mir176.SMSpell:
 			observerSpell = true
@@ -5604,16 +7755,32 @@ func TestHandleSpellSummonRefreshesMonsterAppearBroadcast(t *testing.T) {
 			}
 		case mir176.SMFeatureChanged:
 			observerFeature = true
+		case mir176.SMMagicFire:
+			observerFire = true
 		}
 	}
 	if !casterAck || !casterTurn || !casterFeature || (cost > 0 && !casterHealth) || !casterFire {
 		t.Fatalf("caster frames missing: ack=%v turn=%v feature=%v health=%v fire=%v", casterAck, casterTurn, casterFeature, casterHealth, casterFire)
 	}
-	if !observerSpell || !observerTurn || !observerFeature {
-		t.Fatalf("observer frames missing: spell=%v turn=%v feature=%v", observerSpell, observerTurn, observerFeature)
+	if !observerSpell || !observerTurn || !observerFeature || !observerFire {
+		t.Fatalf("observer frames missing: spell=%v turn=%v feature=%v fire=%v", observerSpell, observerTurn, observerFeature, observerFire)
 	}
-	if durabilityIndex < 0 || turnIndex < 0 || durabilityIndex >= turnIndex {
-		t.Fatalf("caster summon packet order = %+v, want durability before summon turn", casterOrder)
+	if turnIndex < 0 {
+		t.Fatalf("caster summon packet order = %+v, want summon turn", casterOrder)
+	}
+	indexOf := func(order []uint16, ident uint16) int {
+		for index, got := range order {
+			if got == ident {
+				return index
+			}
+		}
+		return -1
+	}
+	observerTurnIndex := indexOf(observerOrder, mir176.SMTurn)
+	observerFeatureIndex := indexOf(observerOrder, mir176.SMFeatureChanged)
+	observerFireIndex := indexOf(observerOrder, mir176.SMMagicFire)
+	if observerTurnIndex < 0 || observerFeatureIndex < 0 || observerFireIndex < 0 || observerTurnIndex >= observerFeatureIndex || observerFeatureIndex >= observerFireIndex {
+		t.Fatalf("observer summon packet order = %+v, want turn -> feature -> magic fire", observerOrder)
 	}
 	<-done
 	if ch.MP != cost+10-cost {
@@ -5658,7 +7825,7 @@ func TestHandleSpellSummonFailureKeepsSpellStartForVisibleClients(t *testing.T) 
 
 	observerCommands := make([]mir176.Command, 0, 1)
 	for len(observerCommands) < 1 {
-		frame := readFrame(t, observerClient)
+		frame := readFrameSkippingHealth(t, observerClient)
 		cmd, _, err := decodeMessageLikeClient(frame)
 		if err != nil {
 			t.Fatalf("decode observer frame error = %v", err)
@@ -5812,7 +7979,7 @@ func TestHandleSpellTamingRefreshesMonsterUsernameBroadcast(t *testing.T) {
 	if len(observerFrames) == 0 {
 		t.Fatal("missing observer frames")
 	}
-	observerCmd, _, err := decodeMessageLikeClient(observerFrames[0])
+	observerCmd, _, err := decodeMessageLikeClient(firstFrameSkippingHealth(t, observerFrames))
 	if err != nil {
 		t.Fatalf("decode observer frame error = %v", err)
 	}
@@ -5829,11 +7996,13 @@ func TestHandleSpellTamingRefreshesMonsterUsernameBroadcast(t *testing.T) {
 		}
 		switch cmd.Ident {
 		case mir176.SMChangeNameColor:
+		case mir176.SMSpell:
 		case mir176.SMUserName:
 			observerUsernameCmd = cmd
 			observerUsernameBody = body
 			observerUsernameSeen = true
 		case mir176.SMMagicFire:
+		case mir176.SMHealthSpellChanged:
 		default:
 			t.Fatalf("unexpected observer frame ident=%d", cmd.Ident)
 		}
@@ -6077,12 +8246,23 @@ func TestHandleSpellInsightRejectsImmediateReuse(t *testing.T) {
 	readDelayedObserver := func(conn net.Conn) <-chan []byte {
 		frames := make(chan []byte, 1)
 		go func() {
-			frame, ok := readFrameWithTimeout(t, conn, 2*time.Second)
-			if ok {
-				frames <- frame
-				return
+			for {
+				frame, ok := readFrameWithTimeout(t, conn, 2*time.Second)
+				if !ok {
+					frames <- nil
+					return
+				}
+				cmd, _, err := decodeMessageLikeClient(frame)
+				if err != nil {
+					t.Errorf("decode delayed observer frame error = %v", err)
+					frames <- nil
+					return
+				}
+				if cmd.Ident != mir176.SMHealthSpellChanged {
+					frames <- frame
+					return
+				}
 			}
-			frames <- nil
 		}()
 		return frames
 	}
@@ -6311,6 +8491,7 @@ func TestHandleSpellStealthRefreshesStateForCasterAndObservers(t *testing.T) {
 		case mir176.SMCharStatusChanged:
 			sawObserverState = true
 		case mir176.SMMagicFire:
+		case mir176.SMHealthSpellChanged:
 		default:
 			t.Fatalf("unexpected observer frame ident=%d body=%q", cmd.Ident, string(body))
 		}
@@ -6556,7 +8737,7 @@ func TestHandleSpellProtectionRefreshesGroupMembers(t *testing.T) {
 	casterFrames := <-casterFramesCh
 	friendFrames := <-friendFramesCh
 
-	var casterHealthCount, casterAbilityCount, casterStatusCount int
+	var casterHealthCount, casterAbilityCount, casterStatusCount, casterSystemCount int
 	for _, frame := range casterFrames {
 		if body, err := mir176.UnwrapFrame(frame); err == nil && strings.HasPrefix(string(body), "+GOOD/") {
 			continue
@@ -6574,6 +8755,10 @@ func TestHandleSpellProtectionRefreshesGroupMembers(t *testing.T) {
 		case mir176.SMCharStatusChanged:
 			casterStatusCount++
 		case mir176.SMSystemMessage:
+			casterSystemCount++
+			if cmd.Recog != world.CharacterActorID(caster) || cmd.Param != makeWord(0xDB, 0xFF) || cmd.Series != 1 {
+				t.Fatalf("caster protection system command = %+v", cmd)
+			}
 		case mir176.SMMagicFire:
 		case mir176.SMDelItems:
 		case mir176.SMDuraChange:
@@ -6594,9 +8779,13 @@ func TestHandleSpellProtectionRefreshesGroupMembers(t *testing.T) {
 	if casterStatusCount != 0 {
 		t.Fatalf("caster SMCharStatusChanged count = %d, want 0", casterStatusCount)
 	}
+	if casterSystemCount != 1 {
+		t.Fatalf("caster SMSystemMessage count = %d, want 1", casterSystemCount)
+	}
 
-	friendSpellCount, friendHealthCount, friendAbilityCount, friendStatusCount := 0, 0, 0, 0
-	for _, frame := range friendFrames {
+	friendSpellCount, friendHealthCount, friendAbilityCount, friendStatusCount, friendSystemCount := 0, 0, 0, 0, 0
+	friendSpellIndex, friendSystemIndex, friendAbilityIndex, friendMagicFireIndex := -1, -1, -1, -1
+	for index, frame := range friendFrames {
 		if body, err := mir176.UnwrapFrame(frame); err == nil && strings.HasPrefix(string(body), "+GOOD/") {
 			continue
 		}
@@ -6607,6 +8796,7 @@ func TestHandleSpellProtectionRefreshesGroupMembers(t *testing.T) {
 		switch cmd.Ident {
 		case mir176.SMSpell:
 			friendSpellCount++
+			friendSpellIndex = index
 			if got := string(body); got != "15" {
 				t.Fatalf("friend spell body = %q, want magic id 15", got)
 			}
@@ -6614,10 +8804,17 @@ func TestHandleSpellProtectionRefreshesGroupMembers(t *testing.T) {
 			friendHealthCount++
 		case mir176.SMAbility:
 			friendAbilityCount++
+			friendAbilityIndex = index
 		case mir176.SMCharStatusChanged:
 			friendStatusCount++
 		case mir176.SMSystemMessage:
+			friendSystemCount++
+			friendSystemIndex = index
+			if cmd.Recog != world.CharacterActorID(friend) || cmd.Param != makeWord(0xDB, 0xFF) || cmd.Series != 1 {
+				t.Fatalf("friend protection system command = %+v", cmd)
+			}
 		case mir176.SMMagicFire:
+			friendMagicFireIndex = index
 		default:
 			t.Fatalf("unexpected friend frame ident=%d", cmd.Ident)
 		}
@@ -6633,6 +8830,12 @@ func TestHandleSpellProtectionRefreshesGroupMembers(t *testing.T) {
 	}
 	if friendStatusCount != 0 {
 		t.Fatalf("friend SMCharStatusChanged count = %d, want 0", friendStatusCount)
+	}
+	if friendSystemCount != 1 {
+		t.Fatalf("friend SMSystemMessage count = %d, want 1", friendSystemCount)
+	}
+	if friendSpellIndex < 0 || friendSystemIndex < 0 || friendAbilityIndex < 0 || friendMagicFireIndex < 0 || friendSpellIndex >= friendSystemIndex || friendSystemIndex >= friendAbilityIndex || friendAbilityIndex >= friendMagicFireIndex {
+		t.Fatalf("friend protection packet order = %v, want spell -> system -> ability -> magic fire", friendFrames)
 	}
 	<-done
 	if caster.DefenceUpUntil == 0 {
@@ -6882,7 +9085,10 @@ func TestHandleSpellGroupHealingRefreshesGroupMembers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateGroup() error = %v", err)
 	}
-	caster.Skills = storage.SkillStates{{ID: "群体治疗术", Level: 0, Train: 0}}
+	caster.Skills = storage.SkillStates{
+		{ID: "群体治疗术", Level: 0, Train: 0},
+		{ID: "心灵启示", Level: 2, Train: 0},
+	}
 	skill, ok := s.world.Skill("群体治疗术")
 	if !ok {
 		t.Fatalf("skill 群体治疗术 missing from config")
@@ -6943,7 +9149,10 @@ func TestHandleSpellGroupHealingRefreshesGroupMembers(t *testing.T) {
 	}
 
 	var casterAck, casterHealth, casterMagic bool
-	for _, frame := range casterCollected {
+	casterGaugeCount := 0
+	casterMagicIndex := -1
+	casterGaugeIndexes := make([]int, 0, 2)
+	for index, frame := range casterCollected {
 		if body, err := mir176.UnwrapFrame(frame); err == nil && strings.HasPrefix(string(body), "+GOOD/") {
 			casterAck = true
 			continue
@@ -6955,8 +9164,12 @@ func TestHandleSpellGroupHealingRefreshesGroupMembers(t *testing.T) {
 		switch cmd.Ident {
 		case mir176.SMHealthSpellChanged:
 			casterHealth = true
+		case mir176.SMInstanceHealGauge:
+			casterGaugeCount++
+			casterGaugeIndexes = append(casterGaugeIndexes, index)
 		case mir176.SMMagicFire:
 			casterMagic = true
+			casterMagicIndex = index
 		default:
 			t.Fatalf("unexpected caster frame ident=%d", cmd.Ident)
 		}
@@ -6970,6 +9183,14 @@ func TestHandleSpellGroupHealingRefreshesGroupMembers(t *testing.T) {
 	if !casterMagic {
 		t.Fatal("missing caster SMMagicFire frame")
 	}
+	if casterGaugeCount != 2 {
+		t.Fatalf("caster SMInstanceHealGauge count = %d, want 2 for caster and friend", casterGaugeCount)
+	}
+	for _, index := range casterGaugeIndexes {
+		if index >= casterMagicIndex {
+			t.Fatalf("caster gauge frame index = %d, magic fire index = %d; want gauge before magic fire", index, casterMagicIndex)
+		}
+	}
 
 	friendSpellCount := 0
 	for _, frame := range friendCollected {
@@ -6982,6 +9203,7 @@ func TestHandleSpellGroupHealingRefreshesGroupMembers(t *testing.T) {
 			friendSpellCount++
 		case mir176.SMMagicFire:
 			continue
+		case mir176.SMHealthSpellChanged:
 		default:
 			t.Fatalf("unexpected friend frame ident=%d", cmd.Ident)
 		}
@@ -7135,6 +9357,7 @@ func TestHandleSpellFireWallBroadcastsSpellToObservers(t *testing.T) {
 			t.Fatal("observer received ground event during spell result")
 		case mir176.SMMagicFire:
 			observerMagicFireEvents++
+		case mir176.SMHealthSpellChanged:
 		default:
 			t.Fatalf("unexpected observer frame ident=%d", cmd.Ident)
 		}
@@ -7146,8 +9369,8 @@ func TestHandleSpellFireWallBroadcastsSpellToObservers(t *testing.T) {
 		}
 		if cmd.Ident == mir176.SMShowEvent {
 			decodedBody, decodeErr := mir176.DecodePlain6Payload(body)
-			if decodeErr != nil || cmd.Recog == 0 || cmd.Param != 5 || len(decodedBody) < 2 || binary.LittleEndian.Uint16(decodedBody) != 0 {
-				t.Fatalf("caster ground event fields = recog:%d param:%d body:%v, want nonzero ID, type 5, event param 0", cmd.Recog, cmd.Param, body)
+			if decodeErr != nil || cmd.Recog <= 0 || cmd.Param != 5 || len(decodedBody) < 2 || binary.LittleEndian.Uint16(decodedBody) != 0 {
+				t.Fatalf("caster ground event fields = recog:%d param:%d body:%v, want positive event id, event type 5 and event param 0", cmd.Recog, cmd.Param, body)
 			}
 			casterGroundEvents++
 			casterGroundCoords = append(casterGroundCoords, [2]int{int(cmd.Tag), int(cmd.Series)})
@@ -7163,8 +9386,8 @@ func TestHandleSpellFireWallBroadcastsSpellToObservers(t *testing.T) {
 		}
 		if cmd.Ident == mir176.SMShowEvent {
 			decodedBody, decodeErr := mir176.DecodePlain6Payload(body)
-			if decodeErr != nil || cmd.Recog == 0 || cmd.Param != 5 || len(decodedBody) < 2 || binary.LittleEndian.Uint16(decodedBody) != 0 {
-				t.Fatalf("observer ground event fields = recog:%d param:%d body:%v, want nonzero ID, type 5, event param 0", cmd.Recog, cmd.Param, body)
+			if decodeErr != nil || cmd.Recog <= 0 || cmd.Param != 5 || len(decodedBody) < 2 || binary.LittleEndian.Uint16(decodedBody) != 0 {
+				t.Fatalf("observer ground event fields = recog:%d param:%d body:%v, want positive event id, event type 5 and event param 0", cmd.Recog, cmd.Param, body)
 			}
 			observerGroundEvents++
 			want := [][2]int{{x + 1, y}, {x + 2, y - 1}, {x + 2, y}, {x + 2, y + 1}, {x + 3, y}}
@@ -7194,6 +9417,119 @@ func TestHandleSpellFireWallBroadcastsSpellToObservers(t *testing.T) {
 	<-done
 	if caster.MP != cost+10-cost {
 		t.Fatalf("MP = %d, want %d after fire wall", caster.MP, cost+10-cost)
+	}
+}
+
+func TestGroundHideEventIncludesReferenceFields(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "ground-hide", "wizard", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	connection := s.clientForConn(server)
+	connection.enqueueSpellMessage(s, spellObjectMessage{kind: spellObjectMessageGroundHide, groundHide: world.SpellGroundEvent{ID: 17, X: x + 2, Y: y - 1}})
+	command, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode ground hide error = %v", err)
+	}
+	if command.Ident != mir176.SMHideEvent || command.Recog != 17 || command.Param != 0 || int(command.Tag) != x+2 || int(command.Series) != y-1 {
+		t.Fatalf("ground hide fields = %+v, want id 17, zero param and coordinates (%d,%d)", command, x+2, y-1)
+	}
+}
+
+func TestGroundEventVisibilityHidesOnLeaveAndReplaysOnReentry(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "ground-visibility", "wizard", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	event := world.SpellGroundEvent{ID: 23, MapID: mapID, X: x + 1, Y: y, Type: 5, Duration: time.Minute, StartAt: time.Now()}
+	s.syncGroundEvents([]world.SpellGroundEvent{event})
+	show, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode initial ground show error = %v", err)
+	}
+	if show.Ident != mir176.SMShowEvent || show.Recog != event.ID {
+		t.Fatalf("initial ground event = %+v, want show event %d", show, event.ID)
+	}
+
+	connection := s.clientForConn(server)
+	connection.mu.Lock()
+	connection.ch.X = event.X + playerViewRange + 1
+	connection.mu.Unlock()
+	s.syncGroundEvents([]world.SpellGroundEvent{event})
+	hide, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode ground hide after leaving range error = %v", err)
+	}
+	if hide.Ident != mir176.SMHideEvent || hide.Recog != event.ID {
+		t.Fatalf("ground hide after leaving range = %+v, want event %d", hide, event.ID)
+	}
+
+	connection.mu.Lock()
+	connection.ch.X = x
+	connection.mu.Unlock()
+	s.syncGroundEvents([]world.SpellGroundEvent{event})
+	replay, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode ground show after reentry error = %v", err)
+	}
+	if replay.Ident != mir176.SMShowEvent || replay.Recog != event.ID {
+		t.Fatalf("ground event after reentry = %+v, want show event %d", replay, event.ID)
+	}
+}
+
+func TestGroundEventHidesFollowReferenceViewOrder(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "ground-hide-order", "wizard", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	events := []world.SpellGroundEvent{
+		{ID: 30, MapID: mapID, X: x + 2, Y: y, Type: 5, Duration: time.Minute, StartAt: time.Now()},
+		{ID: 10, MapID: mapID, X: x + 1, Y: y, Type: 5, Duration: time.Minute, StartAt: time.Now()},
+	}
+	s.syncGroundEvents(events)
+	for range events {
+		if _, _, err := decodeMessageLikeClient(readFrame(t, client)); err != nil {
+			t.Fatalf("decode initial ground show error = %v", err)
+		}
+	}
+
+	connection := s.clientForConn(server)
+	connection.mu.Lock()
+	connection.ch.X = x + playerViewRange + 3
+	connection.mu.Unlock()
+	s.syncGroundEvents(events)
+	for i, wantID := range []int32{10, 30} {
+		command, _, err := decodeMessageLikeClient(readFrame(t, client))
+		if err != nil {
+			t.Fatalf("decode ground hide %d error = %v", i, err)
+		}
+		if command.Ident != mir176.SMHideEvent || command.Recog != wantID {
+			t.Fatalf("ground hide %d = %+v, want event %d", i, command, wantID)
+		}
 	}
 }
 
@@ -7326,7 +9662,7 @@ func TestHandleSpellIceStormBroadcastsMonsterHitsToObservers(t *testing.T) {
 		t.Fatalf("caster ack count = %d, want 1", casterAck)
 	}
 	if casterStruck != 2 {
-		t.Fatalf("caster SMStruck count = %d, want 2", casterStruck)
+		t.Fatalf("caster SMStruck count = %d, want 2 for two monster hits", casterStruck)
 	}
 
 	var sawObserverSpell bool
@@ -7342,6 +9678,7 @@ func TestHandleSpellIceStormBroadcastsMonsterHitsToObservers(t *testing.T) {
 		case mir176.SMStruck:
 			observerStruck++
 		case mir176.SMMagicFire:
+		case mir176.SMHealthSpellChanged:
 		case mir176.SMWalk, mir176.SMTurn, mir176.SMFeatureChanged:
 		case mir176.SMUserName, mir176.SMChangeNameColor:
 		default:
@@ -7352,7 +9689,7 @@ func TestHandleSpellIceStormBroadcastsMonsterHitsToObservers(t *testing.T) {
 		t.Fatal("missing observer SMSpell frame")
 	}
 	if observerStruck != 2 {
-		t.Fatalf("observer SMStruck count = %d, want 2", observerStruck)
+		t.Fatalf("observer SMStruck count = %d, want 2 for two monster hits", observerStruck)
 	}
 
 	<-done
@@ -7896,6 +10233,12 @@ func TestHandleSpellChargeInsufficientManaOnlyConfirmsAction(t *testing.T) {
 	if caster.X != x || caster.Y != y {
 		t.Fatalf("caster moved to (%d,%d), want unchanged (%d,%d)", caster.X, caster.Y, x, y)
 	}
+	if caster.Dir != 2 {
+		t.Fatalf("caster direction = %d, want request direction 2", caster.Dir)
+	}
+	if got := s.clientForConn(server).character(); got.Dir != 2 {
+		t.Fatalf("client caster direction = %d, want request direction 2", got.Dir)
+	}
 }
 
 func TestHandleSpellSpiritFireBroadcastsSpellAndStruck(t *testing.T) {
@@ -8068,7 +10411,7 @@ func TestHandleSpellSpiritFireBroadcastsSpellAndStruck(t *testing.T) {
 		t.Fatal("missing target observer SMStruck frame")
 	}
 	if targetObserverHealth {
-		t.Fatal("unexpected target observer SMHealthSpellChanged frame while target HP is not public")
+		t.Fatal("unexpected target observer SMHealthSpellChanged frame without target show-health state")
 	}
 }
 
@@ -8170,9 +10513,11 @@ func TestHandleSpellSpiritFireBroadcastsMagicFireWithoutTarget(t *testing.T) {
 
 	frames := <-framesCh
 	var casterAck, casterMagicFire bool
-	for _, frame := range frames {
+	magicFireIndex, ackIndex := -1, -1
+	for index, frame := range frames {
 		if body, err := mir176.UnwrapFrame(frame); err == nil && strings.HasPrefix(string(body), "+GOOD/") {
 			casterAck = true
+			ackIndex = index
 			continue
 		}
 		cmd, body, err := decodeMessageLikeClient(frame)
@@ -8201,6 +10546,7 @@ func TestHandleSpellSpiritFireBroadcastsMagicFireWithoutTarget(t *testing.T) {
 				t.Fatalf("SM_MAGICFIRE series = %d, want effect type/effect 8/10", cmd.Series)
 			}
 			casterMagicFire = true
+			magicFireIndex = index
 		}
 	}
 	<-done
@@ -8209,6 +10555,9 @@ func TestHandleSpellSpiritFireBroadcastsMagicFireWithoutTarget(t *testing.T) {
 	}
 	if !casterMagicFire {
 		t.Fatal("missing caster SMMagicFire frame")
+	}
+	if magicFireIndex >= ackIndex {
+		t.Fatalf("caster frame order = magic fire %d, action ack %d; want magic fire first", magicFireIndex, ackIndex)
 	}
 }
 
@@ -8283,7 +10632,15 @@ func TestHandleSpellSpiritFireBroadcastsSpellEffectToObservers(t *testing.T) {
 
 	observerFramesCh := make(chan [][]byte, 1)
 	go func() {
-		observerFramesCh <- [][]byte{readFrame(t, observerClient), readFrame(t, observerClient)}
+		frames := make([][]byte, 0, 4)
+		for {
+			frame, ok := readFrameWithTimeout(t, observerClient, time.Second)
+			if !ok {
+				break
+			}
+			frames = append(frames, frame)
+		}
+		observerFramesCh <- frames
 	}()
 
 	done := make(chan struct{})
@@ -8685,6 +11042,7 @@ func TestHandleSpellTurnUndeadBroadcastsMonsterDeath(t *testing.T) {
 		case mir176.SMItemShow:
 			sawObserverDrop = true
 		case mir176.SMMagicFire:
+		case mir176.SMHealthSpellChanged:
 		default:
 			t.Fatalf("unexpected observer frame ident=%d", cmd.Ident)
 		}
@@ -8849,6 +11207,86 @@ func TestBroadcastTeleportMoveSendsDisappearAndAppear(t *testing.T) {
 	}
 }
 
+func TestSendTeleportRingMoveUsesReferenceSpaceMovePackets(t *testing.T) {
+	s := newTestServer(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "ring-user", "warrior", 0, 0, "D12", 10, 10)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+	to := ch
+	to.X++
+	to.Y++
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.sendTeleportRingMove(server, ch, to)
+	}()
+	hide, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode ring hide error = %v", err)
+	}
+	if hide.Ident != mir176.SMSpacemoveHide || hide.Recog != world.CharacterActorID(to) {
+		t.Fatalf("ring hide = %+v, want SM_SPACEMOVE_HIDE for target actor", hide)
+	}
+	show, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode ring show error = %v", err)
+	}
+	if show.Ident != mir176.SMSpacemoveShow || show.Recog != world.CharacterActorID(to) || int(show.Param) != to.X || int(show.Tag) != to.Y {
+		t.Fatalf("ring show = %+v, want ordinary space-move show", show)
+	}
+	<-done
+}
+
+func TestSendTeleportRingMoveReachesOldAndNewObservers(t *testing.T) {
+	s := newTestServer(t)
+	from, err := s.world.CreateCharacterWithAppearance("test", "ring-user-observer", "warrior", 0, 0, "D12", 10, 10)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	observer, err := s.world.CreateCharacterWithAppearance("test", "ring-observer", "taoist", 0, 0, "D12", 11, 10)
+	if err != nil {
+		t.Fatalf("CreateCharacter() observer error = %v", err)
+	}
+	server, client := net.Pipe()
+	observerServer, observerClient := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	defer observerServer.Close()
+	defer observerClient.Close()
+	s.registerClient(server, from)
+	s.registerClient(observerServer, observer)
+	to := from
+	to.X++
+	to.Y++
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.sendTeleportRingMove(server, from, to)
+	}()
+	for name, conn := range map[string]net.Conn{"self": client, "observer": observerClient} {
+		hide, _, err := decodeMessageLikeClient(readFrame(t, conn))
+		if err != nil {
+			t.Fatalf("decode %s ring hide error = %v", name, err)
+		}
+		if hide.Ident != mir176.SMSpacemoveHide || hide.Recog != world.CharacterActorID(to) {
+			t.Fatalf("%s ring hide = %+v, want target hide", name, hide)
+		}
+		show, _, err := decodeMessageLikeClient(readFrame(t, conn))
+		if err != nil {
+			t.Fatalf("decode %s ring show error = %v", name, err)
+		}
+		if show.Ident != mir176.SMSpacemoveShow || show.Recog != world.CharacterActorID(to) || int(show.Param) != to.X || int(show.Tag) != to.Y {
+			t.Fatalf("%s ring show = %+v, want target show", name, show)
+		}
+	}
+	<-done
+}
+
 func TestHandleSpellInstantTeleportBroadcastsMove(t *testing.T) {
 	s := newDataDirTestServer(t, testConfigsDir)
 	mapID, x, y := testDefaultSpawn(t)
@@ -8963,7 +11401,7 @@ func TestHandleSpellInstantTeleportBroadcastsMove(t *testing.T) {
 	}
 }
 
-func TestSpaceMoveSpellEventsUseHide2AndShow2(t *testing.T) {
+func TestSpaceMoveSpellEventsUseHide2AndShow(t *testing.T) {
 	s := newTestServer(t)
 	mapID, x, y := testDefaultSpawn(t)
 	caster, err := s.world.CreateCharacterWithAppearance("test", "space_move", "wizard", 0, 0, mapID, x, y)
@@ -8993,6 +11431,10 @@ func TestSpaceMoveSpellEventsUseHide2AndShow2(t *testing.T) {
 	show := caster
 	show.X++
 	show.Dir = 3
+	clientState := s.clientForConn(server)
+	clientState.mu.Lock()
+	clientState.visibleEvents[77] = world.SpellGroundEvent{ID: 77, MapID: show.MapID, X: show.X, Y: show.Y}
+	clientState.mu.Unlock()
 	mapDone := make(chan struct{})
 	go func() {
 		s.sendSpellSpaceMoveMapChange(server, show)
@@ -9002,8 +11444,8 @@ func TestSpaceMoveSpellEventsUseHide2AndShow2(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode clear objects frame error = %v", err)
 	}
-	if clearCmd.Ident != mir176.SMClearObjects || clearCmd.Recog != world.CharacterActorID(show) {
-		t.Fatalf("clear objects command = %+v, want actor %d", clearCmd, world.CharacterActorID(show))
+	if clearCmd.Ident != mir176.SMClearObjects || clearCmd.Recog != 0 {
+		t.Fatalf("clear objects command = %+v, want zero recognition field", clearCmd)
 	}
 	changeCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
@@ -9033,6 +11475,12 @@ func TestSpaceMoveSpellEventsUseHide2AndShow2(t *testing.T) {
 	if got := s.clientForConn(server).character(); got.MapID != show.MapID || got.X != show.X || got.Y != show.Y {
 		t.Fatalf("client state after space move = %+v, want map %q at (%d,%d)", got, show.MapID, show.X, show.Y)
 	}
+	clientState.mu.Lock()
+	visibleEvents := len(clientState.visibleEvents)
+	clientState.mu.Unlock()
+	if visibleEvents != 0 {
+		t.Fatalf("visible ground events after space move = %d, want 0", visibleEvents)
+	}
 
 	showDone := make(chan struct{})
 	go func() {
@@ -9041,10 +11489,10 @@ func TestSpaceMoveSpellEventsUseHide2AndShow2(t *testing.T) {
 	}()
 	showCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
-		t.Fatalf("decode show2 frame error = %v", err)
+		t.Fatalf("decode show frame error = %v", err)
 	}
-	if showCmd.Ident != mir176.SMSpacemoveShow2 || showCmd.Recog != world.CharacterActorID(show) || int(showCmd.Param) != show.X || int(showCmd.Tag) != show.Y {
-		t.Fatalf("show2 command = %+v, want actor %d at (%d,%d)", showCmd, world.CharacterActorID(show), show.X, show.Y)
+	if showCmd.Ident != mir176.SMSpacemoveShow || showCmd.Recog != world.CharacterActorID(show) || int(showCmd.Param) != show.X || int(showCmd.Tag) != show.Y {
+		t.Fatalf("show command = %+v, want actor %d at (%d,%d)", showCmd, world.CharacterActorID(show), show.X, show.Y)
 	}
 	<-showDone
 }
@@ -9099,6 +11547,51 @@ func readFrameSkippingMagicFire(t *testing.T, conn net.Conn) []byte {
 		}
 		return frame
 	}
+}
+
+func readFrameSkippingHealth(t *testing.T, conn net.Conn) []byte {
+	t.Helper()
+	for {
+		frame := readFrame(t, conn)
+		cmd, _, err := decodeMessageLikeClient(frame)
+		if err != nil {
+			t.Fatalf("decode frame error = %v", err)
+		}
+		if cmd.Ident == mir176.SMHealthSpellChanged {
+			continue
+		}
+		return frame
+	}
+}
+
+func firstFrameSkippingHealth(t *testing.T, frames [][]byte) []byte {
+	t.Helper()
+	for _, frame := range frames {
+		cmd, _, err := decodeMessageLikeClient(frame)
+		if err != nil {
+			t.Fatalf("decode frame error = %v", err)
+		}
+		if cmd.Ident != mir176.SMHealthSpellChanged {
+			return frame
+		}
+	}
+	t.Fatal("missing non-health frame")
+	return nil
+}
+
+func firstFrameWithIdent(t *testing.T, frames [][]byte, ident uint16) []byte {
+	t.Helper()
+	for _, frame := range frames {
+		cmd, _, err := decodeMessageLikeClient(frame)
+		if err != nil {
+			t.Fatalf("decode frame error = %v", err)
+		}
+		if cmd.Ident == ident {
+			return frame
+		}
+	}
+	t.Fatalf("missing frame ident=%d", ident)
+	return nil
 }
 
 func TestHandleSaySendsHearMessage(t *testing.T) {
@@ -10546,6 +13039,25 @@ func TestSendEnterWorldReturnsCharacter(t *testing.T) {
 	}
 }
 
+func TestSendEnterWorldPersistsLoginVersionDate(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	if _, err := s.world.CreateCharacterWithAppearance("test", "versioned", "warrior", 0, 0, mapID, x, y); err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	got, ok := s.sendEnterWorld(nil, RunLogin{Account: "test", CharName: "versioned", Version: 120020522})
+	if !ok {
+		t.Fatal("sendEnterWorld() = false, want true")
+	}
+	if got.SoftVersionDate != 20020522 || got.SoftVersionDateEx != 100000000 {
+		t.Fatalf("version fields = (%d, %d), want (20020522, 100000000)", got.SoftVersionDate, got.SoftVersionDateEx)
+	}
+	loaded, ok := s.characterByName("test", "versioned")
+	if !ok || loaded.SoftVersionDate != 20020522 || loaded.SoftVersionDateEx != 100000000 {
+		t.Fatalf("stored runtime version fields = (%d, %d), want (20020522, 100000000)", loaded.SoftVersionDate, loaded.SoftVersionDateEx)
+	}
+}
+
 func TestLoginNoticeClientTickUsesSeries(t *testing.T) {
 	ch := storage.Character{SoftVersionDate: 0, ClientTick: 0}
 	applyLoginNoticeClientTick(&ch, mir176.Command{Ident: mir176.CMLoginNoticeOK, Series: 7})
@@ -10634,7 +13146,7 @@ func TestHandleTakeOnItemEquipsAndRefreshesAbility(t *testing.T) {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
 	ch.Gold = 123
-	ch.SoftVersionDate = 1
+	ch.SoftVersionDateEx = 1
 	ch.BagItems = []storage.UserItem{{ItemID: testWeaponID, MakeIndex: 1}}
 	server, client := net.Pipe()
 	defer server.Close()
@@ -10699,12 +13211,46 @@ func TestHandleTakeOnItemEquipsAndRefreshesAbility(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodePlain6Payload() error = %v", err)
 	}
-	// DC is packed low|high<<8 (min~max): base warrior L1 (1~1) plus 木剑's
-	// min_attack/max_attack (2~5) bonus is 3~6.
-	dc := binary.LittleEndian.Uint16(body[6:8])
-	if lo, hi := byte(dc), byte(dc>>8); lo != 3 || hi != 6 {
-		t.Fatalf("DC in ability payload = %d (lo=%d hi=%d), want lo=3 hi=6", dc, lo, hi)
+	dc := binary.LittleEndian.Uint32(body[10:14])
+	if dc != 0x00000603 {
+		t.Fatalf("DC in modern ability payload = %#x, want %#x", dc, uint32(0x00000603))
 	}
+}
+
+func TestAbilityRefreshBroadcastsFeatureToObservers(t *testing.T) {
+	s := newTestServer(t)
+	casterServer, casterClient := net.Pipe()
+	observerServer, observerClient := net.Pipe()
+	defer casterServer.Close()
+	defer casterClient.Close()
+	defer observerServer.Close()
+	defer observerClient.Close()
+	caster := storage.Character{ID: "equip-caster", MapID: testMapID, X: 10, Y: 10, HP: 100, MaxHP: 100}
+	observer := storage.Character{ID: "equip-observer", MapID: testMapID, X: 11, Y: 10, HP: 100, MaxHP: 100}
+	s.registerClient(casterServer, caster)
+	defer s.unregisterClient(casterServer)
+	s.registerClient(observerServer, observer)
+	defer s.unregisterClient(observerServer)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.sendAbilityRefresh(casterServer, caster, mir176.SMTakeOnOK)
+	}()
+	for i := 0; i < 4; i++ {
+		if _, _, err := decodeMessageLikeClient(readFrame(t, casterClient)); err != nil {
+			t.Fatalf("decode caster refresh frame %d: %v", i, err)
+		}
+	}
+	frame := readFrame(t, observerClient)
+	cmd, _, err := decodeMessageLikeClient(frame)
+	if err != nil {
+		t.Fatalf("decode observer feature refresh: %v", err)
+	}
+	if cmd.Ident != mir176.SMFeatureChanged || cmd.Recog != int32(world.CharacterActorID(caster)) {
+		t.Fatalf("observer feature refresh = %+v, want SM_FEATURECHANGED for caster", cmd)
+	}
+	<-done
 }
 
 func TestHandleTakeOnItemSwapsPreviousItemBackToBag(t *testing.T) {
@@ -11324,6 +13870,59 @@ func TestSendInitialLoginStateMatchesMirbetaOrder(t *testing.T) {
 	<-done
 }
 
+func TestSendInitialLoginStateReplaysVisibleGroundEventsAfterState(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "ground-login", "wizard", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.Level = 20
+	ch.MP = 100
+	ch.Skills = storage.SkillStates{{ID: "火墙", Level: 10, Train: 0}}
+	if _, err := s.world.CastSkillWithPlayers(ch, "火墙", x+2, y, 0, nil); err != nil {
+		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	}
+
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.sendInitialLoginState(server, ch)
+	}()
+
+	seenUseMagic := false
+	showCount := 0
+	for showCount < 5 {
+		command, _, err := decodeMessageLikeClient(readFrame(t, client))
+		if err != nil {
+			t.Fatalf("decode initial login frame error = %v", err)
+		}
+		if command.Ident == mir176.SMSendMyMagic {
+			seenUseMagic = true
+		}
+		if command.Ident != mir176.SMShowEvent {
+			continue
+		}
+		if !seenUseMagic {
+			t.Fatal("ground event replayed before initial spell state")
+		}
+		if command.Recog <= 0 || command.Param != 5 {
+			t.Fatalf("ground event replay fields = %+v", command)
+		}
+		showCount++
+	}
+	if showCount != 5 {
+		t.Fatalf("initial ground event count = %d, want 5", showCount)
+	}
+	<-done
+}
+
 func TestHandleMagicKeyChangeUpdatesSkillHotkey(t *testing.T) {
 	s := newTestServer(t)
 	mapID, x, y := testDefaultSpawn(t)
@@ -11383,6 +13982,62 @@ func TestNormalizeAttackIdentRespectsToggleState(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSendSkillAddedMatchesReferenceClientMagicFrame(t *testing.T) {
+	s := newTestServer(t)
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	ch := storage.Character{ID: "skill-ring", Class: "wizard"}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.sendSkillAdded(server, ch, storage.SkillState{ID: "火球术", Level: 1})
+	}()
+	cmd, body, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode SM_ADDMAGIC frame error = %v", err)
+	}
+	if cmd.Ident != mir176.SMAddMagic || cmd.Series != 1 {
+		t.Fatalf("SM_ADDMAGIC command = %+v, want ident %d series 1", cmd, mir176.SMAddMagic)
+	}
+	decoded, err := mir176.DecodePlain6Payload(body)
+	if err != nil {
+		t.Fatalf("decode SM_ADDMAGIC body error = %v", err)
+	}
+	if len(decoded) != 84 || decoded[1] != 1 || binary.LittleEndian.Uint16(decoded[8:10]) != 1 {
+		t.Fatalf("SM_ADDMAGIC body header = len:%d level:%d magic:%d, want 84/1/1", len(decoded), decoded[1], binary.LittleEndian.Uint16(decoded[8:10]))
+	}
+	<-done
+}
+
+func TestSendSkillRemovedMatchesReferenceFrame(t *testing.T) {
+	s := newTestServer(t)
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.sendSkillRemoved(server, storage.Character{ID: "skill-ring"}, "火球术")
+	}()
+	cmd, body, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode SM_DELMAGIC frame error = %v", err)
+	}
+	wantMagicID, ok := s.world.MagicIDByName("火球术")
+	if !ok {
+		t.Fatal("火球术 magic id is unavailable")
+	}
+	if cmd.Ident != mir176.SMDelMagic || cmd.Recog != int32(wantMagicID) || cmd.Series != 1 {
+		t.Fatalf("SM_DELMAGIC command = %+v, want ident %d recog %d series 1", cmd, mir176.SMDelMagic, wantMagicID)
+	}
+	if len(body) != 0 {
+		t.Fatalf("SM_DELMAGIC body length = %d, want 0", len(body))
+	}
+	<-done
 }
 
 func TestSendUseMagicDoesNotAppendAttackSkillFlags(t *testing.T) {
@@ -11643,7 +14298,7 @@ func TestHandleQueryUserStateRepliesWithState(t *testing.T) {
 	if got := binary.LittleEndian.Uint32(decoded[20:24]); got != 0x2F {
 		t.Fatalf("name color = %d, want 0x2f", got)
 	}
-	itemBodyLen := len(ClientItemBody(data.StdItem{}, [14]byte{}, 0, 0, 0))
+	itemBodyLen := len(itemBodyForEquipped(ch, data.StdItem{}, [14]byte{}, 0, 0, 0))
 	weaponSlotOffset := 60 + itemBodyLen*world.SlotWeapon
 	weaponBody := decoded[weaponSlotOffset:]
 	if len(weaponBody) == 0 || int(weaponBody[0]) <= 0 {
@@ -11693,6 +14348,47 @@ func TestCharacterAppearUsesObserverNameColor(t *testing.T) {
 	if cmd.Ident != mir176.SMUserName || cmd.Param != 0xB4 {
 		t.Fatalf("character name command = %+v, want observer guild color 0xb4", cmd)
 	}
+	<-done
+}
+
+func TestCharacterAppearSendsDeathRefreshForDeadTarget(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	observer, err := s.world.CreateCharacterWithAppearance("test", "observer", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() observer error = %v", err)
+	}
+	target := observer
+	target.ID = "dead-target"
+	target.Name = "dead-target"
+	target.HP = 0
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, observer)
+	defer s.unregisterClient(server)
+	viewer := s.clientForConn(server)
+	if viewer == nil {
+		t.Fatal("missing observer client")
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		viewer.sendCharacterAppear(s, target)
+	}()
+	for i := 0; i < 3; i++ {
+		if _, ok := readFrameWithTimeout(t, client, time.Second); !ok {
+			t.Fatalf("timed out waiting for character appear frame %d", i)
+		}
+	}
+	cmd, body, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode character death refresh error = %v", err)
+	}
+	if cmd.Ident != mir176.SMDeath || cmd.Recog != world.CharacterActorID(target) || cmd.Param != uint16(target.X) || cmd.Tag != uint16(target.Y) || cmd.Series != uint16(target.Dir) {
+		t.Fatalf("character death refresh = %+v, want target actor, x, y, and direction", cmd)
+	}
+	assertCharDesc(t, body, s.world.HumanFeatureForCharacter(target), s.world.CharacterStatus(target))
 	<-done
 }
 
@@ -12193,11 +14889,112 @@ func TestApplyWorldTickSendsPoisonDeathAfterHealthRefresh(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode death frame error = %v", err)
 	}
-	if death.Ident != mir176.SMNowDeath || death.Recog != world.CharacterActorID(updated) || death.Param != uint16(updated.Dir) || death.Tag != uint16(updated.X) || death.Series != 1 {
-		t.Fatalf("death command = %+v, want target actor, direction, x, and immediate marker", death)
+	if death.Ident != mir176.SMNowDeath || death.Recog != world.CharacterActorID(updated) || death.Param != uint16(updated.X) || death.Tag != uint16(updated.Y) || death.Series != uint16(updated.Dir) {
+		t.Fatalf("death command = %+v, want target actor, x, y, and direction", death)
 	}
 	if len(body) == 0 {
 		t.Fatal("death body is empty")
+	}
+	<-done
+}
+
+func TestApplyWorldTickSendsMagicStruckBeforeDeferredDeath(t *testing.T) {
+	s := newTestServer(t)
+	target, err := s.world.CreateCharacterWithAppearance("test", "magic-dead", "warrior", 0, 0, "D12", 0, 0)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, target)
+
+	updated := target
+	updated.HP = 0
+	hit := world.CharacterHit{
+		Character:     updated,
+		Magic:         true,
+		Damage:        target.HP,
+		AttackerID:    "spell-caster",
+		DeathDeferred: true,
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.applyWorldTick(world.TickResult{
+			Characters:      []storage.Character{updated},
+			CharacterHits:   []world.CharacterHit{hit},
+			CharacterDeaths: []storage.Character{updated},
+		}, time.Now())
+	}()
+
+	first, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode health frame error = %v", err)
+	}
+	if first.Ident != mir176.SMHealthSpellChanged {
+		t.Fatalf("first frame ident = %d, want SM_HEALTHSPELLCHANGED (%d)", first.Ident, mir176.SMHealthSpellChanged)
+	}
+	second, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode struck frame error = %v", err)
+	}
+	if second.Ident != mir176.SMStruck {
+		t.Fatalf("second frame ident = %d, want SM_STRUCK (%d)", second.Ident, mir176.SMStruck)
+	}
+	third, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode death frame error = %v", err)
+	}
+	if third.Ident != mir176.SMNowDeath {
+		t.Fatalf("third frame ident = %d, want SM_NOWDEATH (%d)", third.Ident, mir176.SMNowDeath)
+	}
+	<-done
+}
+
+func TestApplyWorldTickUsesNowDeathForTargetAndObservers(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	target, err := s.world.CreateCharacterWithAppearance("test", "death-target", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() target error = %v", err)
+	}
+	observer, err := s.world.CreateCharacterWithAppearance("test", "death-observer", "wizard", 0, 0, mapID, x+1, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() observer error = %v", err)
+	}
+	targetServer, targetClient := net.Pipe()
+	defer targetServer.Close()
+	defer targetClient.Close()
+	observerServer, observerClient := net.Pipe()
+	defer observerServer.Close()
+	defer observerClient.Close()
+	s.registerClient(targetServer, target)
+	defer s.unregisterClient(targetServer)
+	s.registerClient(observerServer, observer)
+	defer s.unregisterClient(observerServer)
+
+	dead := target
+	dead.HP = 0
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.applyWorldTick(world.TickResult{CharacterDeaths: []storage.Character{dead}}, time.Now())
+	}()
+
+	targetCommand, _, err := decodeMessageLikeClient(readFrame(t, targetClient))
+	if err != nil {
+		t.Fatalf("decode target death error = %v", err)
+	}
+	if targetCommand.Ident != mir176.SMNowDeath {
+		t.Fatalf("target death ident = %d, want SM_NOWDEATH (%d)", targetCommand.Ident, mir176.SMNowDeath)
+	}
+	observerCommand, _, err := decodeMessageLikeClient(readFrame(t, observerClient))
+	if err != nil {
+		t.Fatalf("decode observer death error = %v", err)
+	}
+	if observerCommand.Ident != mir176.SMNowDeath {
+		t.Fatalf("observer death ident = %d, want SM_NOWDEATH (%d)", observerCommand.Ident, mir176.SMNowDeath)
 	}
 	<-done
 }
@@ -12368,7 +15165,132 @@ func TestApplyWorldTickSendsMonsterDeathForMasterLoss(t *testing.T) {
 	<-done
 }
 
-func TestApplyWorldTickDoesNotDuplicateOrderedMonsterHit(t *testing.T) {
+func TestApplyWorldTickSendsOrderedMonsterMagicHitOnce(t *testing.T) {
+	s := newTestServer(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "taoist", 0, 0, "D12", 0, 0)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+	caster := ch
+	caster.MapID = "caster-map"
+	hit := world.AttackResult{
+		MonsterID: "mon-hit", MonsterMapID: ch.MapID, MonsterX: ch.X, MonsterY: ch.Y,
+		MonsterHP: 90, MonsterMaxHP: 100, MonsterRaceImg: 50, Damage: 10,
+		Magic: true, Character: caster,
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.applyWorldTick(world.TickResult{
+			MonsterHits:        []world.AttackResult{hit},
+			OrderedSpellEvents: []world.OrderedSpellEvent{{Kind: world.OrderedSpellEventMonsterHit, MonsterHit: hit}},
+		}, time.Now())
+	}()
+	magic, magicBody, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode magic monster hit error = %v", err)
+	}
+	if magic.Ident != mir176.SMStruck {
+		t.Fatalf("magic monster hit ident = %d, want SM_STRUCK", magic.Ident)
+	}
+	assertMessageBodyWL(t, magicBody, world.MonsterFeature(world.Monster{RaceImg: hit.MonsterRaceImg, MonsterWeapon: hit.MonsterWeapon, Appr: hit.MonsterAppr}), hit.MonsterStatus, world.CharacterActorID(ch), 1)
+	if err := client.SetReadDeadline(time.Now().Add(50 * time.Millisecond)); err != nil {
+		t.Fatalf("SetReadDeadline() error = %v", err)
+	}
+	buf := make([]byte, 256)
+	if n, err := client.Read(buf); err == nil {
+		t.Fatalf("duplicate monster hit frame = %q", buf[:n])
+	}
+	<-done
+}
+
+func TestApplyWorldTickSendsOrderedCharacterMagicHitOnce(t *testing.T) {
+	s := newTestServer(t)
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	target := storage.Character{ID: "ordered-character-target", MapID: testMapID, X: 10, Y: 10, HP: 90, MaxHP: 100}
+	caster := storage.Character{ID: "ordered-character-caster", MapID: testMapID, X: 9, Y: 10}
+	s.registerClient(server, target)
+	defer s.unregisterClient(server)
+	hit := world.CharacterHit{Character: target, Magic: true, Damage: 10, AttackerID: caster.ID}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.applyWorldTick(world.TickResult{
+			CharacterHits:      []world.CharacterHit{hit},
+			OrderedSpellEvents: []world.OrderedSpellEvent{{Kind: world.OrderedSpellEventCharacterHit, CharacterHit: hit}},
+		}, time.Now())
+	}()
+	health, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode character health frame error = %v", err)
+	}
+	if health.Ident != mir176.SMHealthSpellChanged || health.Recog != world.CharacterActorID(target) {
+		t.Fatalf("character health frame = %+v, want target health update", health)
+	}
+	struck, body, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode character magic struck frame error = %v", err)
+	}
+	if struck.Ident != mir176.SMStruck || struck.Recog != world.CharacterActorID(target) || struck.Series != uint16(hit.Damage) {
+		t.Fatalf("character magic struck frame = %+v, want one target hit", struck)
+	}
+	assertMessageBodyWL(t, body, s.world.HumanFeatureForCharacter(target), s.world.CharacterStatus(target), world.CharacterActorID(caster), 1)
+	if err := client.SetReadDeadline(time.Now().Add(50 * time.Millisecond)); err != nil {
+		t.Fatalf("SetReadDeadline() error = %v", err)
+	}
+	buf := make([]byte, 256)
+	if n, err := client.Read(buf); err == nil {
+		t.Fatalf("duplicate character magic hit frame = %q", buf[:n])
+	}
+	<-done
+}
+
+func TestApplyWorldTickPreservesMultipleCharacterHitsForOneTarget(t *testing.T) {
+	s := newTestServer(t)
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	target := storage.Character{ID: "multi-hit-target", MapID: testMapID, X: 10, Y: 10, HP: 80, MaxHP: 100}
+	caster := storage.Character{ID: "multi-hit-caster", MapID: testMapID, X: 9, Y: 10}
+	s.registerClient(server, target)
+	defer s.unregisterClient(server)
+	first := world.CharacterHit{Character: target, Magic: true, Damage: 5, AttackerID: caster.ID}
+	second := first
+	second.Damage = 7
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.applyWorldTick(world.TickResult{
+			CharacterHits:      []world.CharacterHit{first, second},
+			OrderedSpellEvents: []world.OrderedSpellEvent{{Kind: world.OrderedSpellEventCharacterHit, CharacterHit: first}},
+		}, time.Now())
+	}()
+	struck := 0
+	for struck < 2 {
+		cmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+		if err != nil {
+			t.Fatalf("decode multi-hit frame error = %v", err)
+		}
+		if cmd.Ident == mir176.SMStruck {
+			struck++
+		}
+	}
+	if err := client.SetReadDeadline(time.Now().Add(50 * time.Millisecond)); err != nil {
+		t.Fatalf("SetReadDeadline() error = %v", err)
+	}
+	if frame, err := client.Read(make([]byte, 256)); err == nil {
+		t.Fatalf("received unexpected third hit frame: %x", frame)
+	}
+	<-done
+}
+
+func TestApplyWorldTickOrdersMagicMonsterDeathAfterDualStruck(t *testing.T) {
 	s := newTestServer(t)
 	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "taoist", 0, 0, "D12", 0, 0)
 	if err != nil {
@@ -12379,31 +15301,82 @@ func TestApplyWorldTickDoesNotDuplicateOrderedMonsterHit(t *testing.T) {
 	defer client.Close()
 	s.registerClient(server, ch)
 	hit := world.AttackResult{
-		MonsterID: "mon-hit", MonsterMapID: ch.MapID, MonsterX: ch.X, MonsterY: ch.Y,
-		MonsterHP: 90, MonsterMaxHP: 100, MonsterRaceImg: 50, Damage: 10,
-		Magic: true, Character: ch,
+		MonsterID: "mon-magic-dead", MonsterMapID: ch.MapID, MonsterX: ch.X, MonsterY: ch.Y,
+		MonsterDir: 3, MonsterHP: 0, MonsterMaxHP: 100, MonsterRaceImg: 50, Damage: 10,
+		MonsterHealthChanged: true, MonsterStatus: 0, Magic: true, Dead: true, Character: ch,
 	}
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		s.applyWorldTick(world.TickResult{
-			MonsterHits:        []world.AttackResult{hit},
 			OrderedSpellEvents: []world.OrderedSpellEvent{{Kind: world.OrderedSpellEventMonsterHit, MonsterHit: hit}},
 		}, time.Now())
 	}()
-	cmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+
+	health, _, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
-		t.Fatalf("decode monster hit error = %v", err)
+		t.Fatalf("decode monster health frame error = %v", err)
 	}
-	if cmd.Ident != mir176.SMStruck {
-		t.Fatalf("monster hit ident = %d, want SM_STRUCK", cmd.Ident)
+	if health.Ident != mir176.SMHealthSpellChanged {
+		t.Fatalf("health frame ident = %d, want SM_HEALTHSPELLCHANGED", health.Ident)
 	}
-	if err := client.SetReadDeadline(time.Now().Add(50 * time.Millisecond)); err != nil {
-		t.Fatalf("SetReadDeadline() error = %v", err)
+	magic, magicBody, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode magic struck frame error = %v", err)
 	}
-	buf := make([]byte, 256)
-	if n, err := client.Read(buf); err == nil {
-		t.Fatalf("duplicate monster hit frame = %q", buf[:n])
+	if magic.Ident != mir176.SMStruck {
+		t.Fatalf("magic struck ident = %d, want SM_STRUCK", magic.Ident)
+	}
+	assertMessageBodyWL(t, magicBody, world.MonsterFeature(world.Monster{RaceImg: hit.MonsterRaceImg, MonsterWeapon: hit.MonsterWeapon, Appr: hit.MonsterAppr}), hit.MonsterStatus, world.CharacterActorID(ch), 1)
+	death, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode monster death frame error = %v", err)
+	}
+	if death.Ident != mir176.SMNowDeath || death.Recog != world.MonsterActorID(world.Monster{ID: hit.MonsterID}) {
+		t.Fatalf("death frame = %+v, want SM_NOWDEATH for %q", death, hit.MonsterID)
+	}
+	<-done
+}
+
+func TestApplyWorldTickOmitsHiddenMonsterHealthBeforeMagicDeath(t *testing.T) {
+	s := newTestServer(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "taoist", 0, 0, "D12", 0, 0)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+	hit := world.AttackResult{
+		MonsterID: "mon-hidden-magic-dead", MonsterMapID: ch.MapID, MonsterX: ch.X, MonsterY: ch.Y,
+		MonsterDir: 3, MonsterHP: 0, MonsterMaxHP: 100, MonsterRaceImg: 50, Damage: 10,
+		MonsterHealthChanged: false, MonsterStatus: 0, Magic: true, Dead: true, Character: ch,
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.applyWorldTick(world.TickResult{
+			OrderedSpellEvents: []world.OrderedSpellEvent{{Kind: world.OrderedSpellEventMonsterHit, MonsterHit: hit}},
+		}, time.Now())
+	}()
+
+	struck, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode hidden monster struck frame error = %v", err)
+	}
+	if struck.Ident != mir176.SMStruck {
+		t.Fatalf("first hidden monster frame = %d, want SM_STRUCK", struck.Ident)
+	}
+	death, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode hidden monster death frame error = %v", err)
+	}
+	if death.Ident != mir176.SMNowDeath {
+		t.Fatalf("second hidden monster frame = %d, want SM_NOWDEATH", death.Ident)
+	}
+	if frame, ok := readFrameWithTimeout(t, client, 30*time.Millisecond); ok {
+		t.Fatalf("hidden monster magic death emitted unexpected extra frame: %x", frame)
 	}
 	<-done
 }
@@ -12546,6 +15519,96 @@ func TestApplyWorldTickSendsStatusThenAbilityRefreshTogether(t *testing.T) {
 	}
 	if abiliCmd.Ident != mir176.SMAbility {
 		t.Fatalf("second frame ident = %d, want SM_ABILITY (%d)", abiliCmd.Ident, mir176.SMAbility)
+	}
+	<-done
+}
+
+func TestApplyWorldTickOrdersStatusBeforePoisonHealth(t *testing.T) {
+	s := newTestServer(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "taoist", 0, 0, "D12", 0, 0)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+
+	updated := ch
+	updated.HP--
+	updated.ShowHPUntil = time.Now().Add(time.Minute).UnixNano()
+	ch.ShowHPUntil = updated.ShowHPUntil
+	now := time.Now()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.applyWorldTick(world.TickResult{
+			Characters:              []storage.Character{updated},
+			StatusRefreshCharacters: []storage.Character{updated},
+			OrderedSpellEvents: []world.OrderedSpellEvent{{
+				Kind:      world.OrderedSpellEventCharacterStatus,
+				Character: updated,
+			}},
+		}, now)
+	}()
+
+	statusCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode status refresh error = %v", err)
+	}
+	if statusCmd.Ident != mir176.SMCharStatusChanged {
+		t.Fatalf("first frame ident = %d, want SM_CHARSTATUSCHANGED (%d)", statusCmd.Ident, mir176.SMCharStatusChanged)
+	}
+	healthCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode health refresh error = %v", err)
+	}
+	if healthCmd.Ident != mir176.SMHealthSpellChanged {
+		t.Fatalf("second frame ident = %d, want SM_HEALTHSPELLCHANGED (%d)", healthCmd.Ident, mir176.SMHealthSpellChanged)
+	}
+	<-done
+}
+
+func TestApplyWorldTickSendsPoisonHealthToTargetWithoutShowHealth(t *testing.T) {
+	s := newTestServer(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "poison-target", "taoist", 0, 0, "D12", 0, 0)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+
+	updated := ch
+	updated.HP--
+	now := time.Now()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.applyWorldTick(world.TickResult{
+			Characters:              []storage.Character{updated},
+			StatusRefreshCharacters: []storage.Character{updated},
+			OrderedSpellEvents: []world.OrderedSpellEvent{{
+				Kind:      world.OrderedSpellEventCharacterStatus,
+				Character: updated,
+			}},
+		}, now)
+	}()
+
+	statusCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode status refresh error = %v", err)
+	}
+	if statusCmd.Ident != mir176.SMCharStatusChanged {
+		t.Fatalf("status command ident = %d, want SM_CHARSTATUSCHANGED (%d)", statusCmd.Ident, mir176.SMCharStatusChanged)
+	}
+	healthCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode target health refresh error = %v", err)
+	}
+	if healthCmd.Ident != mir176.SMHealthSpellChanged || healthCmd.Recog != world.CharacterActorID(updated) || healthCmd.Param != uint16(updated.HP) {
+		t.Fatalf("target health command = %+v, want target HP refresh after status", healthCmd)
 	}
 	<-done
 }
@@ -13415,14 +16478,11 @@ func TestEquippedItemsBodyCarriesEquippedMakeIndex(t *testing.T) {
 	if string(parts[0]) != "1" {
 		t.Fatalf("first slot prefix = %q, want 1 for weapon", parts[0])
 	}
-	decoded, err := mir176.DecodePlain6Payload(parts[1])
+	_, err = mir176.DecodePlain6Payload(parts[1])
 	if err != nil {
 		t.Fatalf("DecodePlain6Payload() error = %v", err)
 	}
-	if len(decoded) < 46 {
-		t.Fatalf("decoded use-item body too short: %d", len(decoded))
-	}
-	got := int32(binary.LittleEndian.Uint32(decoded[44:48]))
+	got := decodeClientItemMakeIndex(parts[1])
 	if got != 7 {
 		t.Fatalf("equipped make index = %d, want 7", got)
 	}
@@ -13445,15 +16505,11 @@ func TestEquippedItemsBodyCarriesEquippedDurability(t *testing.T) {
 	if len(parts) < 2 {
 		t.Fatalf("EquippedItemsBody() = %q, want slot/item pairs", body)
 	}
-	decoded, err := mir176.DecodePlain6Payload(parts[1])
+	_, err = mir176.DecodePlain6Payload(parts[1])
 	if err != nil {
 		t.Fatalf("DecodePlain6Payload() error = %v", err)
 	}
-	if len(decoded) < 50 {
-		t.Fatalf("decoded use-item body too short: %d", len(decoded))
-	}
-	dura := binary.LittleEndian.Uint16(decoded[48:50])
-	duraMax := binary.LittleEndian.Uint16(decoded[50:52])
+	dura, duraMax := decodeClientItemDura(parts[1])
 	if dura == 0 || duraMax == 0 {
 		t.Fatalf("equipped durability = %d/%d, want non-zero values", dura, duraMax)
 	}
@@ -13555,7 +16611,13 @@ func decodeClientItemShape(body []byte) byte {
 
 func decodeClientItemMakeIndex(body []byte) int32 {
 	decoded, err := mir176.DecodePlain6Payload(body)
-	if err != nil || len(decoded) < 46 {
+	if err != nil {
+		return 0
+	}
+	if len(decoded) == 50 {
+		return int32(binary.LittleEndian.Uint32(decoded[42:46]))
+	}
+	if len(decoded) < 48 {
 		return 0
 	}
 	return int32(binary.LittleEndian.Uint32(decoded[44:48]))
@@ -13566,7 +16628,10 @@ func decodeClientItemDura(body []byte) (uint16, uint16) {
 	if err != nil || len(decoded) == 0 {
 		return 0, 0
 	}
-	if len(decoded) < 50 {
+	if len(decoded) == 50 {
+		return binary.LittleEndian.Uint16(decoded[46:48]), binary.LittleEndian.Uint16(decoded[48:50])
+	}
+	if len(decoded) < 52 {
 		return 0, 0
 	}
 	dura := binary.LittleEndian.Uint16(decoded[48:50])

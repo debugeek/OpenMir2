@@ -8,6 +8,10 @@ type TeleportSyncer interface {
 	BroadcastTeleportMove(storage.Character, storage.Character)
 }
 
+type RingTeleportSyncer interface {
+	SendTeleportRingMove(storage.Character, storage.Character)
+}
+
 func ApplyTeleportSync(syncer TeleportSyncer, event TeleportEvent) {
 	syncer.UpdateClient(event.To)
 	syncer.SendSpaceMoveState(event.To)

@@ -18,6 +18,7 @@ func (w *World) Tick(players []PlayerSnapshot, now time.Time) (TickResult, error
 		if now.After(event.StartAt.Add(event.Duration)) {
 			delete(w.groundEvents, id)
 			result.GroundEventHides = append(result.GroundEventHides, id)
+			result.GroundEventHideDetails = append(result.GroundEventHideDetails, event)
 			continue
 		}
 		result.GroundEvents = append(result.GroundEvents, event)
@@ -63,11 +64,34 @@ func (w *World) Tick(players []PlayerSnapshot, now time.Time) (TickResult, error
 			ch.LastHitterAt = 0
 			updated[ch.ID] = ch
 		}
-		if _, pending := w.pendingCharacterDeaths[ch.ID]; !pending {
-			continue
+		_, pending := w.pendingCharacterDeaths[ch.ID]
+		if !pending {
+			if ch.HP > 0 {
+				delete(w.finalizedCharacterDeaths, ch.ID)
+				continue
+			}
+			if _, finalized := w.finalizedCharacterDeaths[ch.ID]; finalized {
+				continue
+			}
 		}
 		delete(w.pendingCharacterDeaths, ch.ID)
 		if ch.HP <= 0 {
+			blockedRevival := false
+			if hitter, ok := playersByID[ch.LastHitterID]; ok {
+				blockedRevival = w.characterHasUnrevivalItemLocked(hitter)
+			}
+			if !blockedRevival {
+				if revival, revived, err := w.reviveCharacterLocked(&ch, now); err != nil {
+					return TickResult{}, err
+				} else if revived {
+					playersByID[ch.ID] = ch
+					updated[ch.ID] = ch
+					delete(w.finalizedCharacterDeaths, ch.ID)
+					result.CharacterRevivals = append(result.CharacterRevivals, revival)
+					continue
+				}
+			}
+			w.finalizedCharacterDeaths[ch.ID] = struct{}{}
 			result.CharacterDeaths = append(result.CharacterDeaths, ch)
 		}
 	}
@@ -82,7 +106,9 @@ func (w *World) Tick(players []PlayerSnapshot, now time.Time) (TickResult, error
 			continue
 		}
 		alive := ch.HP > 0
-		originalStatus := characterStatus(ch, now, true)
+		statusCharacter := ch
+		statusCharacter.ShowHPUntil = 0
+		originalStatus := characterStatus(statusCharacter, now, true)
 		var next storage.Character
 		var changed bool
 		if alive {
@@ -142,8 +168,14 @@ func (w *World) Tick(players []PlayerSnapshot, now time.Time) (TickResult, error
 			updated[ch.ID] = ch
 			result.AbilityRefreshCharacters = append(result.AbilityRefreshCharacters, ch)
 		}
-		if originalStatus != w.CharacterStatus(ch) {
+		statusCharacter = ch
+		statusCharacter.ShowHPUntil = 0
+		if originalStatus != characterStatus(statusCharacter, now, true) {
 			result.StatusRefreshCharacters = append(result.StatusRefreshCharacters, ch)
+			result.OrderedSpellEvents = append(result.OrderedSpellEvents, OrderedSpellEvent{
+				Kind:      OrderedSpellEventCharacterStatus,
+				Character: ch,
+			})
 		}
 		playersByID[ch.ID] = ch
 	}
@@ -303,32 +335,59 @@ func (w *World) applyCharacterNaturalSpellTickLocked(ch *storage.Character, now 
 	if ch == nil || ch.HP <= 0 {
 		return false
 	}
+	if ch.HealthTickAt == 0 {
+		ch.HealthTickAt = now.UnixMilli()
+	}
 	if ch.SpellTickAt == 0 {
 		ch.SpellTickAt = now.UnixMilli()
-		return false
 	}
-	elapsed := now.UnixMilli() - ch.SpellTickAt
-	if elapsed <= 0 {
-		return false
+	nowMS := now.UnixMilli()
+	healthElapsed := nowMS - ch.HealthTickAt
+	spellElapsed := nowMS - ch.SpellTickAt
+	changed := false
+	if healthElapsed > 0 {
+		ch.HealthTickAt = nowMS
+		ch.HealthTick += int(healthElapsed / 20)
 	}
-	ch.SpellTickAt = now.UnixMilli()
-	ch.SpellTick += int(elapsed / 20)
-	if ch.SpellTick < 800 {
-		return false
+	if spellElapsed > 0 {
+		ch.SpellTickAt = nowMS
+		ch.SpellTick += int(spellElapsed / 20)
 	}
-	ch.SpellTick = 0
-	if ch.MP >= ch.MaxMP {
-		return false
+	healthFillMS := w.gameplay.Recovery.HealthFillTimeMS
+	if healthFillMS <= 0 {
+		healthFillMS = 300
 	}
-	gain := ch.MaxMP/18 + 1
-	if ch.MP+gain > ch.MaxMP {
-		gain = ch.MaxMP - ch.MP
+	spellFillMS := w.gameplay.Recovery.SpellFillTimeMS
+	if spellFillMS <= 0 {
+		spellFillMS = 800
 	}
-	if gain <= 0 {
-		return false
+	if ch.HP < ch.MaxHP && ch.HealthTick >= healthFillMS {
+		ch.HealthTick = 0
+		gain := ch.MaxHP/75 + 1
+		if ch.HP+gain > ch.MaxHP {
+			gain = ch.MaxHP - ch.HP
+		}
+		if gain > 0 {
+			ch.HP += gain
+			changed = true
+		}
+	} else if ch.HealthTick >= healthFillMS {
+		ch.HealthTick = 0
 	}
-	ch.MP += gain
-	return true
+	if ch.MP < ch.MaxMP && ch.SpellTick >= spellFillMS {
+		ch.SpellTick = 0
+		gain := ch.MaxMP/18 + 1
+		if ch.MP+gain > ch.MaxMP {
+			gain = ch.MaxMP - ch.MP
+		}
+		if gain > 0 {
+			ch.MP += gain
+			changed = true
+		}
+	} else if ch.SpellTick >= spellFillMS {
+		ch.SpellTick = 0
+	}
+	return changed
 }
 
 func characterListFromMap(players map[string]storage.Character) []storage.Character {
@@ -339,11 +398,57 @@ func characterListFromMap(players map[string]storage.Character) []storage.Charac
 	return list
 }
 
-func (w *World) applyPendingSpellTicksLocked(result *TickResult, players, updated map[string]storage.Character, now time.Time) error {
+func (w *World) applyPendingSpellTicksLocked(result *TickResult, players, updated map[string]storage.Character, now time.Time) (err error) {
 	if len(w.pendingSpells) == 0 {
 		return nil
 	}
-	remaining := w.pendingSpells[:0]
+	originalMonsters := make(map[string]*Monster, len(w.monsters))
+	originalMonsterValues := make(map[string]Monster, len(w.monsters))
+	for id, mon := range w.monsters {
+		if mon == nil {
+			continue
+		}
+		originalMonsters[id] = mon
+		originalMonsterValues[id] = *mon
+	}
+	rollbackMonsters := func() {
+		for id := range w.monsters {
+			original, ok := originalMonsters[id]
+			if !ok {
+				delete(w.monsters, id)
+				continue
+			}
+			*original = originalMonsterValues[id]
+			w.monsters[id] = original
+		}
+		for id, original := range originalMonsters {
+			if _, ok := w.monsters[id]; !ok {
+				w.monsters[id] = original
+			}
+		}
+	}
+	defer func() {
+		if err != nil {
+			rollbackMonsters()
+		}
+	}()
+	sort.SliceStable(w.pendingSpells, func(i, j int) bool {
+		left, right := w.pendingSpells[i], w.pendingSpells[j]
+		leftTarget, rightTarget := pendingSpellTargetKey(left), pendingSpellTargetKey(right)
+		if leftTarget == rightTarget {
+			return false
+		}
+		leftOrder, leftKnown := w.pendingSpellTargetOrderLocked(left, players)
+		rightOrder, rightKnown := w.pendingSpellTargetOrderLocked(right, players)
+		if leftKnown && rightKnown && leftOrder != rightOrder {
+			return leftOrder < rightOrder
+		}
+		if leftKnown != rightKnown {
+			return leftKnown
+		}
+		return left.DueAt.Before(right.DueAt)
+	})
+	remaining := make([]pendingSpell, 0, len(w.pendingSpells))
 	for _, pending := range w.pendingSpells {
 		if now.Before(pending.DueAt) {
 			remaining = append(remaining, pending)
@@ -428,20 +533,19 @@ func (w *World) applyPendingSpellTicksLocked(result *TickResult, players, update
 				if !ok {
 					continue
 				}
-				if caster, ok := players[pending.CasterID]; ok && caster.ID != target.ID && w.isProperCharacterTargetLocked(caster, target) {
-					caster.TargetID = target.ID
+				if caster, ok := players[pending.CasterID]; ok && caster.ID != target.ID && w.isProperCharacterTargetLocked(target, caster) {
+					target.TargetID = caster.ID
 					target.LastHitterID = caster.ID
 					target.LastHitterAt = now.UnixNano()
+					if !caster.PKFlag {
+						caster.PKFlag = true
+						caster.PKFlagUntil = now.Add(60 * time.Second).UnixNano()
+						result.NameColorCharacters = append(result.NameColorCharacters, caster)
+					}
 					players[caster.ID] = caster
 					updated[caster.ID] = caster
 					if err := w.store.SaveCharacter(caster); err != nil {
 						return err
-					}
-					newPKFlag := !target.PKFlag
-					target.PKFlag = true
-					target.PKFlagUntil = now.Add(60 * time.Second).UnixNano()
-					if newPKFlag {
-						result.NameColorCharacters = append(result.NameColorCharacters, target)
 					}
 				}
 				previousStatus := characterStatus(target, now, false)
@@ -467,7 +571,9 @@ func (w *World) applyPendingSpellTicksLocked(result *TickResult, players, update
 				}
 				if pending.PoisonHealth || pending.PoisonArmor || pending.PoisonNotification {
 					seconds := 0
-					if !poisonUntil.IsZero() {
+					if pending.PoisonDuration > 0 {
+						seconds = int(pending.PoisonDuration / time.Second)
+					} else if !poisonUntil.IsZero() {
 						seconds = int(poisonUntil.Sub(now) / time.Second)
 					}
 					if pending.PoisonNotification && pending.ParalysisDuration > 0 {
@@ -508,7 +614,13 @@ func (w *World) applyPendingSpellTicksLocked(result *TickResult, players, update
 				setMonsterArmorPoisonLocked(mon, poisonUntil, now)
 			}
 			if pending.ParalysisDuration > 0 {
-				w.setMonsterLastHitterLocked(mon, pending.CasterID)
+				if caster, ok := players[pending.CasterID]; ok {
+					target := *mon
+					target.Alive = true
+					if w.isProperMonsterTargetLocked(caster, characterListFromMap(players), &target) {
+						w.setMonsterLastHitterAtLocked(mon, pending.CasterID, now)
+					}
+				}
 				paralyzedUntil := now.Add(pending.ParalysisDuration)
 				if paralyzedUntil.After(mon.ParalyzedUntil) {
 					mon.ParalyzedUntil = paralyzedUntil
@@ -528,8 +640,10 @@ func (w *World) applyPendingSpellTicksLocked(result *TickResult, players, update
 					continue
 				}
 				updatedTarget := target
-				updatedTarget.IncHealing += pending.Healing
-				if updatedTarget.IncHealing > 300 {
+				if updatedTarget.IncHealing+pending.Healing < 300 {
+					updatedTarget.IncHealing += pending.Healing
+					updatedTarget.PerHealing = 5
+				} else {
 					updatedTarget.IncHealing = 300
 				}
 				if updatedTarget.IncHealing != target.IncHealing {
@@ -572,19 +686,48 @@ func (w *World) applyPendingSpellTicksLocked(result *TickResult, players, update
 			if !ok {
 				continue
 			}
+			if pending.SingleMagicStrike {
+				var damage int
+				target, damage = w.prepareCharacterMagicDamageLocked(target, pending.Damage, now)
+				if damage <= 0 {
+					players[target.ID] = target
+					updated[target.ID] = target
+					if err := w.store.SaveCharacter(target); err != nil {
+						return err
+					}
+					continue
+				}
+				updatedTarget, hit, err := w.applyPreparedCharacterMagicDamageLocked(caster, target, damage)
+				if err != nil {
+					return err
+				}
+				players[updatedTarget.ID] = updatedTarget
+				updated[updatedTarget.ID] = updatedTarget
+				if hit.Damage > 0 {
+					result.CharacterHits = append(result.CharacterHits, hit)
+					result.OrderedSpellEvents = append(result.OrderedSpellEvents, OrderedSpellEvent{Kind: OrderedSpellEventCharacterHit, CharacterHit: hit})
+				}
+				continue
+			}
 			if pending.CharacterBubbleAfter != 0 && target.BubbleDefenceUntil == pending.CharacterBubbleBefore {
 				target.BubbleDefenceUntil = pending.CharacterBubbleAfter
 				target.BubbleDefenceLevel = pending.CharacterBubbleLevel
 			}
-			precheckAt := now
 			precheckDamage := pending.Damage
-			target, precheckDamage = w.prepareCharacterMagicDamageLocked(target, precheckDamage, precheckAt)
+			if !pending.CharacterDamagePrepared {
+				precheckDamage = w.characterMagicDamageAfterDefenseLocked(target, pending.Damage, now)
+				precheckDamage = applyCharacterMagicBubbleLocked(&target, precheckDamage, now)
+			}
 			if precheckDamage > 0 {
 				if err := setCasterTarget(target.ID); err != nil {
 					return err
 				}
 			}
-			if abs(target.X-pending.TargetX) > 2 || abs(target.Y-pending.TargetY) > 2 {
+			targetRange := pending.TargetRange
+			if targetRange == 0 {
+				targetRange = 2
+			}
+			if abs(target.X-pending.TargetX) > targetRange || abs(target.Y-pending.TargetY) > targetRange {
 				players[target.ID] = target
 				updated[target.ID] = target
 				if err := w.store.SaveCharacter(target); err != nil {
@@ -600,9 +743,21 @@ func (w *World) applyPendingSpellTicksLocked(result *TickResult, players, update
 				}
 				continue
 			}
+			if !pending.CharacterDamagePrepared {
+				var finalDamage int
+				target, finalDamage = w.prepareCharacterMagicDamageLocked(target, pending.Damage, now)
+				if finalDamage <= 0 {
+					players[target.ID] = target
+					updated[target.ID] = target
+					if err := w.store.SaveCharacter(target); err != nil {
+						return err
+					}
+					continue
+				}
+				precheckDamage = finalDamage
+			}
 			markCasterPK := w.isProperCharacterTargetLocked(caster, target)
-			finalTarget, finalDamage := w.prepareCharacterMagicDamageLocked(target, pending.Damage, now)
-			updatedTarget, hit, err := w.applyPreparedCharacterMagicDamageLocked(caster, finalTarget, finalDamage)
+			updatedTarget, hit, err := w.applyPreparedCharacterMagicDamageLocked(caster, target, precheckDamage)
 			if err != nil {
 				return err
 			}
@@ -632,6 +787,19 @@ func (w *World) applyPendingSpellTicksLocked(result *TickResult, players, update
 		if mon == nil {
 			continue
 		}
+		if pending.SingleMagicStrike {
+			w.monsterMagicStruckLocked(mon, now)
+			damage := w.monsterMagicDamageAfterDefenseLocked(mon, pending.Damage)
+			hit, err := w.applyMonsterMagicDamageLocked(caster, mon, damage, false)
+			if err != nil {
+				return err
+			}
+			if hit.Damage > 0 {
+				result.MonsterHits = append(result.MonsterHits, hit)
+				result.OrderedSpellEvents = append(result.OrderedSpellEvents, OrderedSpellEvent{Kind: OrderedSpellEventMonsterHit, MonsterHit: hit})
+			}
+			continue
+		}
 		precheckDamage := pending.Damage
 		precheckDamage = w.monsterMagicDamageAfterDefenseLocked(mon, pending.Damage)
 		if mon.Undead > 0 && precheckDamage > 0 {
@@ -643,14 +811,20 @@ func (w *World) applyPendingSpellTicksLocked(result *TickResult, players, update
 		if err := setCasterTarget(mon.ID); err != nil {
 			return err
 		}
-		if abs(mon.X-pending.TargetX) > 2 || abs(mon.Y-pending.TargetY) > 2 {
+		targetRange := pending.TargetRange
+		if targetRange == 0 {
+			targetRange = 2
+		}
+		if abs(mon.X-pending.TargetX) > targetRange || abs(mon.Y-pending.TargetY) > targetRange {
 			continue
 		}
 		damage := pending.Damage
 		if mon.Race >= 50 {
-			damage = referenceRound(float64(damage) / 1.2)
+			damage = referenceRound(float64(pending.Damage) / 1.2)
 		}
-		hit, err := w.applyMonsterMagicStrikeLocked(caster, mon, damage)
+		w.monsterMagicStruckLocked(mon, now)
+		damage = w.monsterMagicDamageAfterDefenseLocked(mon, damage)
+		hit, err := w.applyMonsterMagicDamageLocked(caster, mon, damage, false)
 		if err != nil {
 			return err
 		}
@@ -670,8 +844,33 @@ func (w *World) applyPendingSpellTicksLocked(result *TickResult, players, update
 	return nil
 }
 
+func pendingSpellTargetKey(pending pendingSpell) string {
+	if pending.TargetCharacterID != "" {
+		return "character:" + pending.TargetCharacterID
+	}
+	if pending.TargetMonsterID != "" {
+		return "monster:" + pending.TargetMonsterID
+	}
+	return ""
+}
+
+func (w *World) pendingSpellTargetOrderLocked(pending pendingSpell, players map[string]storage.Character) (uint64, bool) {
+	if pending.TargetCharacterID != "" {
+		character, ok := players[pending.TargetCharacterID]
+		return character.ObjectOrder, ok && character.ObjectOrder != 0
+	}
+	if pending.TargetMonsterID != "" {
+		monster, ok := w.monsters[pending.TargetMonsterID]
+		if !ok || monster == nil {
+			return 0, false
+		}
+		return monster.ObjectOrder, monster.ObjectOrder != 0
+	}
+	return 0, false
+}
+
 func (w *World) applyMonsterHealingTickLocked(mon *Monster, now time.Time) bool {
-	if mon == nil || !mon.Alive || mon.IncHealing <= 0 {
+	if mon == nil || !mon.Alive || (mon.IncHealth <= 0 && mon.IncSpell <= 0 && mon.IncHealing <= 0) {
 		return false
 	}
 	interval := core.RecoveryInterval(mon.Level)
@@ -690,19 +889,44 @@ func (w *World) applyMonsterHealingTickLocked(mon *Monster, now time.Time) bool 
 	if perHealing <= 0 {
 		perHealing = 1
 	}
+	perHealth := mon.PerHealth
+	if perHealth <= 0 {
+		perHealth = 1
+	}
+	perSpell := mon.PerSpell
+	if perSpell <= 0 {
+		perSpell = 1
+	}
 	healing := mon.IncHealing
 	if healing > perHealing {
 		healing = perHealing
 	}
-	healed := core.ApplyVitalDelta(storage.Character{HP: mon.HP, MaxHP: mon.MaxHP}, healing, 0)
+	hp := mon.IncHealth
+	if hp > perHealth {
+		hp = perHealth
+	}
+	mp := mon.IncSpell
+	if mp > perSpell {
+		mp = perSpell
+	}
+	healed := core.ApplyVitalDelta(storage.Character{HP: mon.HP, MaxHP: mon.MaxHP, MP: mon.MP, MaxMP: mon.MaxMP}, hp+healing, mp)
+	mon.IncHealth -= hp
+	mon.IncSpell -= mp
 	mon.IncHealing -= healing
 	mon.IncHealthSpellAt = now.Add(overrun).UnixMilli()
+	mon.PerHealth = mon.Level/10 + 5
+	mon.PerSpell = mon.Level/10 + 5
 	mon.PerHealing = 5
 	if healed.Changed {
 		mon.HP = healed.Character.HP
+		mon.MP = healed.Character.MP
 	}
 	if mon.HP >= mon.MaxHP {
+		mon.IncHealth = 0
 		mon.IncHealing = 0
+	}
+	if mon.MP >= mon.MaxMP {
+		mon.IncSpell = 0
 	}
 	return healed.Changed
 }
@@ -1256,6 +1480,7 @@ func (w *World) explosionSpiderLocked(mon *Monster, players map[string]storage.C
 			physicalDamage := w.characterPhysicalDamageAfterDefenseLocked(&ch, dmg/2)
 			magicDamage := w.characterMagicDamageAfterDefenseLocked(ch, dmg/2, time.Now())
 			magicDamage = applyCharacterMagicBubbleLocked(&ch, magicDamage, time.Now())
+			magicDamage = w.applyCharacterMagicShieldLocked(&ch, magicDamage)
 			damage := physicalDamage + magicDamage
 			if characterPoisonArmorActive(ch, time.Now()) {
 				damage = referenceRound(float64(damage) * poisonDamageMultiplier(true))
@@ -1266,6 +1491,7 @@ func (w *World) explosionSpiderLocked(mon *Monster, players map[string]storage.C
 				ch.PerHealth--
 				ch.PerSpell--
 				ch.SpellTick = 0
+				ch.HealthTick = 0
 				ch.LastHitterID = mon.ID
 				ch.LastHitterAt = time.Now().UnixNano()
 			}

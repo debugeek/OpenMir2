@@ -154,6 +154,8 @@ const (
 	SMSpacemoveShow2             = 807
 	SMSendUserState              = 751
 	SMBagItems                   = 201
+	SMAddMagic                   = 210
+	SMDelMagic                   = 212
 	SMSystemMessage              = 100
 	SMHealthSpellChanged         = 53
 	SMDuraChange                 = 642

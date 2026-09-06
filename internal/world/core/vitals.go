@@ -26,6 +26,7 @@ func ApplyHPDelta(hp, maxHP, delta int) HPChange {
 func ApplyVitalDelta(ch storage.Character, hpDelta, mpDelta int) VitalChange {
 	next := ch
 	if hpDelta < 0 {
+		next.HealthTick = 0
 		next.SpellTick = 0
 	}
 	hp := ApplyHPDelta(next.HP, next.MaxHP, hpDelta)

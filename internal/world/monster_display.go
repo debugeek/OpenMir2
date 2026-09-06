@@ -45,7 +45,7 @@ func MonsterStatus(mon Monster, now time.Time) int32 {
 		status |= 0x00200000
 	}
 	if mon.ShowHPUntil > 0 {
-		status |= 0x20000000
+		status |= 0x00000002
 	}
 	if !mon.TransparentUntil.IsZero() {
 		status |= 0x00800000

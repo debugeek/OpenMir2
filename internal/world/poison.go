@@ -112,6 +112,7 @@ func (w *World) applyCharacterPoisonTickLocked(ch storage.Character, now time.Ti
 			damage := poisonDamageFromLevel(ch.PoisonHealthLevel)
 			next = core.ApplyVitalDelta(next, -damage, 0).Character
 			next.SpellTick = 0
+			next.HealthTick = 0
 			next.PoisonHealthTickAt = now.UnixNano()
 			changed = true
 		}
@@ -154,7 +155,7 @@ func (w *World) applyMonsterPoisonTickLocked(mon *Monster, players map[string]st
 		damage := poisonDamageFromLevel(mon.PoisonHealthLevel)
 		source := players[mon.PoisonSourceID]
 		if source.ID != "" && source.HP > 0 {
-			result, err := w.attackMonsterWithDamageLocked(source, mon, damage)
+			result, err := w.attackMonsterWithPoisonDamageLocked(source, mon, damage)
 			if err != nil {
 				return nil, false, err
 			}
@@ -162,10 +163,12 @@ func (w *World) applyMonsterPoisonTickLocked(mon *Monster, players map[string]st
 			return []AttackResult{result}, result.Dead, nil
 		}
 		change := core.ApplyHPDelta(mon.HP, mon.MaxHP, -damage)
+		w.decayMonsterMeatQualityLocked(mon, 1)
 		mon.HP = change.HP
 		mon.PoisonHealthTickAt = now
 		result := AttackResult{
 			MonsterID:      mon.ID,
+			MonsterMapID:   mon.MapID,
 			Damage:         damage,
 			MonsterHP:      mon.HP,
 			MonsterMaxHP:   mon.MaxHP,

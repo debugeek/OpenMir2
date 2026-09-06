@@ -48,6 +48,7 @@ func TestApplyQueuedRecovery(t *testing.T) {
 		IncHealth:        20,
 		IncSpell:         30,
 		IncHealing:       5,
+		PerHealing:       5,
 		IncHealthSpellAt: time.Unix(10, 0).UnixMilli(),
 	}
 	next, changed := ApplyQueuedRecovery(ch, time.Unix(11, 0))
@@ -86,5 +87,22 @@ func TestApplyQueuedRecoveryUsesInitialReferenceAmounts(t *testing.T) {
 	}
 	if next.PerHealth != 7 || next.PerSpell != 7 {
 		t.Fatalf("ApplyQueuedRecovery() per amounts = %d/%d, want 7/7", next.PerHealth, next.PerSpell)
+	}
+}
+
+func TestApplyQueuedRecoveryUsesReferenceDefaultHealingAmount(t *testing.T) {
+	ch := storage.Character{
+		HP:               1,
+		MaxHP:            100,
+		IncHealing:       5,
+		IncHealthSpellAt: time.Unix(10, 0).UnixMilli(),
+	}
+
+	next, changed := ApplyQueuedRecovery(ch, time.Unix(11, 0))
+	if !changed {
+		t.Fatal("ApplyQueuedRecovery() changed = false, want true")
+	}
+	if next.HP != 2 || next.IncHealing != 4 || next.PerHealing != 5 {
+		t.Fatalf("recovery = hp:%d healing:%d perHealing:%d, want 2/4/5", next.HP, next.IncHealing, next.PerHealing)
 	}
 }

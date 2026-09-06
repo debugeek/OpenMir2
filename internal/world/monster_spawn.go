@@ -35,8 +35,9 @@ func newMonster(w *World, id string, tpl data.StdMonster, mapID string, x, y int
 		MagicAttack: tpl.MagicAttack, TaoAttack: tpl.TaoAttack, Speed: tpl.Speed, Hit: tpl.Hit,
 		WalkSpeedMS: tpl.WalkSpeedMS, WalkStep: tpl.WalkStep, WalkWait: tpl.WalkWait,
 		AttackIntervalMS: tpl.AttackIntervalMS, Experience: tpl.Experience,
-		Alive: true, Spawn: spawn, PerHealing: 5, IncHealthSpellAt: now.UnixMilli(),
+		Alive: true, Spawn: spawn, PerHealing: 5, PerHealth: 5, PerSpell: 5, IncHealthSpellAt: now.UnixMilli(),
 	}
+	mon.MeatQuality = initialMonsterMeatQuality(w, tpl, id)
 	if w.nextObjectOrder > 0 {
 		mon.ObjectOrder = w.nextObjectOrder
 		w.nextObjectOrder++
@@ -52,6 +53,21 @@ func newMonster(w *World, id string, tpl data.StdMonster, mapID string, x, y int
 	return mon
 }
 
+func initialMonsterMeatQuality(w *World, tpl data.StdMonster, id string) int {
+	switch tpl.Race {
+	case 51:
+		return 3000 + w.rand.Intn(3500)
+	case 52:
+		if w.rand.Intn(30) == 0 {
+			return 10000 + w.rand.Intn(20000)
+		}
+		return 8000 + w.rand.Intn(8000)
+	case 53:
+		return 8000 + w.rand.Intn(8000)
+	}
+	return 0
+}
+
 func boostSummonedMonsterLocked(mon *Monster) {
 	if mon == nil || mon.MaxHP <= 0 || mon.HP >= mon.MaxHP {
 		return
@@ -60,7 +76,7 @@ func boostSummonedMonsterLocked(mon *Monster) {
 }
 
 func applyMonsterTemplateState(mon *Monster, tpl data.StdMonster) {
-	if tpl.Animal {
+	if tpl.Animal || tpl.Race == 51 || tpl.Race == 52 || tpl.Race == 53 {
 		mon.Animal = true
 	}
 	if tpl.FleeOnSight {

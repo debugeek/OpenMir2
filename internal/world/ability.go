@@ -164,6 +164,9 @@ func (w *World) SubAbilityStats(ch storage.Character) SubAbilityStats {
 	}
 	antiMagic := 1
 	antiPoison := ch.AntiPoison
+	poisonRecover := 0
+	healthRecover := 0
+	spellRecover := 0
 	for slot := 0; slot < useSlotCount; slot++ {
 		entry, ok := w.equippedItemLocked(ch, slot)
 		if !ok {
@@ -173,13 +176,24 @@ func (w *World) SubAbilityStats(ch storage.Character) SubAbilityStats {
 			display := UpgradeClientItemForDisplay(item, entry, false)
 			antiMagic += display.MgAvoid
 			antiPoison += display.ToxAvoid
+			switch display.StdMode {
+			case 21:
+				healthRecover += display.Stats.AcMax
+				spellRecover += display.Stats.MacMax
+			case 23:
+				antiPoison += display.Stats.AcMax
+				poisonRecover += display.Stats.MacMax
+			}
 		}
 	}
 	return SubAbilityStats{
-		AntiMagic:  antiMagic,
-		HitPoint:   hitPoint,
-		SpeedPoint: speedPoint,
-		AntiPoison: antiPoison,
+		AntiMagic:     antiMagic,
+		HitPoint:      hitPoint,
+		SpeedPoint:    speedPoint,
+		AntiPoison:    antiPoison,
+		PoisonRecover: poisonRecover,
+		HealthRecover: healthRecover,
+		SpellRecover:  spellRecover,
 	}
 }
 
@@ -206,6 +220,11 @@ func (w *World) Abilities(ch storage.Character) Abilities {
 		level = 1
 	}
 	base := Base(ch.Class, level)
+	if w.characterHasEquipmentShapeLocked(ch, 119) {
+		base.MaxWeight *= 2
+		base.MaxWearWeight *= 2
+		base.MaxHandWeight *= 2
+	}
 	item := w.combatStatsLocked(ch)
 	extra := activeTemporaryAbilities(ch, time.Now())
 	ac := PackWord(base.AC, base.ACMax, item.AC, item.ACMax)
@@ -290,6 +309,11 @@ func (w *World) AbilityStats(ch storage.Character) AbilityStats {
 		level = 1
 	}
 	base := Base(ch.Class, level)
+	if w.characterHasEquipmentShapeLocked(ch, 119) {
+		base.MaxWeight *= 2
+		base.MaxWearWeight *= 2
+		base.MaxHandWeight *= 2
+	}
 	item := w.combatStatsLocked(ch)
 	extra := activeTemporaryAbilities(ch, time.Now())
 	ac := PackWord(base.AC, base.ACMax, item.AC, item.ACMax)
@@ -355,6 +379,20 @@ func (w *World) AbilityStats(ch storage.Character) AbilityStats {
 		HandWeight:    hand,
 		MaxHandWeight: base.MaxHandWeight,
 	}
+}
+
+func (w *World) characterHasEquipmentShapeLocked(ch storage.Character, shape int) bool {
+	for slot := 0; slot < useSlotCount; slot++ {
+		entry, ok := w.equippedItemLocked(ch, slot)
+		if !ok {
+			continue
+		}
+		item, ok := w.data.Items[entry.ItemID]
+		if ok && (item.Shape == shape || item.AniCount == shape) {
+			return true
+		}
+	}
+	return false
 }
 
 func (w *World) combatStatsLocked(ch storage.Character) CombatStats {
@@ -471,7 +509,7 @@ func activeProtectionBuffs(ch storage.Character, now time.Time) (defenceBonus, m
 	if ch.MagDefenceUpUntil > 0 {
 		magicDefenceBonus = 2 + maxInt(ch.Level, 1)/7
 	}
-	if ch.BubbleDefenceUntil > 0 {
+	if ch.BubbleDefenceUntil > 0 && (ch.BubbleDefenceActive == nil || *ch.BubbleDefenceActive) {
 		bubbleLevel = ch.BubbleDefenceLevel
 		bubbleActive = true
 	}

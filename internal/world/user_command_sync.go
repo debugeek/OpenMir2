@@ -13,7 +13,15 @@ func ApplyUserCommandSync(syncer UserCommandSyncer, result UserCommandResult) {
 		syncer.UpdateClient(result.Character)
 	}
 	if result.Teleport != nil {
-		ApplyTeleportSync(syncer, *result.Teleport)
+		if result.Teleport.SpaceMoveFire {
+			if ringSyncer, ok := syncer.(RingTeleportSyncer); ok {
+				ringSyncer.SendTeleportRingMove(result.Teleport.From, result.Teleport.To)
+			} else {
+				ApplyTeleportSync(syncer, *result.Teleport)
+			}
+		} else {
+			ApplyTeleportSync(syncer, *result.Teleport)
+		}
 	}
 	for _, added := range result.AddedItems {
 		syncer.SendBagAddItem(result.Character, added)

@@ -20,25 +20,64 @@ type Listener struct {
 
 type Gameplay struct {
 	Combat      CombatSettings      `json:"combat"`
+	Recovery    RecoverySettings    `json:"recovery"`
 	Progression ProgressionSettings `json:"progression"`
 	Monster     MonsterSettings     `json:"monster"`
+	Movement    MovementSettings    `json:"movement"`
 	Item        ItemSettings        `json:"item"`
 	Guild       GuildSettings       `json:"guild"`
 	Castle      CastleSettings      `json:"castle"`
 }
 
+type RecoverySettings struct {
+	HealthFillTimeMS int `json:"health_fill_time_ms"`
+	SpellFillTimeMS  int `json:"spell_fill_time_ms"`
+	RevivalTimeMS    int `json:"revival_time_ms"`
+}
+
 type CombatSettings struct {
-	HitImpactDelayMS  int    `json:"hit_impact_delay_ms"`
-	NonPKServer       bool   `json:"non_pk_server"`
-	ParalyCanSpell    bool   `json:"paraly_can_spell"`
-	PKLevelProtect    bool   `json:"pk_level_protect"`
-	PKProtectLevel    int    `json:"pk_protect_level"`
-	RedPKProtectLevel int    `json:"red_pk_protect_level"`
-	SafeZoneSize      int    `json:"safe_zone_size"`
-	RedHomeMap        string `json:"red_home_map"`
-	RedHomeX          int    `json:"red_home_x"`
-	RedHomeY          int    `json:"red_home_y"`
-	MapMoveProtectMS  int    `json:"map_move_protect_ms"`
+	HitImpactDelayMS           int    `json:"hit_impact_delay_ms"`
+	HitIntervalMS              int    `json:"hit_interval_ms"`
+	HitSpeedStepMS             int    `json:"hit_speed_step_ms"`
+	HitDropOverSpeedMS         int    `json:"hit_drop_over_speed_ms"`
+	MaxHitMessages             int    `json:"max_hit_messages"`
+	MaxSpellMessages           int    `json:"max_spell_messages"`
+	ActionIntervalMS           int    `json:"action_interval_ms"`
+	MagicHitIntervalMS         int    `json:"magic_hit_interval_ms"`
+	StruckTimeMS               int    `json:"struck_time_ms"`
+	TurnIntervalMS             int    `json:"turn_interval_ms"`
+	MaxTurnMessages            int    `json:"max_turn_messages"`
+	MaxSitDownMessages         int    `json:"max_sit_down_messages"`
+	ControlActionInterval      bool   `json:"control_action_interval"`
+	ControlWalkHit             bool   `json:"control_walk_hit"`
+	ControlRunLongHit          bool   `json:"control_run_long_hit"`
+	ControlRunHit              bool   `json:"control_run_hit"`
+	ControlRunMagic            bool   `json:"control_run_magic"`
+	WalkHitIntervalMS          int    `json:"walk_hit_interval_ms"`
+	RunHitIntervalMS           int    `json:"run_hit_interval_ms"`
+	RunLongHitIntervalMS       int    `json:"run_long_hit_interval_ms"`
+	RunMagicIntervalMS         int    `json:"run_magic_interval_ms"`
+	WalkIntervalMS             int    `json:"walk_interval_ms"`
+	RunIntervalMS              int    `json:"run_interval_ms"`
+	MaxWalkMessages            int    `json:"max_walk_messages"`
+	MaxRunMessages             int    `json:"max_run_messages"`
+	SpeedControlMode           int    `json:"speed_control_mode"`
+	NonPKServer                bool   `json:"non_pk_server"`
+	ParalyCanWalk              bool   `json:"paraly_can_walk"`
+	ParalyCanRun               bool   `json:"paraly_can_run"`
+	ParalyCanHit               bool   `json:"paraly_can_hit"`
+	ParalyCanSpell             bool   `json:"paraly_can_spell"`
+	DisableStruck              bool   `json:"disable_struck"`
+	DisableSelfStruck          bool   `json:"disable_self_struck"`
+	DisableFireCrossInSafeZone bool   `json:"disable_fire_cross_in_safe_zone"`
+	PKLevelProtect             bool   `json:"pk_level_protect"`
+	PKProtectLevel             int    `json:"pk_protect_level"`
+	RedPKProtectLevel          int    `json:"red_pk_protect_level"`
+	SafeZoneSize               int    `json:"safe_zone_size"`
+	RedHomeMap                 string `json:"red_home_map"`
+	RedHomeX                   int    `json:"red_home_x"`
+	RedHomeY                   int    `json:"red_home_y"`
+	MapMoveProtectMS           int    `json:"map_move_protect_ms"`
 }
 
 type ProgressionSettings struct {
@@ -47,6 +86,12 @@ type ProgressionSettings struct {
 
 type MonsterSettings struct {
 	TickMS int `json:"tick_ms"`
+}
+
+type MovementSettings struct {
+	UserMoveCanDupObj  bool `json:"user_move_can_dup_obj"`
+	UserMoveCanOnItem  bool `json:"user_move_can_on_item"`
+	UserMoveCooldownMS int  `json:"user_move_cooldown_ms"`
 }
 
 type ItemSettings struct {
@@ -110,6 +155,78 @@ func LoadGameplay(dir string) (Gameplay, error) {
 	if cfg.Combat.HitImpactDelayMS < 0 {
 		return cfg, fmt.Errorf("combat.hit_impact_delay_ms must be >= 0")
 	}
+	if cfg.Combat.HitIntervalMS < 0 {
+		return cfg, fmt.Errorf("combat.hit_interval_ms must be >= 0")
+	}
+	if cfg.Combat.HitSpeedStepMS < 0 {
+		return cfg, fmt.Errorf("combat.hit_speed_step_ms must be >= 0")
+	}
+	if cfg.Combat.HitDropOverSpeedMS < 0 {
+		return cfg, fmt.Errorf("combat.hit_drop_over_speed_ms must be >= 0")
+	}
+	if cfg.Combat.MaxHitMessages <= 0 {
+		return cfg, fmt.Errorf("combat.max_hit_messages must be > 0")
+	}
+	if cfg.Combat.MaxSpellMessages <= 0 {
+		return cfg, fmt.Errorf("combat.max_spell_messages must be > 0")
+	}
+	if cfg.Combat.ActionIntervalMS < 0 {
+		return cfg, fmt.Errorf("combat.action_interval_ms must be >= 0")
+	}
+	if cfg.Combat.MagicHitIntervalMS < 0 {
+		return cfg, fmt.Errorf("combat.magic_hit_interval_ms must be >= 0")
+	}
+	if cfg.Combat.WalkHitIntervalMS < 0 {
+		return cfg, fmt.Errorf("combat.walk_hit_interval_ms must be >= 0")
+	}
+	if cfg.Combat.RunHitIntervalMS < 0 {
+		return cfg, fmt.Errorf("combat.run_hit_interval_ms must be >= 0")
+	}
+	if cfg.Combat.RunLongHitIntervalMS < 0 {
+		return cfg, fmt.Errorf("combat.run_long_hit_interval_ms must be >= 0")
+	}
+	if cfg.Combat.RunMagicIntervalMS < 0 {
+		return cfg, fmt.Errorf("combat.run_magic_interval_ms must be >= 0")
+	}
+	if cfg.Combat.WalkIntervalMS < 0 {
+		return cfg, fmt.Errorf("combat.walk_interval_ms must be >= 0")
+	}
+	if cfg.Combat.RunIntervalMS < 0 {
+		return cfg, fmt.Errorf("combat.run_interval_ms must be >= 0")
+	}
+	if cfg.Movement.UserMoveCooldownMS < 0 {
+		return cfg, fmt.Errorf("movement.user_move_cooldown_ms must be >= 0")
+	}
+	if cfg.Combat.MaxWalkMessages <= 0 {
+		return cfg, fmt.Errorf("combat.max_walk_messages must be > 0")
+	}
+	if cfg.Combat.MaxRunMessages <= 0 {
+		return cfg, fmt.Errorf("combat.max_run_messages must be > 0")
+	}
+	if cfg.Combat.SpeedControlMode < 0 || cfg.Combat.SpeedControlMode > 1 {
+		return cfg, fmt.Errorf("combat.speed_control_mode must be 0 or 1")
+	}
+	if cfg.Combat.StruckTimeMS < 0 {
+		return cfg, fmt.Errorf("combat.struck_time_ms must be >= 0")
+	}
+	if cfg.Combat.TurnIntervalMS < 0 {
+		return cfg, fmt.Errorf("combat.turn_interval_ms must be >= 0")
+	}
+	if cfg.Combat.MaxTurnMessages <= 0 {
+		return cfg, fmt.Errorf("combat.max_turn_messages must be > 0")
+	}
+	if cfg.Combat.MaxSitDownMessages <= 0 {
+		return cfg, fmt.Errorf("combat.max_sit_down_messages must be > 0")
+	}
+	if cfg.Recovery.HealthFillTimeMS <= 0 {
+		return cfg, fmt.Errorf("recovery.health_fill_time_ms must be > 0")
+	}
+	if cfg.Recovery.SpellFillTimeMS <= 0 {
+		return cfg, fmt.Errorf("recovery.spell_fill_time_ms must be > 0")
+	}
+	if cfg.Recovery.RevivalTimeMS <= 0 {
+		return cfg, fmt.Errorf("recovery.revival_time_ms must be > 0")
+	}
 	if cfg.Progression.RequiredExperiencePerLevel <= 0 {
 		return cfg, fmt.Errorf("progression.required_experience_per_level must be > 0")
 	}
@@ -158,20 +275,54 @@ func LoadGameplay(dir string) (Gameplay, error) {
 func DefaultGameplay() Gameplay {
 	return Gameplay{
 		Combat: CombatSettings{
-			HitImpactDelayMS:  200,
-			PKProtectLevel:    10,
-			RedPKProtectLevel: 10,
-			SafeZoneSize:      10,
-			RedHomeMap:        "3",
-			RedHomeX:          845,
-			RedHomeY:          674,
-			MapMoveProtectMS:  3000,
+			HitImpactDelayMS:      200,
+			HitIntervalMS:         900,
+			HitSpeedStepMS:        25,
+			HitDropOverSpeedMS:    10,
+			MaxHitMessages:        1,
+			MaxSpellMessages:      1,
+			ActionIntervalMS:      350,
+			MagicHitIntervalMS:    800,
+			StruckTimeMS:          100,
+			TurnIntervalMS:        600,
+			MaxTurnMessages:       1,
+			MaxSitDownMessages:    1,
+			ControlActionInterval: true,
+			ControlWalkHit:        true,
+			ControlRunLongHit:     true,
+			ControlRunHit:         true,
+			ControlRunMagic:       true,
+			WalkHitIntervalMS:     800,
+			RunHitIntervalMS:      800,
+			RunLongHitIntervalMS:  800,
+			RunMagicIntervalMS:    900,
+			WalkIntervalMS:        600,
+			RunIntervalMS:         600,
+			MaxWalkMessages:       1,
+			MaxRunMessages:        1,
+			PKProtectLevel:        10,
+			RedPKProtectLevel:     10,
+			SafeZoneSize:          10,
+			RedHomeMap:            "3",
+			RedHomeX:              845,
+			RedHomeY:              674,
+			MapMoveProtectMS:      3000,
+		},
+		Recovery: RecoverySettings{
+			HealthFillTimeMS: 300,
+			SpellFillTimeMS:  800,
+			RevivalTimeMS:    60 * 1000,
 		},
 		Progression: ProgressionSettings{
 			RequiredExperiencePerLevel: 20,
 		},
 		Monster: MonsterSettings{
 			TickMS: 100,
+		},
+		Movement: MovementSettings{
+			UserMoveCanDupObj:  false,
+			UserMoveCanOnItem:  true,
+			UserMoveCooldownMS: 10000,
 		},
 		Item: ItemSettings{
 			FloorDropMaxStackPerTile: 5,

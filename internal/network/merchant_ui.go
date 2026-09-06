@@ -59,7 +59,7 @@ func (s *Server) sendMerchantBuyList(conn net.Conn, merchantID int32, entity npc
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendGoodsList, Recog: merchantID, Param: uint16(count)}, EncodeString(body))
 }
 
-func merchantDetailGoodsListBody(w *world.World, stocks []storage.UserItem, itemName string, page, rate int) ([]byte, int, int) {
+func merchantDetailGoodsListBody(w *world.World, stocks []storage.UserItem, itemName string, page, rate int, ch storage.Character) ([]byte, int, int) {
 	var body bytes.Buffer
 	if len(stocks) == 0 {
 		return nil, 0, 0
@@ -107,7 +107,7 @@ func merchantDetailGoodsListBody(w *world.World, stocks []storage.UserItem, item
 		display := world.UpgradeClientItemForDisplay(item, entry, false)
 		dura, _ := bagItemDurability(display, entry)
 		display.Price = price
-		body.Write(EncodeBuffer(ClientItemBody(display, entry.Desc, entry.MakeIndex, dura, uint16(price))))
+		body.Write(EncodeBuffer(itemBodyForBag(ch, display, entry.Desc, entry.MakeIndex, dura, uint16(price))))
 		body.WriteByte('/')
 		count++
 	}
@@ -202,7 +202,7 @@ func storageItemListBody(w *world.World, ch storage.Character) ([]byte, int) {
 		}
 		display := world.UpgradeClientItemForDisplay(item, entry, false)
 		dura, duraMax := bagItemDurability(display, entry)
-		body.Write(EncodeBuffer(ClientItemBody(display, entry.Desc, entry.MakeIndex, dura, duraMax)))
+		body.Write(EncodeBuffer(itemBodyForBag(ch, display, entry.Desc, entry.MakeIndex, dura, duraMax)))
 		body.WriteByte('/')
 		count++
 	}

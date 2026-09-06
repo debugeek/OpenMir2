@@ -157,6 +157,7 @@ func (w *World) pushMonsterAwayLocked(caster storage.Character, mon *Monster, pu
 	off := dirOffsets[dir]
 	moved := false
 	actions := make([]MonsterAction, 0, push)
+	now := time.Now()
 	for i := 0; i < push; i++ {
 		nextX := mon.X + off[0]
 		nextY := mon.Y + off[1]
@@ -174,6 +175,13 @@ func (w *World) pushMonsterAwayLocked(caster storage.Character, mon *Monster, pu
 		w.occupyMonsterLocked(mon)
 		occupied[monsterPosition{MapID: mon.MapID, X: mon.X, Y: mon.Y}] = mon.ID
 		moved = true
+		if mon.Race >= 50 {
+			if mon.LastWalkAt.IsZero() || mon.LastWalkAt.Before(now) {
+				mon.LastWalkAt = now.Add(800 * time.Millisecond)
+			} else {
+				mon.LastWalkAt = mon.LastWalkAt.Add(800 * time.Millisecond)
+			}
+		}
 		actions = append(actions, w.monsterActionLocked(mon, MonsterActionPush))
 	}
 	if !moved {
@@ -359,7 +367,9 @@ func (w *World) castChargeDirectionLocked(result *SkillCastResult, ch storage.Ch
 		}
 	}
 	if kung {
-		rush := SpellRush{Character: ch, Dir: dir, X: ch.X, Y: ch.Y, Kung: true}
+		nextX := ch.X + dirOffsets[dir][0]
+		nextY := ch.Y + dirOffsets[dir][1]
+		rush := SpellRush{Character: ch, Dir: dir, X: nextX, Y: nextY, Kung: true}
 		result.Rushes = append(result.Rushes, rush)
 		result.OrderedEvents = append(result.OrderedEvents, SpellEvent{Kind: SpellEventRush, Rush: rush})
 	}
@@ -373,6 +383,7 @@ func (w *World) castChargeDirectionLocked(result *SkillCastResult, ch storage.Ch
 			w.deferCharacterDeathLocked(ch)
 		}
 		if damage > 0 {
+			ch.HealthTick = 0
 			ch.SpellTick = 0
 			result.CharacterHits = append(result.CharacterHits, CharacterHit{Character: ch, Damage: damage, Durability: durability, DeletedItems: deletedItems, FeatureChanged: featureChanged, Dead: change.Dead, DeathDeferred: change.Dead})
 			result.OrderedEvents = append(result.OrderedEvents, SpellEvent{Kind: SpellEventCharacterHit, Character: ch, CharacterHit: result.CharacterHits[len(result.CharacterHits)-1]})
@@ -399,6 +410,7 @@ func (w *World) chargeCharacterWithDamageLocked(caster storage.Character, target
 		w.deferCharacterDeathLocked(target)
 	}
 	if damage > 0 {
+		target.HealthTick = 0
 		target.SpellTick = 0
 		if canMarkCasterPK {
 			target.LastHitterID = caster.ID
@@ -474,7 +486,7 @@ func (w *World) castPushAroundSkillLocked(result *SkillCastResult, ch storage.Ch
 			continue
 		}
 		mon := areaTarget.Monster
-		if mon == nil || !mon.Alive || mon.StoneMode || ch.Level <= mon.Level {
+		if mon == nil || !mon.Alive || mon.StoneMode || w.monsterCannotBePushedLocked(mon) || ch.Level <= mon.Level {
 			continue
 		}
 		threshold := 6 + int(state.Level)*3 + (ch.Level - mon.Level)

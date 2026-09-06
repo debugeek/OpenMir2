@@ -140,6 +140,22 @@ func TestUnwrapFrameRejectsBadFrame(t *testing.T) {
 	}
 }
 
+func TestPlain6ClientMessageRejectsIncompleteFrames(t *testing.T) {
+	tests := map[string][]byte{
+		"empty":          {},
+		"bad delimiters": []byte("bad"),
+		"short command":  {FrameStart, FrameEnd},
+		"sequence only":  {FrameStart, '1', FrameEnd},
+	}
+	for name, frame := range tests {
+		t.Run(name, func(t *testing.T) {
+			if _, _, err := DecodePlain6ClientMessage(frame); err == nil {
+				t.Fatalf("DecodePlain6ClientMessage(%q) returned nil error", frame)
+			}
+		})
+	}
+}
+
 func TestSplitFrames(t *testing.T) {
 	first := encodeClientMessage(Command{Ident: CMProtocol}, nil)
 	second := encodeClientMessage(Command{Ident: CMIDPassword}, []byte("test/test"))

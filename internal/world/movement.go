@@ -83,9 +83,34 @@ func (w *World) HitWithIdent(ch storage.Character, x, y, dir int, attackIdent ui
 	if x != ch.X || y != ch.Y {
 		return AttackResult{}, fmt.Errorf("hit coordinates do not match current position")
 	}
+	now := time.Now()
+	fireHitActive := attackIdent == mir176.CMFireHit && ch.FireHitArmed
+	powerHitActive := attackIdent == mir176.CMPowerHit && ch.PowerHitArmed
+	if attackIdent == mir176.CMFireHit && !fireHitActive || attackIdent == mir176.CMPowerHit && !powerHitActive {
+		attackIdent = mir176.CMHit
+	}
 	ch.Dir = dir
-	w.respawnLocked(time.Now())
+	applyAttackRecoveryDelay(&ch)
+	w.respawnLocked(now)
 	result := AttackResult{Character: ch}
+	consumeSpecialHit := func(hit *AttackResult) {
+		if !fireHitActive && !powerHitActive {
+			return
+		}
+		if fireHitActive {
+			ch.FireHitArmed = false
+			ch.FireHitLatestAt = now.UnixNano()
+		}
+		if powerHitActive {
+			ch.PowerHitArmed = false
+		}
+		result.Character = ch
+		if hit != nil {
+			hit.Character.FireHitArmed = false
+			hit.Character.FireHitLatestAt = ch.FireHitLatestAt
+			hit.Character.PowerHitArmed = false
+		}
+	}
 	appendMonsterHit := func(hit AttackResult) {
 		if len(result.MonsterHits) == 0 {
 			result.MonsterID = hit.MonsterID
@@ -154,6 +179,9 @@ func (w *World) HitWithIdent(ch storage.Character, x, y, dir int, attackIdent ui
 				continue
 			}
 			if attackIdent == mir176.CMLongHit || attackIdent == mir176.CMWideHit {
+				if secondaryDamage <= 0 {
+					continue
+				}
 				ch.TargetID = mon.ID
 				hit, err := w.attackMonsterDirectDamageLocked(ch, mon, secondaryDamage, blockers...)
 				if err != nil {
@@ -171,6 +199,7 @@ func (w *World) HitWithIdent(ch storage.Character, x, y, dir int, attackIdent ui
 			if hit.Damage > 0 {
 				hit.Character.TargetID = mon.ID
 			}
+			consumeSpecialHit(&hit)
 			return hit, w.store.SaveCharacter(hit.Character)
 		}
 		if target, ok := w.characterAtExactPointLocked(blockers, ch.MapID, point[0], point[1]); ok {
@@ -179,6 +208,9 @@ func (w *World) HitWithIdent(ch storage.Character, x, y, dir int, attackIdent ui
 			}
 			damage := w.characterHitDamageForAttackLocked(ch, attackIdent)
 			if attackIdent == mir176.CMLongHit || attackIdent == mir176.CMWideHit {
+				if secondaryDamage <= 0 {
+					continue
+				}
 				ch.TargetID = target.ID
 				damage = secondaryDamage
 				_, hit, err := w.attackCharacterDirectDamageLocked(ch, target, damage)
@@ -206,6 +238,10 @@ func (w *World) HitWithIdent(ch storage.Character, x, y, dir int, attackIdent ui
 				if err := trainMainAttack(); err != nil {
 					return AttackResult{}, err
 				}
+			}
+			consumeSpecialHit(nil)
+			if fireHitActive {
+				result.Character = ch
 			}
 			return result, w.store.SaveCharacter(ch)
 		}
@@ -253,7 +289,24 @@ func (w *World) HitWithIdent(ch storage.Character, x, y, dir int, attackIdent ui
 			}
 		}
 	}
+	consumeSpecialHit(nil)
+	if fireHitActive {
+		result.Character = ch
+	}
 	return result, w.store.SaveCharacter(ch)
+}
+
+func applyAttackRecoveryDelay(ch *storage.Character) {
+	if ch == nil {
+		return
+	}
+	ch.HealthTick -= 30
+	ch.SpellTick -= 100
+	if ch.SpellTick < 0 {
+		ch.SpellTick = 0
+	}
+	ch.PerHealth -= 2
+	ch.PerSpell -= 2
 }
 
 func (w *World) hitPointsForAttackLocked(x, y, dir int, attackIdent uint16) [][2]int {

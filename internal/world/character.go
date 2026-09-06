@@ -66,8 +66,11 @@ func (w *World) CreateCharacterWithAppearance(account, name, class string, hair,
 		MaxMP:            base.MaxMP,
 		MP:               base.MaxMP,
 		IncHealthSpellAt: now,
+		HealthTickAt:     now,
+		SpellTickAt:      now,
 		PerHealth:        5,
 		PerSpell:         5,
+		PerHealing:       5,
 		BagItems:         []storage.UserItem{{ItemID: "木剑"}},
 	}
 	return w.store.InsertCharacter(ch)
@@ -81,11 +84,20 @@ func (w *World) NormalizeCharacterState(ch storage.Character) (storage.Character
 		ch.IncHealthSpellAt = time.Now().UnixMilli()
 		changed = true
 	}
+	if ch.HealthTickAt == 0 {
+		ch.HealthTickAt = time.Now().UnixMilli()
+	}
+	if ch.SpellTickAt == 0 {
+		ch.SpellTickAt = time.Now().UnixMilli()
+	}
 	if ch.PerHealth == 0 {
 		ch.PerHealth = 5
 	}
 	if ch.PerSpell == 0 {
 		ch.PerSpell = 5
+	}
+	if ch.PerHealing == 0 {
+		ch.PerHealing = 5
 	}
 	if w.normalizeBagItemMakeIndexesLocked(&ch) {
 		changed = true
@@ -186,7 +198,17 @@ func (w *World) CharacterNameColorFor(observer, target storage.Character) uint16
 }
 
 func (w *World) CharacterAreaState(ch storage.Character) int32 {
-	return 0
+	state := int32(0)
+	if mapData, ok := w.data.Maps[ch.MapID]; ok && mapData.Safe {
+		state |= 2
+	}
+	if ch.GuildWarArea {
+		state |= 1
+	}
+	if ch.FreePKArea {
+		state |= 4
+	}
+	return state
 }
 
 func (w *World) CharacterStatus(ch storage.Character) int32 {
@@ -198,9 +220,6 @@ func characterStatus(ch storage.Character, now time.Time, includeExpired bool) i
 		return until > 0 && (includeExpired || until >= now.UnixNano())
 	}
 	status := int32(0)
-	if ch.Sitting {
-		status |= 1
-	}
 	transparent := characterTransparentActive(ch, now)
 	if includeExpired {
 		transparent = ch.TransparentUntil > 0
@@ -218,7 +237,7 @@ func characterStatus(ch storage.Character, now time.Time, includeExpired bool) i
 		status |= 0x00100000
 	}
 	if active(ch.ShowHPUntil) {
-		status |= 0x20000000
+		status |= 0x00000002
 	}
 	if active(ch.PoisonHealthUntil) {
 		status |= -2147483648

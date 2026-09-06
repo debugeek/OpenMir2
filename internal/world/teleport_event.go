@@ -3,8 +3,9 @@ package world
 import "openmir2/internal/storage"
 
 type TeleportEvent struct {
-	From storage.Character
-	To   storage.Character
+	From          storage.Character
+	To            storage.Character
+	SpaceMoveFire bool
 }
 
 func newTeleportEvent(from, to storage.Character) *TeleportEvent {

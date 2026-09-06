@@ -84,6 +84,9 @@ func (w *World) castFireWallWithEventsLocked(ch storage.Character, skill data.St
 	if _, ok := w.data.Maps[ch.MapID]; !ok {
 		return 0, nil
 	}
+	if w.gameplay.Combat.DisableFireCrossInSafeZone && w.isSafeZoneLocked(storage.Character{MapID: ch.MapID, X: targetX, Y: targetY}) {
+		return 0, nil
+	}
 	damage := w.fireWallDamageLocked(ch, skill, state)
 	duration := w.fireWallDurationLocked(ch, skill, state)
 	createdEvents := make([]SpellGroundEvent, 0, 5)
@@ -166,7 +169,7 @@ func (w *World) applyFireWallTickLocked(players map[string]storage.Character, no
 				if !w.isProperMonsterAreaTargetLocked(owner, playerList, mon) {
 					continue
 				}
-				attackResult, err := w.attackMonsterWithImmediateMagicDamageLocked(owner, mon, field.Damage)
+				attackResult, err := w.attackMonsterWithImmediateMagicDamageModeLocked(owner, mon, field.Damage, false)
 				if err != nil || attackResult.Damage <= 0 {
 					continue
 				}

@@ -395,6 +395,54 @@ func (w *World) characterCannotParalyzeLocked(target storage.Character) bool {
 	return false
 }
 
+func (w *World) characterHasParalysisRingLocked(ch storage.Character) bool {
+	for slot := 0; slot < useSlotCount; slot++ {
+		entry, ok := w.equippedItemLocked(ch, slot)
+		if !ok {
+			continue
+		}
+		item, ok := w.data.Items[entry.ItemID]
+		if ok && (item.AniCount == 113 || item.Shape == 113) {
+			return true
+		}
+	}
+	return false
+}
+
+func (w *World) characterAntiPoisonLocked(ch storage.Character) int {
+	antiPoison := ch.AntiPoison
+	for slot := 0; slot < useSlotCount; slot++ {
+		entry, ok := w.equippedItemLocked(ch, slot)
+		if !ok {
+			continue
+		}
+		item, ok := w.data.Items[entry.ItemID]
+		if !ok {
+			continue
+		}
+		display := UpgradeClientItemForDisplay(item, entry, false)
+		antiPoison += display.ToxAvoid
+		if display.StdMode == 23 {
+			antiPoison += display.Stats.AcMax
+		}
+	}
+	if antiPoison < 0 {
+		return 0
+	}
+	return antiPoison
+}
+
+func (w *World) tryApplyParalysisRingToCharacterLocked(attacker storage.Character, target *storage.Character) bool {
+	if target == nil || !w.characterHasParalysisRingLocked(attacker) || w.characterCannotParalyzeLocked(*target) {
+		return false
+	}
+	if w.rand.Intn(w.characterAntiPoisonLocked(*target)+5) != 0 {
+		return false
+	}
+	target.ParalyzedUntil = time.Now().Add(5 * time.Second).UnixNano()
+	return true
+}
+
 func (w *World) spellCharacterDamageWithPowerLocked(caster storage.Character, target storage.Character, damage int) (storage.Character, CharacterHit, error) {
 	now := time.Now()
 	target, damage = w.prepareCharacterMagicDamageLocked(target, damage, now)
@@ -404,6 +452,7 @@ func (w *World) spellCharacterDamageWithPowerLocked(caster storage.Character, ta
 func (w *World) prepareCharacterMagicDamageLocked(target storage.Character, damage int, now time.Time) (storage.Character, int) {
 	damage = w.characterMagicDamageAfterDefenseLocked(target, damage, now)
 	damage = applyCharacterMagicBubbleLocked(&target, damage, now)
+	damage = w.applyCharacterMagicShieldLocked(&target, damage)
 	return target, damage
 }
 
@@ -417,6 +466,7 @@ func (w *World) applyPreparedCharacterMagicDamageLocked(caster storage.Character
 		w.deferCharacterDeathLocked(target)
 	}
 	if damage > 0 {
+		target.HealthTick = 0
 		target.SpellTick = 0
 		if canMarkCasterPK {
 			target.LastHitterID = caster.ID
@@ -438,6 +488,7 @@ func (w *World) applyPreparedCharacterMagicDamageLocked(caster storage.Character
 		DeletedItems:   deletedItems,
 		FeatureChanged: featureChanged,
 		AttackerID:     caster.ID,
+		AttackerActor:  CharacterActorID(caster),
 		AttackerX:      caster.X,
 		AttackerY:      caster.Y,
 		Dead:           change.Dead,
@@ -465,6 +516,31 @@ func applyCharacterMagicBubbleLocked(target *storage.Character, damage int, now 
 		remaining = time.Second
 	}
 	target.BubbleDefenceUntil = now.Add(remaining).UnixNano()
+	return damage
+}
+
+func (w *World) applyCharacterMagicShieldLocked(target *storage.Character, damage int) int {
+	if target == nil || damage <= 0 || target.MP <= 0 {
+		return maxInt(damage, 0)
+	}
+	for slot := 0; slot < useSlotCount; slot++ {
+		entry, ok := w.equippedItemLocked(*target, slot)
+		if !ok {
+			continue
+		}
+		item, ok := w.data.Items[entry.ItemID]
+		if !ok || (item.Shape != 118 && item.AniCount != 118) {
+			continue
+		}
+		shieldCost := referenceRound(float64(damage) * 1.5)
+		if int(target.MP) >= shieldCost {
+			target.MP -= shieldCost
+			return 0
+		}
+		remaining := shieldCost - int(target.MP)
+		target.MP = 0
+		return referenceRound(float64(remaining) / 1.5)
+	}
 	return damage
 }
 
@@ -507,20 +583,12 @@ func (w *World) castLightningLineSkillLocked(result *SkillCastResult, ch storage
 	damage := w.spellMonsterDamageLocked(ch, skill, state)
 	lineDamage := damage
 	dir := direction(ch.X, ch.Y, int(targetX), int(targetY))
-	firstX := ch.X + dirOffsets[dir][0]
-	firstY := ch.Y + dirOffsets[dir][1]
-	if !w.data.Maps[ch.MapID].Walkable(firstX, firstY) {
+	mapData := w.data.Maps[ch.MapID]
+	firstX, firstY, ok := spellLineNextPosition(mapData, ch.X, ch.Y, dir, 1)
+	if !ok {
 		return ch, false, nil
 	}
-	endX, endY := ch.X, ch.Y
-	for i := 0; i < steps; i++ {
-		nextX := endX + dirOffsets[dir][0]
-		nextY := endY + dirOffsets[dir][1]
-		if !w.data.Maps[ch.MapID].Walkable(nextX, nextY) {
-			break
-		}
-		endX, endY = nextX, nextY
-	}
+	endX, endY, _ := spellLineNextPosition(mapData, ch.X, ch.Y, dir, steps)
 	result.MagicFireTargetX = endX
 	result.MagicFireTargetY = endY
 	result.MagicFireTargetSet = true
@@ -536,7 +604,7 @@ func (w *World) castLightningLineSkillLocked(result *SkillCastResult, ch storage
 				if undeadAttack {
 					lineDamage = referenceRound(float64(lineDamage) * 1.5)
 				}
-				w.pendingSpells = append(w.pendingSpells, pendingSpell{DueAt: now.Add(spellDelayMagic), CasterID: ch.ID, TargetMonsterID: mon.ID, TargetX: sx, TargetY: sy, Damage: lineDamage})
+				w.pendingSpells = append(w.pendingSpells, pendingSpell{DueAt: now.Add(spellDelayMagic), CasterID: ch.ID, TargetMonsterID: mon.ID, SingleMagicStrike: true, TargetX: sx, TargetY: sy, TargetRange: 1, Damage: lineDamage})
 				hitCount++
 				hitMonsters[mon.ID] = struct{}{}
 			}
@@ -547,7 +615,7 @@ func (w *World) castLightningLineSkillLocked(result *SkillCastResult, ch storage
 					if undeadAttack {
 						lineDamage = referenceRound(float64(lineDamage) * 1.5)
 					}
-					w.pendingSpells = append(w.pendingSpells, pendingSpell{DueAt: now.Add(spellDelayMagic), CasterID: ch.ID, TargetCharacterID: target.ID, CharacterDamage: true, TargetX: sx, TargetY: sy, Damage: lineDamage})
+					w.pendingSpells = append(w.pendingSpells, pendingSpell{DueAt: now.Add(spellDelayMagic), CasterID: ch.ID, TargetCharacterID: target.ID, CharacterDamage: true, SingleMagicStrike: true, TargetX: sx, TargetY: sy, TargetRange: 1, Damage: lineDamage})
 					hitCount++
 					hitCharacters[target.ID] = struct{}{}
 				}
@@ -557,15 +625,26 @@ func (w *World) castLightningLineSkillLocked(result *SkillCastResult, ch storage
 			break
 		}
 		nextDir := direction(sx, sy, endX, endY)
-		nextX := sx + dirOffsets[nextDir][0]
-		nextY := sy + dirOffsets[nextDir][1]
-		if !w.data.Maps[ch.MapID].Walkable(nextX, nextY) {
+		nextX, nextY, ok := spellLineNextPosition(mapData, sx, sy, nextDir, 1)
+		if !ok {
 			break
 		}
 		sx, sy = nextX, nextY
 	}
 	result.Character = ch
 	return ch, hitCount > 0, nil
+}
+
+func spellLineNextPosition(mapData data.StdMap, x, y, dir, steps int) (int, int, bool) {
+	if steps <= 0 || dir < 0 || dir >= len(dirOffsets) {
+		return x, y, false
+	}
+	nextX := x + dirOffsets[dir][0]*steps
+	nextY := y + dirOffsets[dir][1]*steps
+	if nextX < 0 || nextY < 0 || nextX >= mapData.Width || nextY >= mapData.Height {
+		return x, y, false
+	}
+	return nextX, nextY, true
 }
 
 func (w *World) castExplosionSkillLocked(result *SkillCastResult, ch storage.Character, skill data.StdSkill, state storage.SkillState, targetX, targetY int, players []storage.Character) (storage.Character, bool, error) {

@@ -70,6 +70,84 @@ func (w *World) Skill(skillID string) (data.StdSkill, bool) {
 	return skill, true
 }
 
+func itemGrantedSkillID(item data.StdItem) string {
+	switch {
+	case item.Shape == 115 || item.AniCount == 115:
+		return "火球术"
+	case item.Shape == 116 || item.AniCount == 116:
+		return "治愈术"
+	default:
+		return ""
+	}
+}
+
+func (w *World) itemSkillChangesLocked(before, after storage.Character) ([]storage.SkillState, []string) {
+	added := make([]storage.SkillState, 0, 2)
+	removed := make([]string, 0, 2)
+	for _, skillID := range []string{"火球术", "治愈术"} {
+		if before.Skills.Has(skillID) || after.Skills.Has(skillID) {
+			continue
+		}
+		_, _, had := w.skillStateLocked(before, skillID)
+		_, _, has := w.skillStateLocked(after, skillID)
+		switch {
+		case !had && has:
+			added = append(added, storage.SkillState{ID: skillID, Level: 1})
+		case had && !has:
+			removed = append(removed, skillID)
+		}
+	}
+	return added, removed
+}
+
+func (w *World) skillStateLocked(ch storage.Character, skillID string) (storage.SkillState, int, bool) {
+	if state, idx, ok := ch.Skills.Get(skillID); ok {
+		return state, idx, true
+	}
+	for slot := 0; slot < useSlotCount; slot++ {
+		entry, ok := w.equippedItemLocked(ch, slot)
+		if !ok {
+			continue
+		}
+		item, ok := w.data.Items[entry.ItemID]
+		if !ok || itemGrantedSkillID(item) != skillID {
+			continue
+		}
+		return storage.SkillState{ID: skillID}, -1, true
+	}
+	return storage.SkillState{}, -1, false
+}
+
+func (w *World) EffectiveSkillStates(ch storage.Character) []storage.SkillState {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	states := append([]storage.SkillState(nil), ch.Skills...)
+	seen := make(map[string]struct{}, len(states))
+	for _, state := range states {
+		seen[state.ID] = struct{}{}
+	}
+	for slot := 0; slot < useSlotCount; slot++ {
+		entry, ok := w.equippedItemLocked(ch, slot)
+		if !ok {
+			continue
+		}
+		item, ok := w.data.Items[entry.ItemID]
+		if !ok {
+			continue
+		}
+		skillID := itemGrantedSkillID(item)
+		if skillID == "" {
+			continue
+		}
+		if _, ok := seen[skillID]; ok {
+			continue
+		}
+		states = append(states, storage.SkillState{ID: skillID})
+		seen[skillID] = struct{}{}
+	}
+	return states
+}
+
 func (w *World) MagicIDByName(name string) (uint16, bool) {
 	id, ok := skillIDs[name]
 	return id, ok

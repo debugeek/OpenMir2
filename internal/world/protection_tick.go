@@ -20,6 +20,8 @@ func (w *World) applyCharacterProtectionTickLocked(ch storage.Character, now tim
 	if next.BubbleDefenceUntil > 0 && now.UnixNano() > next.BubbleDefenceUntil {
 		next.BubbleDefenceUntil = 0
 		next.BubbleDefenceLevel = 0
+		active := false
+		next.BubbleDefenceActive = &active
 		changed = true
 	}
 	if !changed {

@@ -108,6 +108,39 @@ func TestSubAbilityStatsIncludesEquippedResistances(t *testing.T) {
 	}
 }
 
+func TestSubAbilityStatsIncludesReferenceRecoveryModes(t *testing.T) {
+	w := &World{data: data.StdBundle{Items: map[string]data.StdItem{
+		"recovery-necklace": {ID: "recovery-necklace", StdMode: 21, Stats: data.StdItemStats{AcMax: 7, MacMax: 4}},
+		"poison-ring":       {ID: "poison-ring", StdMode: 23, Stats: data.StdItemStats{AcMax: 6, MacMax: 3}},
+	}}}
+	ch := storage.Character{Class: "warrior", Level: 1, EquippedItems: map[int]storage.UserItem{
+		SlotNecklace: {ItemID: "recovery-necklace"},
+		SlotRingL:    {ItemID: "poison-ring"},
+	}}
+	got := w.SubAbilityStats(ch)
+	if got.AntiPoison != 6 || got.PoisonRecover != 3 || got.HealthRecover != 7 || got.SpellRecover != 4 {
+		t.Fatalf("SubAbilityStats recovery modes = %+v, want reference accessory recovery values", got)
+	}
+}
+
+func TestAbilitiesDoubleWeightLimitsForReferenceMuscleRing(t *testing.T) {
+	w := &World{data: data.StdBundle{Items: map[string]data.StdItem{
+		"muscle-ring": {ID: "muscle-ring", Shape: 119},
+	}}}
+	ch := storage.Character{Class: "warrior", Level: 1, EquippedItems: map[int]storage.UserItem{
+		SlotRingL: {ItemID: "muscle-ring"},
+	}}
+	base := Base(ch.Class, ch.Level)
+	abilities := w.Abilities(ch)
+	stats := w.AbilityStats(ch)
+	if abilities.MaxWeight != base.MaxWeight*2 || abilities.MaxWearWeight != base.MaxWearWeight*2 || abilities.MaxHandWeight != base.MaxHandWeight*2 {
+		t.Fatalf("abilities weight limits = %d/%d/%d, want %d/%d/%d", abilities.MaxWeight, abilities.MaxWearWeight, abilities.MaxHandWeight, base.MaxWeight*2, base.MaxWearWeight*2, base.MaxHandWeight*2)
+	}
+	if stats.MaxWeight != abilities.MaxWeight || stats.MaxWearWeight != abilities.MaxWearWeight || stats.MaxHandWeight != abilities.MaxHandWeight {
+		t.Fatalf("ability stats weight limits = %d/%d/%d, want abilities values", stats.MaxWeight, stats.MaxWearWeight, stats.MaxHandWeight)
+	}
+}
+
 func highByte(word int) int {
 	return (word >> 8) & 0xFF
 }

@@ -2,6 +2,7 @@ package world
 
 import (
 	"fmt"
+	"time"
 
 	"openmir2/internal/storage"
 )
@@ -57,6 +58,7 @@ func (w *World) EquipItemByBagIndexWithResult(ch storage.Character, slot int, ba
 }
 
 func (w *World) equipItemLocked(ch storage.Character, slot int, bagIndex int, itemID string) (storage.Character, EquipResult, error) {
+	before := ch
 	if slot < 0 || slot >= useSlotCount {
 		return ch, EquipResult{}, fmt.Errorf("unsupported equip slot %d", slot)
 	}
@@ -107,11 +109,13 @@ func (w *World) equipItemLocked(ch storage.Character, slot int, bagIndex int, it
 		DuraMax:   currentDuraMax,
 	}
 	w.setEquippedItemLocked(&ch, slot, updated)
+	w.applyStealthRingStateLocked(&ch, time.Now())
 	w.clearBagItemLocked(&ch, idx)
 	if hasPrevious {
 		ch.BagItems = append(ch.BagItems, previous)
 	}
-	result := EquipResult{Character: ch}
+	addedSkills, removedSkills := w.itemSkillChangesLocked(before, ch)
+	result := EquipResult{Character: ch, AddedSkills: addedSkills, RemovedSkills: removedSkills}
 	if hasPrevious {
 		result.SwappedOut = previous
 		result.HasSwappedOut = true
@@ -153,6 +157,7 @@ func (w *World) unequipByIdentityWithResult(ch storage.Character, slot, makeInde
 }
 
 func (w *World) unequipItemLocked(ch storage.Character, slot, requestedIndex int, itemID string) (storage.Character, UnequipResult, error) {
+	before := ch
 	if slot < 0 || slot >= useSlotCount {
 		return ch, UnequipResult{}, fmt.Errorf("unsupported equip slot %d", slot)
 	}
@@ -184,6 +189,8 @@ func (w *World) unequipItemLocked(ch storage.Character, slot, requestedIndex int
 		bagItem.Dura = bagItem.DuraMax
 	}
 	w.deleteEquippedItemLocked(&ch, slot)
+	w.applyStealthRingStateLocked(&ch, time.Now())
 	ch.BagItems = append(ch.BagItems, bagItem)
-	return ch, UnequipResult{Character: ch, RemovedItem: bagItem, HasRemovedItem: true}, nil
+	addedSkills, removedSkills := w.itemSkillChangesLocked(before, ch)
+	return ch, UnequipResult{Character: ch, RemovedItem: bagItem, HasRemovedItem: true, AddedSkills: addedSkills, RemovedSkills: removedSkills}, nil
 }
