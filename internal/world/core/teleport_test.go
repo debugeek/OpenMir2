@@ -52,3 +52,17 @@ func TestTeleportRandomInMapMovesCharacter(t *testing.T) {
 		t.Fatalf("teleport landed on blocked tile (%d,%d)", updated.X, updated.Y)
 	}
 }
+
+func TestTeleportRandomInMapNeverReturnsCurrentTile(t *testing.T) {
+	ch := storage.Character{ID: "char-1", MapID: "old-map", X: 1, Y: 0}
+	mp := data.StdMap{ID: "map-1", Width: 3, Height: 1}
+	for seed := int64(1); seed <= 100; seed++ {
+		updated, err := TeleportRandomInMap(ch, mp, rand.New(rand.NewSource(seed)))
+		if err != nil {
+			t.Fatalf("TeleportRandomInMap(seed=%d) error = %v", seed, err)
+		}
+		if updated.X == ch.X && updated.Y == ch.Y {
+			t.Fatalf("TeleportRandomInMap(seed=%d) returned current tile", seed)
+		}
+	}
+}

@@ -1905,6 +1905,30 @@ func TestHandleTurnUpdatesCharacterAndAcks(t *testing.T) {
 	}
 }
 
+func TestHandleTurnRejectsParalyzedCharacter(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "paralyzed-turn", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.ParalyzedUntil = time.Now().Add(time.Minute).UnixNano()
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	recog := int32(uint32(x) | uint32(y)<<16)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleTurn(server, &ch, mir176.Command{Ident: mir176.CMTurn, Recog: recog, Tag: 5})
+	}()
+	assertActionFail(t, readFrame(t, client))
+	<-done
+	if ch.Dir == 5 {
+		t.Fatal("paralyzed character changed direction")
+	}
+}
+
 func TestHandleTurnQueuesWhenTurnIntervalIsActive(t *testing.T) {
 	s := newTestServer(t)
 	mapID, x, y := testDefaultSpawn(t)
@@ -2090,6 +2114,24 @@ func TestHandleSitDownAcknowledgesShortDelayWithoutQueueing(t *testing.T) {
 	state.mu.Unlock()
 	if pending != 0 {
 		t.Fatalf("pending sit-down messages = %d, want 0 for short delay", pending)
+	}
+}
+
+func TestHandleSitDownDoesNotMutateCharacterState(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+	s.handleSitDown(server, &ch, mir176.Command{Ident: mir176.CMSitDown, Recog: int32(uint32(x+7) | uint32(y+9)<<16), Tag: 7})
+	assertActionAck(t, readFrame(t, client))
+	if ch.X != x || ch.Y != y || ch.Dir != 0 || ch.Sitting {
+		t.Fatalf("sit-down changed character state = %+v", ch)
 	}
 }
 
@@ -2337,6 +2379,36 @@ func TestHandleMoveWalkUpdatesCharacterAndAcks(t *testing.T) {
 
 	if ch.X != x+1 || ch.Y != y || ch.Dir != dir {
 		t.Fatalf("walk result = (%d,%d,dir %d), want (%d,%d,dir %d)", ch.X, ch.Y, ch.Dir, x+1, y, dir)
+	}
+}
+
+func TestHandleMoveQueuesWhenStruckWindowIsActive(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+	state := s.clientForConn(server)
+	state.mu.Lock()
+	state.struckAt = time.Now()
+	state.mu.Unlock()
+	recog := int32(uint32(x+1) | uint32(y)<<16)
+	s.handleMove(server, &ch, mir176.Command{Ident: mir176.CMWalk, Recog: recog, Tag: 2}, false)
+	state.mu.Lock()
+	pending := state.pendingMoveMessages
+	state.mu.Unlock()
+	if pending != 1 {
+		t.Fatalf("pending move messages = %d, want 1 during struck window", pending)
+	}
+	assertActionAck(t, readFrame(t, client))
+	updated := state.character()
+	if updated.X != x+1 || updated.Y != y {
+		t.Fatalf("delayed walk result = (%d,%d), want (%d,%d)", updated.X, updated.Y, x+1, y)
 	}
 }
 
@@ -5756,88 +5828,6 @@ func TestHandleSpellReportsInsufficientMPWithMagicFireFailAndActionOK(t *testing
 	}
 }
 
-func TestHandleSpellLegacyHighMagicSendsStartThenMagicFireFail(t *testing.T) {
-	s := newTestServer(t)
-	mapID, x, y := testDefaultSpawn(t)
-	ch, err := s.world.CreateCharacterWithAppearance("test", "legacy", "wizard", 0, 0, mapID, x, y)
-	if err != nil {
-		t.Fatalf("CreateCharacter() error = %v", err)
-	}
-	ch.SoftVersionDate = 0
-	ch.ClientTick = 0
-	ch.Skills = storage.SkillStates{{ID: "困魔咒", Level: 1, Train: 0}}
-	skill, ok := s.world.Skill("困魔咒")
-	if !ok {
-		t.Fatal("skill 困魔咒 missing from config")
-	}
-	ch.MP = s.world.SpellCost(skill, ch.Skills[0]) + 1
-	server, client := net.Pipe()
-	defer server.Close()
-	defer client.Close()
-	observer, observerClient := net.Pipe()
-	defer observer.Close()
-	defer observerClient.Close()
-	observerCh, err := s.world.CreateCharacterWithAppearance("test", "observer", "wizard", 0, 0, mapID, x+1, y)
-	if err != nil {
-		t.Fatalf("CreateCharacter() observer error = %v", err)
-	}
-	s.registerClient(server, ch)
-	defer s.unregisterClient(server)
-	s.registerClient(observer, observerCh)
-	defer s.unregisterClient(observer)
-
-	magicID, ok := s.world.MagicIDByName("困魔咒")
-	if !ok {
-		t.Fatal("MagicIDByName() missing 困魔咒")
-	}
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		s.handleSpell(server, &ch, mir176.Command{Ident: mir176.CMSpell, Recog: int32(uint32(x) | uint32(y)<<16), Tag: magicID})
-	}()
-	frames := collectFramesUntilActionAck(t, client, 8)
-	<-done
-	observerFirst := readFrameSkippingHealth(t, observerClient)
-	observerCommand, observerBody, err := decodeMessageLikeClient(observerFirst)
-	if err != nil {
-		t.Fatalf("decode observer spell frame error = %v", err)
-	}
-	if observerCommand.Ident != mir176.SMSpell || string(observerBody) != fmt.Sprint(magicID) {
-		t.Fatalf("observer first frame = %+v body=%q, want SM_SPELL magic %d", observerCommand, observerBody, magicID)
-	}
-	observerSecond := readFrameSkippingHealth(t, observerClient)
-	observerFailure, _, err := decodeMessageLikeClient(observerSecond)
-	if err != nil {
-		t.Fatalf("decode observer failure frame error = %v", err)
-	}
-	if observerFailure.Ident != mir176.SMMagicFireFail {
-		t.Fatalf("observer second frame = %+v, want SM_MAGICFIRE_FAIL", observerFailure)
-	}
-
-	failIndex := -1
-	decodedFrames := make([]string, 0, len(frames))
-	for i, frame := range frames {
-		if isActionAckFrame(frame) {
-			decodedFrames = append(decodedFrames, "action-ok")
-			continue
-		}
-		command, _, err := decodeMessageLikeClient(frame)
-		if err != nil {
-			t.Fatalf("decode frame error = %v", err)
-		}
-		decodedFrames = append(decodedFrames, fmt.Sprintf("ident=%d", command.Ident))
-		switch command.Ident {
-		case mir176.SMMagicFire:
-			t.Fatalf("legacy high magic unexpectedly emitted SM_MAGICFIRE: %+v", command)
-		case mir176.SMMagicFireFail:
-			failIndex = i
-		}
-	}
-	if failIndex < 0 {
-		t.Fatalf("legacy high magic frames = %v, want SM_MAGICFIRE_FAIL before action-ok", decodedFrames)
-	}
-}
-
 func TestSpellMagicFireFailReachesVisibleClients(t *testing.T) {
 	s := newTestServer(t)
 	mapID, x, y := testDefaultSpawn(t)
@@ -6163,7 +6153,6 @@ func TestSpellItemDeleteMessageMatchesReferenceFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
-	ch.SoftVersionDateEx = 1
 	server, clientConn := net.Pipe()
 	defer server.Close()
 	defer clientConn.Close()
@@ -7682,6 +7671,7 @@ func TestHandleSpellSummonRefreshesMonsterAppearBroadcast(t *testing.T) {
 	observerFrames := <-observerFramesCh
 	descLen := len(EncodeBuffer(make([]byte, 8)))
 	var casterAck, casterTurn, casterFeature, casterHealth, casterFire bool
+	var casterDurability bool
 	casterOrder := make([]uint16, 0, len(casterFrames))
 	turnIndex := -1
 	var observerSpell, observerTurn, observerFeature, observerFire bool
@@ -7721,7 +7711,10 @@ func TestHandleSpellSummonRefreshesMonsterAppearBroadcast(t *testing.T) {
 		case mir176.SMHealthSpellChanged:
 			casterHealth = true
 		case mir176.SMDuraChange:
-			t.Fatalf("caster skeleton summon emitted durability command = %+v, want no amulet update", cmd)
+			if cmd.Param != uint16(world.SlotBujuk) || cmd.Recog != 9900 {
+				t.Fatalf("caster skeleton summon durability command = %+v, want slot %d and dura 9900", cmd, world.SlotBujuk)
+			}
+			casterDurability = true
 		case mir176.SMMagicFire:
 			casterFire = true
 		}
@@ -7759,8 +7752,8 @@ func TestHandleSpellSummonRefreshesMonsterAppearBroadcast(t *testing.T) {
 			observerFire = true
 		}
 	}
-	if !casterAck || !casterTurn || !casterFeature || (cost > 0 && !casterHealth) || !casterFire {
-		t.Fatalf("caster frames missing: ack=%v turn=%v feature=%v health=%v fire=%v", casterAck, casterTurn, casterFeature, casterHealth, casterFire)
+	if !casterAck || !casterTurn || !casterFeature || !casterDurability || (cost > 0 && !casterHealth) || !casterFire {
+		t.Fatalf("caster frames missing: ack=%v turn=%v feature=%v durability=%v health=%v fire=%v", casterAck, casterTurn, casterFeature, casterDurability, casterHealth, casterFire)
 	}
 	if !observerSpell || !observerTurn || !observerFeature || !observerFire {
 		t.Fatalf("observer frames missing: spell=%v turn=%v feature=%v fire=%v", observerSpell, observerTurn, observerFeature, observerFire)
@@ -13039,36 +13032,6 @@ func TestSendEnterWorldReturnsCharacter(t *testing.T) {
 	}
 }
 
-func TestSendEnterWorldPersistsLoginVersionDate(t *testing.T) {
-	s := newTestServer(t)
-	mapID, x, y := testDefaultSpawn(t)
-	if _, err := s.world.CreateCharacterWithAppearance("test", "versioned", "warrior", 0, 0, mapID, x, y); err != nil {
-		t.Fatalf("CreateCharacter() error = %v", err)
-	}
-	got, ok := s.sendEnterWorld(nil, RunLogin{Account: "test", CharName: "versioned", Version: 120020522})
-	if !ok {
-		t.Fatal("sendEnterWorld() = false, want true")
-	}
-	if got.SoftVersionDate != 20020522 || got.SoftVersionDateEx != 100000000 {
-		t.Fatalf("version fields = (%d, %d), want (20020522, 100000000)", got.SoftVersionDate, got.SoftVersionDateEx)
-	}
-	loaded, ok := s.characterByName("test", "versioned")
-	if !ok || loaded.SoftVersionDate != 20020522 || loaded.SoftVersionDateEx != 100000000 {
-		t.Fatalf("stored runtime version fields = (%d, %d), want (20020522, 100000000)", loaded.SoftVersionDate, loaded.SoftVersionDateEx)
-	}
-}
-
-func TestLoginNoticeClientTickUsesSeries(t *testing.T) {
-	ch := storage.Character{SoftVersionDate: 0, ClientTick: 0}
-	applyLoginNoticeClientTick(&ch, mir176.Command{Ident: mir176.CMLoginNoticeOK, Series: 7})
-	if ch.ClientTick != 7 {
-		t.Fatalf("ClientTick = %d, want 7", ch.ClientTick)
-	}
-	if ch.SoftVersionDate != 0 {
-		t.Fatalf("SoftVersionDate = %d, want unchanged", ch.SoftVersionDate)
-	}
-}
-
 func TestSendEnterWorldRevivesDeadCharacterAtHome(t *testing.T) {
 	s := newTestServer(t)
 	mapID, x, y := testDefaultSpawn(t)
@@ -13146,7 +13109,6 @@ func TestHandleTakeOnItemEquipsAndRefreshesAbility(t *testing.T) {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
 	ch.Gold = 123
-	ch.SoftVersionDateEx = 1
 	ch.BagItems = []storage.UserItem{{ItemID: testWeaponID, MakeIndex: 1}}
 	server, client := net.Pipe()
 	defer server.Close()
@@ -13211,9 +13173,9 @@ func TestHandleTakeOnItemEquipsAndRefreshesAbility(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodePlain6Payload() error = %v", err)
 	}
-	dc := binary.LittleEndian.Uint32(body[10:14])
-	if dc != 0x00000603 {
-		t.Fatalf("DC in modern ability payload = %#x, want %#x", dc, uint32(0x00000603))
+	dc := binary.LittleEndian.Uint16(body[6:8])
+	if dc != 0x0603 {
+		t.Fatalf("DC in ability payload = %#x, want %#x", dc, uint16(0x0603))
 	}
 }
 
@@ -13472,7 +13434,6 @@ func TestSendEnterWorldStateCarriesGoldInAbility(t *testing.T) {
 	}
 	ch.Gold = 321
 	ch.PremiumGold = 654
-	ch.SoftVersionDate = 20020522
 	ch.AllowGroup = true
 	server, client := net.Pipe()
 	defer server.Close()
@@ -13519,35 +13480,12 @@ func TestSendEnterWorldStateCarriesGoldInAbility(t *testing.T) {
 	if featureCmd.Series != 0 {
 		t.Fatalf("SM_FEATURECHANGED Series = %d, want 0", featureCmd.Series)
 	}
-	serverConfigCmd, serverConfigBody, err := decodeMessageLikeClient(readFrame(t, client))
-	if err != nil {
-		t.Fatalf("decode SM_SERVERCONFIG frame error = %v", err)
-	}
-	if serverConfigCmd.Ident != mir176.SMServerConfig {
-		t.Fatalf("fifth frame ident = %d, want SM_SERVERCONFIG (%d)", serverConfigCmd.Ident, mir176.SMServerConfig)
-	}
-	if serverConfigCmd.Param != 0 {
-		t.Fatalf("SM_SERVERCONFIG Param = %d, want 0", serverConfigCmd.Param)
-	}
-	if serverConfigCmd.Recog != 0 || serverConfigCmd.Tag != 0 || serverConfigCmd.Series != 0 {
-		t.Fatalf("SM_SERVERCONFIG header = %+v, want zeroed mirbeta header", serverConfigCmd)
-	}
-	serverConfigDecoded, err := mir176.DecodePlain6Payload(serverConfigBody)
-	if err != nil {
-		t.Fatalf("DecodePlain6Payload(SM_SERVERCONFIG) error = %v", err)
-	}
-	if len(serverConfigDecoded) != 18 {
-		t.Fatalf("SM_SERVERCONFIG decoded body len = %d, want 18", len(serverConfigDecoded))
-	}
-	if serverConfigDecoded[0] != 17 || serverConfigDecoded[1] != 1 || serverConfigDecoded[2] != 1 || serverConfigDecoded[3] != 1 || serverConfigDecoded[4] != 0 || serverConfigDecoded[5] != 1 || serverConfigDecoded[6] != 1 || serverConfigDecoded[7] != 1 || serverConfigDecoded[8] != 0 || serverConfigDecoded[9] != 0 || serverConfigDecoded[10] != 0 || serverConfigDecoded[11] != 0 || serverConfigDecoded[12] != 0 || serverConfigDecoded[13] != 0 || serverConfigDecoded[14] != 0 || serverConfigDecoded[15] != 0 || serverConfigDecoded[16] != 1 || serverConfigDecoded[17] != 0 {
-		t.Fatalf("SM_SERVERCONFIG decoded body = % x, want reference defaults", serverConfigDecoded)
-	}
 	userNameCmd, userNameBody, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
 		t.Fatalf("decode SM_USERNAME frame error = %v", err)
 	}
 	if userNameCmd.Ident != mir176.SMUserName {
-		t.Fatalf("seventh frame ident = %d, want SM_USERNAME (%d)", userNameCmd.Ident, mir176.SMUserName)
+		t.Fatalf("fifth frame ident = %d, want SM_USERNAME (%d)", userNameCmd.Ident, mir176.SMUserName)
 	}
 	userNameDecoded, err := mir176.DecodePlain6Payload(userNameBody)
 	if err != nil {
@@ -13564,7 +13502,7 @@ func TestSendEnterWorldStateCarriesGoldInAbility(t *testing.T) {
 		t.Fatalf("decode SM_AREASTATE frame error = %v", err)
 	}
 	if areaStateCmd.Ident != mir176.SMAreaState {
-		t.Fatalf("eighth frame ident = %d, want SM_AREASTATE (%d)", areaStateCmd.Ident, mir176.SMAreaState)
+		t.Fatalf("sixth frame ident = %d, want SM_AREASTATE (%d)", areaStateCmd.Ident, mir176.SMAreaState)
 	}
 	if areaStateCmd.Recog != 0 {
 		t.Fatalf("SM_AREASTATE Recog = %d, want 0", areaStateCmd.Recog)
@@ -13582,26 +13520,6 @@ func TestSendEnterWorldStateCarriesGoldInAbility(t *testing.T) {
 	}
 	if got := DecodeString(mapDescDecoded); got != s.world.MapName(ch.MapID) {
 		t.Fatalf("SM_MAPDESCRIPTION body = %q, want %q", got, s.world.MapName(ch.MapID))
-	}
-	goldNameCmd, goldNameBody, err := decodeMessageLikeClient(readFrame(t, client))
-	if err != nil {
-		t.Fatalf("decode SM_GAMEGOLDNAME frame error = %v", err)
-	}
-	if goldNameCmd.Ident != mir176.SMGameGoldName {
-		t.Fatalf("tenth frame ident = %d, want SM_GAMEGOLDNAME (%d)", goldNameCmd.Ident, mir176.SMGameGoldName)
-	}
-	if goldNameCmd.Recog != int32(ch.PremiumGold) {
-		t.Fatalf("SM_GAMEGOLDNAME Recog = %d, want %d", goldNameCmd.Recog, ch.PremiumGold)
-	}
-	if goldNameCmd.Param != uint16(ch.PremiumPoint) || goldNameCmd.Tag != uint16(uint32(ch.PremiumPoint)>>16) {
-		t.Fatalf("SM_GAMEGOLDNAME game point = %d/%d, want %d", goldNameCmd.Param, goldNameCmd.Tag, ch.PremiumPoint)
-	}
-	goldNameDecoded, err := mir176.DecodePlain6Payload(goldNameBody)
-	if err != nil {
-		t.Fatalf("DecodePlain6Payload(SM_GAMEGOLDNAME) error = %v", err)
-	}
-	if got := DecodeString(goldNameDecoded); got != "元宝\r游戏点" {
-		t.Fatalf("SM_GAMEGOLDNAME body = %q, want reference default names", got)
 	}
 	_ = client.Close()
 	<-done

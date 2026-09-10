@@ -92,6 +92,9 @@ type MovementSettings struct {
 	UserMoveCanDupObj  bool `json:"user_move_can_dup_obj"`
 	UserMoveCanOnItem  bool `json:"user_move_can_on_item"`
 	UserMoveCooldownMS int  `json:"user_move_cooldown_ms"`
+	DisableHumanRun    bool `json:"disable_human_run"`
+	RunHuman           bool `json:"run_human"`
+	RunMon             bool `json:"run_mon"`
 }
 
 type ItemSettings struct {

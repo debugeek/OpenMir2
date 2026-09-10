@@ -33,13 +33,13 @@ func (w *World) visibleSpellAreaTargetsLocked(players []storage.Character, mapID
 func (w *World) occupiedActorsLocked(players []storage.Character) map[monsterPosition]string {
 	occupied := make(map[monsterPosition]string, len(players)+len(w.monsters))
 	for _, ch := range players {
-		if ch.ID == "" || ch.HP <= 0 || ch.MapID == "" {
+		if ch.ID == "" || ch.HP <= 0 || ch.AdminMode || ch.MapID == "" {
 			continue
 		}
 		occupied[monsterPosition{MapID: ch.MapID, X: ch.X, Y: ch.Y}] = ch.ID
 	}
 	for _, mon := range w.monsters {
-		if mon == nil || !mon.Alive || mon.MapID == "" {
+		if mon == nil || !mon.Alive || mon.FixedHideMode || mon.AdminMode || mon.MapID == "" {
 			continue
 		}
 		occupied[monsterPosition{MapID: mon.MapID, X: mon.X, Y: mon.Y}] = mon.ID
@@ -59,7 +59,7 @@ func (w *World) canOccupyLocked(mp data.StdMap, occupied map[monsterPosition]str
 
 func (w *World) findCharacterAtTileLocked(players []storage.Character, mapID string, x, y int, exceptID string) (storage.Character, bool) {
 	for _, target := range players {
-		if target.ID == "" || target.ID == exceptID || target.MapID != mapID || target.HP <= 0 {
+		if target.ID == "" || target.ID == exceptID || target.MapID != mapID || target.HP <= 0 || target.AdminMode {
 			continue
 		}
 		if target.X == x && target.Y == y {

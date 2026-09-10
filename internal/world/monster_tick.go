@@ -12,6 +12,9 @@ import (
 func (w *World) Tick(players []PlayerSnapshot, now time.Time) (TickResult, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	previousActionNow := w.actionNow
+	w.actionNow = now
+	defer func() { w.actionNow = previousActionNow }()
 	w.respawnLocked(now)
 	result := TickResult{}
 	for id, event := range w.groundEvents {
@@ -294,7 +297,20 @@ func (w *World) Tick(players []PlayerSnapshot, now time.Time) (TickResult, error
 			continue
 		}
 		wasAlive := mon.Alive
+		var trace *MonsterTickTrace
+		if w.monsterTraceEnabled {
+			w.monsterTraceTick++
+			trace = &MonsterTickTrace{Tick: w.monsterTraceTick, NowMS: now.UnixMilli(), MonsterID: mon.ID, StateBefore: monsterTraceState(mon)}
+			w.monsterTraceCurrent = trace
+		}
 		events, hits, chars, err := w.tickMonsterLocked(mon, playersByID, now)
+		if trace != nil {
+			trace.StateAfter = monsterTraceState(mon)
+			trace.Actions = append(trace.Actions, events...)
+			trace.Decision = monsterTraceDecision(trace)
+			result.MonsterTraces = append(result.MonsterTraces, *trace)
+			w.monsterTraceCurrent = nil
+		}
 		if err != nil {
 			return TickResult{}, err
 		}
@@ -933,7 +949,7 @@ func (w *World) applyMonsterHealingTickLocked(mon *Monster, now time.Time) bool 
 
 func (w *World) tickMonsterLocked(mon *Monster, players map[string]storage.Character, now time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
 	if now.Year() >= 2000 && mon.Spawn.MapID != "" && mon.NextSearchAt.IsZero() {
-		mon.NextSearchAt = now.Add(time.Duration(2000+w.rand.Intn(2000)) * time.Millisecond)
+		mon.NextSearchAt = now.Add(time.Duration(2000+w.monsterTraceIntn("search.initial_delay", 2000)) * time.Millisecond)
 	}
 	if mon.MasterID != "" {
 		return w.tickSummonedMonsterLocked(mon, players, now)

@@ -7,12 +7,73 @@ import (
 )
 
 func (w *World) monsterActionLocked(mon *Monster, kind MonsterActionKind) MonsterAction {
-	return MonsterAction{MonsterID: mon.ID, Name: mon.Name, RaceImg: mon.RaceImg, MonsterWeapon: mon.MonsterWeapon, Appr: mon.Appr, MapID: mon.MapID, X: mon.X, Y: mon.Y, Dir: mon.Dir, Status: MonsterStatus(*mon, time.Now()), Kind: kind}
+	now := w.actionNow
+	if now.IsZero() {
+		now = time.Now()
+	}
+	return MonsterAction{MonsterID: mon.ID, Name: mon.Name, RaceImg: mon.RaceImg, MonsterWeapon: mon.MonsterWeapon, Appr: mon.Appr, MapID: mon.MapID, X: mon.X, Y: mon.Y, Dir: mon.Dir, Status: MonsterStatus(*mon, now), Kind: kind}
+}
+
+func (w *World) monsterTraceIntn(label string, n int) int {
+	value := w.rand.Intn(n)
+	if w.monsterTraceCurrent != nil {
+		w.monsterTraceCurrent.Random = append(w.monsterTraceCurrent.Random, MonsterRandomTrace{Label: label, Limit: n, Value: value})
+	}
+	return value
+}
+
+func monsterTraceState(mon *Monster) MonsterTraceState {
+	state := MonsterTraceState{
+		MapID:             mon.MapID,
+		X:                 mon.X,
+		Y:                 mon.Y,
+		Dir:               mon.Dir,
+		TargetCharacterID: mon.TargetCharacterID,
+		TargetX:           mon.TargetX,
+		TargetY:           mon.TargetY,
+		RunAwayMode:       mon.RunAwayMode,
+		Alive:             mon.Alive,
+		Hidden:            mon.Hidden,
+		FixedHideMode:     mon.FixedHideMode,
+		AdminMode:         mon.AdminMode,
+		WalkWaitLocked:    mon.WalkWaitLocked,
+		WalkCount:         mon.WalkCount,
+	}
+	if !mon.LastWalkAt.IsZero() {
+		state.LastWalkAtMS = mon.LastWalkAt.UnixMilli()
+	}
+	if !mon.WalkWaitTick.IsZero() {
+		state.WalkWaitTickMS = mon.WalkWaitTick.UnixMilli()
+	}
+	return state
+}
+
+func monsterTraceDecision(trace *MonsterTickTrace) string {
+	if len(trace.Actions) == 0 {
+		return "wait"
+	}
+	if trace.StateAfter.RunAwayMode {
+		return "flee"
+	}
+	if trace.StateAfter.TargetCharacterID != "" {
+		if trace.Actions[0].Kind == MonsterActionHit {
+			return "attack"
+		}
+		return "chase"
+	}
+	switch trace.Actions[0].Kind {
+	case MonsterActionTurn:
+		return "wander.turn"
+	case MonsterActionWalk:
+		return "wander.walk"
+	default:
+		return "action"
+	}
 }
 
 func (w *World) playerAtLocked(players map[string]storage.Character, mapID string, x, y int) bool {
 	for _, ch := range players {
-		if ch.MapID == mapID && ch.HP > 0 && ch.X == x && ch.Y == y {
+		if ch.MapID == mapID && ch.HP > 0 && !ch.AdminMode && ch.X == x && ch.Y == y {
 			return true
 		}
 	}
@@ -20,8 +81,19 @@ func (w *World) playerAtLocked(players map[string]storage.Character, mapID strin
 }
 
 func (w *World) monsterAtLocked(mapID string, x, y int, exceptID string) bool {
+	return w.monsterAtLockedWithRun(mapID, x, y, exceptID, false)
+}
+
+func (w *World) monsterAtLockedWithRun(mapID string, x, y int, exceptID string, allowOverlap bool) bool {
+	if allowOverlap {
+		return false
+	}
 	id, ok := w.occupied[monsterPosition{MapID: mapID, X: x, Y: y}]
-	return ok && id != exceptID
+	if !ok || id == exceptID {
+		return false
+	}
+	mon := w.monsters[id]
+	return mon != nil && mon.Alive && !mon.FixedHideMode && !mon.AdminMode
 }
 
 func (w *World) monsterAtPointLocked(mapID string, x, y, radius int) *Monster {

@@ -1700,7 +1700,6 @@ func newTestWorldCharacter(t *testing.T) (*World, storage.Character) {
 	if err != nil {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
-	ch.ClientTick = 1
 	return w, ch
 }
 
@@ -1914,6 +1913,140 @@ func TestWalkMovesOneTileAndSetsDirection(t *testing.T) {
 	}
 }
 
+func TestWalkRejectsOccupiedPlayerTile(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	blocker := storage.Character{ID: "movement-blocker", MapID: ch.MapID, X: ch.X + 1, Y: ch.Y, HP: 100, MaxHP: 100}
+	if _, err := w.Walk(ch, blocker.X, blocker.Y, 2, blocker); err == nil {
+		t.Fatal("Walk() moved onto another player")
+	}
+	if ch.X == blocker.X && ch.Y == blocker.Y {
+		t.Fatal("source character was already on blocker tile")
+	}
+}
+
+func TestRunRejectsOccupiedMonsterTileOnEitherStep(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	mon := &Monster{ID: "movement-monster-blocker", MapID: ch.MapID, X: ch.X + 1, Y: ch.Y, HP: 100, MaxHP: 100, Alive: true}
+	w.mu.Lock()
+	w.monsters[mon.ID] = mon
+	w.occupyMonsterLocked(mon)
+	w.mu.Unlock()
+	if _, err := w.Run(ch, ch.X+2, ch.Y, 2); err == nil {
+		t.Fatal("Run() crossed an occupied intermediate monster tile")
+	}
+}
+
+func TestWalkIgnoresFixedHiddenMonsterTile(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	mon := &Monster{ID: "movement-hidden-monster", MapID: ch.MapID, X: ch.X + 1, Y: ch.Y, HP: 100, MaxHP: 100, Alive: true, FixedHideMode: true}
+	w.mu.Lock()
+	w.monsters[mon.ID] = mon
+	w.occupyMonsterLocked(mon)
+	w.mu.Unlock()
+	updated, err := w.Walk(ch, mon.X, mon.Y, 2)
+	if err != nil {
+		t.Fatalf("Walk() error = %v", err)
+	}
+	if updated.X != mon.X || updated.Y != mon.Y {
+		t.Fatalf("Walk() = %+v, want hidden-monster tile", updated)
+	}
+}
+
+func TestWalkIgnoresAdminPlayerTile(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	blocker := storage.Character{ID: "movement-admin-blocker", MapID: ch.MapID, X: ch.X + 1, Y: ch.Y, HP: 100, MaxHP: 100, AdminMode: true}
+	updated, err := w.Walk(ch, blocker.X, blocker.Y, 2, blocker)
+	if err != nil {
+		t.Fatalf("Walk() error = %v", err)
+	}
+	if updated.X != blocker.X || updated.Y != blocker.Y {
+		t.Fatalf("Walk() = %+v, want admin-player tile", updated)
+	}
+}
+
+func TestPushCanPassFixedHiddenMonsterTile(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	mp := w.data.Maps[ch.MapID]
+	var target, hidden storage.Character
+	for _, off := range dirOffsets {
+		tx, ty := ch.X+off[0], ch.Y+off[1]
+		hx, hy := ch.X+off[0]*2, ch.Y+off[1]*2
+		if mp.Walkable(tx, ty) && mp.Walkable(hx, hy) {
+			target = storage.Character{ID: "push-target", MapID: ch.MapID, X: tx, Y: ty, HP: 100, MaxHP: 100, Level: 1}
+			hidden = storage.Character{MapID: ch.MapID, X: hx, Y: hy}
+			break
+		}
+	}
+	if target.ID == "" {
+		t.Fatal("test map has no two-tile walkable direction")
+	}
+	hiddenMonster := &Monster{ID: "push-hidden-monster", MapID: hidden.MapID, X: hidden.X, Y: hidden.Y, HP: 100, MaxHP: 100, Alive: true, FixedHideMode: true}
+	w.mu.Lock()
+	w.monsters[hiddenMonster.ID] = hiddenMonster
+	w.occupyMonsterLocked(hiddenMonster)
+	occupied := w.occupiedActorsLocked([]storage.Character{ch, target})
+	updated, pushes, moved, err := w.pushCharacterAwayLocked(ch, target, 1, mp, occupied)
+	w.mu.Unlock()
+	if err != nil {
+		t.Fatalf("pushCharacterAwayLocked() error = %v", err)
+	}
+	if !moved || len(pushes) != 1 || updated.X != hidden.X || updated.Y != hidden.Y {
+		t.Fatalf("push result = moved:%t pushes:%d updated:%+v, want one tile through hidden monster", moved, len(pushes), updated)
+	}
+}
+
+func TestRunUsesConfiguredObjectOverlapFlags(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	mp := w.data.Maps[ch.MapID]
+	var blocker storage.Character
+	for _, off := range dirOffsets {
+		firstX, firstY := ch.X+off[0], ch.Y+off[1]
+		finalX, finalY := ch.X+off[0]*2, ch.Y+off[1]*2
+		if mp.Walkable(firstX, firstY) && mp.Walkable(finalX, finalY) {
+			blocker = storage.Character{ID: "run-overlap-blocker", MapID: ch.MapID, X: finalX, Y: finalY, HP: 100, MaxHP: 100}
+			w.gameplay.Movement.RunHuman = true
+			updated, err := w.Run(ch, finalX, finalY, direction(ch.X, ch.Y, finalX, finalY), blocker)
+			if err != nil {
+				t.Fatalf("Run() error = %v", err)
+			}
+			if updated.X != finalX || updated.Y != finalY {
+				t.Fatalf("Run() = %+v, want configured overlap tile", updated)
+			}
+			return
+		}
+	}
+	t.Fatal("test map has no two-tile walkable direction")
+}
+
+func TestTeleportAllowsMovingObjectOverlap(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	mp := w.data.Maps[ch.MapID]
+	var x, y int
+	found := false
+	for _, off := range dirOffsets {
+		candidateX, candidateY := ch.X+off[0], ch.Y+off[1]
+		if mp.Walkable(candidateX, candidateY) {
+			x, y, found = candidateX, candidateY, true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("test map has no adjacent walkable tile")
+	}
+	mon := &Monster{ID: "teleport-overlap-monster", MapID: ch.MapID, X: x, Y: y, HP: 100, MaxHP: 100, Alive: true}
+	w.mu.Lock()
+	w.monsters[mon.ID] = mon
+	w.occupyMonsterLocked(mon)
+	w.mu.Unlock()
+	updated, err := w.Teleport(ch, ch.MapID, x, y)
+	if err != nil {
+		t.Fatalf("Teleport() error = %v, want moving-object overlap", err)
+	}
+	if updated.X != x || updated.Y != y {
+		t.Fatalf("Teleport() = %+v, want (%d,%d)", updated, x, y)
+	}
+}
+
 func TestMoveShortensTransparentDurationOnMovement(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
 	before := time.Now().Add(10 * time.Second).UnixNano()
@@ -1966,11 +2099,29 @@ func TestWalkRejectsTooFar(t *testing.T) {
 
 func TestRunMovesTwoTiles(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
-	updated, err := w.Run(ch, ch.X+2, ch.Y, 2)
+	dir := -1
+	var targetX, targetY int
+	w.mu.Lock()
+	mp := w.data.Maps[ch.MapID]
+	for candidate := range dirOffsets {
+		off := dirOffsets[candidate]
+		firstX, firstY := ch.X+off[0], ch.Y+off[1]
+		secondX, secondY := ch.X+off[0]*2, ch.Y+off[1]*2
+		if mp.Walkable(firstX, firstY) && mp.Walkable(secondX, secondY) && !w.monsterAtLocked(ch.MapID, firstX, firstY, "") && !w.monsterAtLocked(ch.MapID, secondX, secondY, "") {
+			dir = candidate
+			targetX, targetY = secondX, secondY
+			break
+		}
+	}
+	w.mu.Unlock()
+	if dir < 0 {
+		t.Fatal("test map has no clear two-tile run path")
+	}
+	updated, err := w.Run(ch, targetX, targetY, dir)
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-	if updated.X != ch.X+2 || updated.Dir != 2 {
+	if updated.X != targetX || updated.Y != targetY || updated.Dir != dir {
 		t.Fatalf("Run() = %+v", updated)
 	}
 }
@@ -1999,31 +2150,6 @@ func TestRunRejectsBlockedIntermediateTile(t *testing.T) {
 	}
 	if _, err := w.Run(ch, startX+2, startY, 2); err == nil {
 		t.Fatalf("Run() expected error crossing the blocked intermediate tile")
-	}
-}
-
-func TestSitDownTogglesSitting(t *testing.T) {
-	w, ch := newTestWorldCharacter(t)
-	updated, err := w.SitDown(ch, ch.X, ch.Y, 4)
-	if err != nil {
-		t.Fatalf("SitDown() error = %v", err)
-	}
-	if !updated.Sitting {
-		t.Fatalf("expected Sitting = true after first SitDown()")
-	}
-	updated, err = w.SitDown(updated, updated.X, updated.Y, 4)
-	if err != nil {
-		t.Fatalf("SitDown() error = %v", err)
-	}
-	if updated.Sitting {
-		t.Fatalf("expected Sitting = false after second SitDown()")
-	}
-}
-
-func TestSitDownRejectsCoordinateMismatch(t *testing.T) {
-	w, ch := newTestWorldCharacter(t)
-	if _, err := w.SitDown(ch, ch.X+1, ch.Y, 4); err == nil {
-		t.Fatalf("SitDown() expected error for mismatched coordinates")
 	}
 }
 
@@ -3779,7 +3905,7 @@ func TestDoSpellMissingAmuletPreservesSpellStart(t *testing.T) {
 	}
 }
 
-func TestDoSpellSummonWithoutAmuletCreatesSkeleton(t *testing.T) {
+func TestDoSpellSummonSkeletonConsumesAmulet(t *testing.T) {
 	w, caster := newTestWorldCharacter(t)
 	caster.Skills = storage.SkillStates{{ID: "召唤骷髅", Level: 0}}
 	skill, ok := w.Skill("召唤骷髅")
@@ -3787,12 +3913,16 @@ func TestDoSpellSummonWithoutAmuletCreatesSkeleton(t *testing.T) {
 		t.Fatal("skill 召唤骷髅 missing from config")
 	}
 	caster.MP = w.SpellCost(skill, caster.Skills[0]) + 10
+	caster.EquippedItems = map[int]storage.UserItem{SlotBujuk: {ItemID: "护身符", Dura: 100, DuraMax: 100}}
 	result, err := w.DoSpell(caster, "召唤骷髅", caster.X, caster.Y, 0, nil)
 	if err != nil || !result.SpellStarted || result.SpellFailed {
 		t.Fatalf("summon result = %+v, error = %v, want started successful spell", result, err)
 	}
 	if len(result.SummonedMonsters) != 1 {
 		t.Fatalf("summoned monsters = %d, want 1", len(result.SummonedMonsters))
+	}
+	if got := result.Character.EquippedItems[SlotBujuk].Dura; got != 0 {
+		t.Fatalf("skeleton summon amulet dura = %d, want 0", got)
 	}
 }
 
@@ -10225,6 +10355,9 @@ func TestCastSkillSummonSkeletonCreatesOwnedMonsterAndExpires(t *testing.T) {
 	if len(result.SummonedMonsters) != 1 {
 		t.Fatalf("SummonedMonsters = %d, want 1", len(result.SummonedMonsters))
 	}
+	if got := result.Character.EquippedItems[SlotBujuk].Dura; got != 9900 {
+		t.Fatalf("skeleton summon amulet dura = %d, want 9900 after one-unit consumption", got)
+	}
 	summoned := result.SummonedMonsters[0]
 	if summoned.X != caster.X+1 || summoned.Y != caster.Y {
 		t.Fatalf("summoned position = (%d,%d), want front tile (%d,%d)", summoned.X, summoned.Y, caster.X+1, caster.Y)
@@ -10303,7 +10436,7 @@ func TestCastSkillSummonSkeletonCreatesOwnedMonsterAndExpires(t *testing.T) {
 	}
 }
 
-func TestCastSkillSummonSkeletonDoesNotRequireAmulet(t *testing.T) {
+func TestCastSkillSummonSkeletonRequiresAmulet(t *testing.T) {
 	w, caster := newTestWorldCharacter(t)
 	mapID := caster.MapID
 	mp := w.data.Maps[mapID]
@@ -10339,15 +10472,20 @@ func TestCastSkillSummonSkeletonDoesNotRequireAmulet(t *testing.T) {
 	caster.MP = 100
 	caster.Skills = storage.SkillStates{{ID: "召唤骷髅", Level: 0, Train: 0}}
 	caster.EquippedItems = nil
+	skill, ok := w.Skill("召唤骷髅")
+	if !ok {
+		t.Fatal("skill 召唤骷髅 missing from config")
+	}
+	wantMP := caster.MP - w.SpellCost(skill, caster.Skills[0])
 	result, err := w.CastSkillWithPlayers(caster, "召唤骷髅", caster.X, caster.Y, 0, nil)
-	if err != nil {
-		t.Fatalf("CastSkillWithPlayers() error = %v", err)
+	if err == nil {
+		t.Fatal("CastSkillWithPlayers() error = nil, want missing-amulet failure")
 	}
-	if len(result.SummonedMonsters) != 1 {
-		t.Fatalf("SummonedMonsters = %d, want 1", len(result.SummonedMonsters))
+	if !result.SpellFailed || len(result.SummonedMonsters) != 0 {
+		t.Fatalf("summon result = %+v, want failed spell without summon", result)
 	}
-	if len(result.Character.EquippedItems) != 0 {
-		t.Fatalf("skeleton equipped items = %+v, want no amulet consumption", result.Character.EquippedItems)
+	if result.Character.MP != wantMP {
+		t.Fatalf("failed summon MP = %d, want %d after spell resource consumption", result.Character.MP, wantMP)
 	}
 }
 
@@ -10420,8 +10558,8 @@ func TestCastSkillSummonSkeletonFailsWhenFrontTileBlocked(t *testing.T) {
 	if len(result.SummonedMonsters) != 0 {
 		t.Fatalf("SummonedMonsters = %d, want 0 for blocked front tile", len(result.SummonedMonsters))
 	}
-	if got := result.Character.EquippedItems[SlotBujuk].Dura; got != 10000 {
-		t.Fatalf("blocked summon amulet dura = %d, want 10000 because skeleton does not consume amulet", got)
+	if got := result.Character.EquippedItems[SlotBujuk].Dura; got != 9900 {
+		t.Fatalf("blocked summon amulet dura = %d, want 9900 after reference resource check", got)
 	}
 }
 
@@ -11819,42 +11957,6 @@ func TestDoSpellAtMaxSkillLevelDoesNotConsumeTrainingRandom(t *testing.T) {
 	}
 	if source.idx != 0 {
 		t.Fatalf("training random calls = %d, want 0 at max skill level", source.idx)
-	}
-}
-
-func TestDoSpellLegacyClientStopsHighMagicAfterStart(t *testing.T) {
-	w, caster := newTestWorldCharacter(t)
-	caster.SoftVersionDate = 20020522
-	caster.SoftVersionDateEx = 0
-	caster.ClientTick = 0
-	caster.Skills = storage.SkillStates{{ID: "困魔咒", Level: 1, Train: 0}}
-	skill, ok := w.Skill("困魔咒")
-	if !ok {
-		t.Fatal("困魔咒 skill missing")
-	}
-	caster.MP = w.SpellCost(skill, caster.Skills[0]) + 1
-	result, err := w.DoSpell(caster, "困魔咒", caster.X, caster.Y, 0, nil)
-	if err == nil {
-		t.Fatal("DoSpell() error = nil, want legacy-client failure after start")
-	}
-	if !result.SpellStarted || result.Character.MP != caster.MP-w.SpellCost(skill, caster.Skills[0]) {
-		t.Fatalf("legacy result = %+v, want started with consumed mana", result)
-	}
-	if result.SkillTraining || len(w.pendingSpells) != 0 {
-		t.Fatalf("legacy branch mutated spell state: training=%t pending=%d", result.SkillTraining, len(w.pendingSpells))
-	}
-	magicFire := 0
-	start := 0
-	for _, event := range result.Events {
-		switch event.Kind {
-		case SpellEventStart:
-			start++
-		case SpellEventMagicFire:
-			magicFire++
-		}
-	}
-	if start != 1 || magicFire != 0 || len(result.Events) == 0 {
-		t.Fatalf("legacy events = start:%d magic-fire:%d events=%+v, want started failure without magic fire", start, magicFire, result.Events)
 	}
 }
 

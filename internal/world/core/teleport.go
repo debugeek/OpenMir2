@@ -44,7 +44,18 @@ func TeleportRandomInMap(ch storage.Character, mp data.StdMap, rng *rand.Rand) (
 	}
 	pick := positions[rng.Intn(len(positions))]
 	if len(positions) > 1 && pick[0] == ch.X && pick[1] == ch.Y {
-		pick = positions[(rng.Intn(len(positions)-1)+1)%len(positions)]
+		currentIndex := 0
+		for i, position := range positions {
+			if position == pick {
+				currentIndex = i
+				break
+			}
+		}
+		otherIndex := rng.Intn(len(positions) - 1)
+		if otherIndex >= currentIndex {
+			otherIndex++
+		}
+		pick = positions[otherIndex]
 	}
 	ch.MapID = mp.ID
 	ch.X = pick[0]

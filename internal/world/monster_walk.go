@@ -17,7 +17,7 @@ func (w *World) moveMonsterTowardPointLocked(mon *Monster, x, y int, players map
 	}
 	dir := direction(mon.X, mon.Y, x, y)
 	step := 1
-	if w.rand.Intn(2) == 0 {
+	if w.monsterTraceIntn("move_toward_point.step", 2) == 0 {
 		step = -1
 	}
 	tryDir := func(dir int) bool {
@@ -69,7 +69,7 @@ func (w *World) moveMonsterTowardLocked(mon *Monster, target storage.Character, 
 		return true
 	}
 	step := 1
-	if w.rand.Intn(3) == 0 {
+	if w.monsterTraceIntn("move_toward.direction_step", 3) == 0 {
 		step = -1
 	}
 	for i := 0; i < len(dirOffsets); i++ {
@@ -112,11 +112,11 @@ func (w *World) monsterWalkReadyLocked(mon *Monster, now time.Time) bool {
 }
 
 func (w *World) wanderMonsterLocked(mon *Monster, players map[string]storage.Character) (MonsterAction, bool) {
-	if w.rand.Intn(20) != 0 {
+	if w.monsterTraceIntn("wander.roll", 20) != 0 {
 		return MonsterAction{}, false
 	}
-	if w.rand.Intn(4) == 1 {
-		mon.Dir = w.rand.Intn(len(dirOffsets))
+	if w.monsterTraceIntn("wander.turn_roll", 4) == 1 {
+		mon.Dir = w.monsterTraceIntn("wander.direction", len(dirOffsets))
 		return w.monsterActionLocked(mon, MonsterActionTurn), true
 	}
 	mp, ok := w.data.Maps[mon.MapID]

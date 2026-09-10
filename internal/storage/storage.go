@@ -88,9 +88,6 @@ type Character struct {
 	BonusAbil           BonusAbility        `json:"bonus_abil,omitempty"`
 	ExtraAbil           [7]uint16           `json:"extra_abil,omitempty"`
 	ExtraAbilTimes      [7]int64            `json:"extra_abil_times,omitempty"`
-	SoftVersionDate     int                 `json:"soft_version_date,omitempty"`
-	SoftVersionDateEx   int                 `json:"-"`
-	ClientTick          int                 `json:"-"`
 	EquippedItems       map[int]UserItem    `json:"equipped_items,omitempty"`
 	BagItems            []UserItem          `json:"bag_items"`
 	StorageItems        []UserItem          `json:"storage_items"`

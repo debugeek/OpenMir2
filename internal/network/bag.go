@@ -37,9 +37,6 @@ func (s *Server) sendDelItem(conn net.Conn, ch storage.Character, removed storag
 	}
 	item = world.UpgradeClientItemForDisplay(item, removed, false)
 	body := ClientItemBody(item, removed.Desc, removed.MakeIndex, removed.Dura, removed.DuraMax)
-	if !clientUsesModernProtocol(ch) {
-		body = LegacyClientItemBody(item, removed.MakeIndex, removed.Dura, removed.DuraMax)
-	}
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMDelItem, Recog: world.CharacterActorID(ch), Series: 1}, EncodeBuffer(body))
 	return true
 }
@@ -130,23 +127,16 @@ func equippedItem(ch storage.Character, slot int) (storage.UserItem, bool) {
 }
 
 func itemBodyForAdd(ch storage.Character, item data.StdItem, desc [14]byte, makeIndex int32, dura, duraMax uint16) []byte {
-	if ch.SoftVersionDateEx == 0 {
-		return LegacyClientItemBody(item, makeIndex, dura, duraMax)
-	}
+	_ = ch
 	return ClientItemBody(item, desc, makeIndex, dura, duraMax)
 }
 
 func itemBodyForBag(ch storage.Character, item data.StdItem, desc [14]byte, makeIndex int32, dura, duraMax uint16) []byte {
-	if ch.SoftVersionDateEx == 0 {
-		return LegacyClientItemBody(item, makeIndex, dura, duraMax)
-	}
+	_ = ch
 	return ClientItemBody(item, desc, makeIndex, dura, duraMax)
 }
 
 func itemBodyForEquipped(ch storage.Character, item data.StdItem, desc [14]byte, makeIndex int32, dura, duraMax uint16) []byte {
-	if ch.SoftVersionDateEx == 0 && ch.ClientTick == 0 {
-		return LegacyClientItemBody(item, makeIndex, dura, duraMax)
-	}
 	return ClientItemBody(item, desc, makeIndex, dura, duraMax)
 }
 

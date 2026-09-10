@@ -38,6 +38,10 @@ type World struct {
 	nextFireFieldID          uint64
 	rand                     *rand.Rand
 	gameplay                 config.Gameplay
+	monsterTraceEnabled      bool
+	monsterTraceTick         int64
+	monsterTraceCurrent      *MonsterTickTrace
+	actionNow                time.Time
 }
 
 func (w *World) CanSpellWhileParalyzed() bool {
@@ -305,6 +309,7 @@ type PlayerSnapshot struct {
 
 type TickResult struct {
 	MonsterActions           []MonsterAction
+	MonsterTraces            []MonsterTickTrace
 	CharacterHits            []CharacterHit
 	CharacterDeaths          []storage.Character
 	CharacterRevivals        []CharacterRevival
@@ -332,6 +337,51 @@ type TickResult struct {
 	SpellExperience          []SpellExperience
 	PoisonNotifications      []PoisonNotification
 	OrderedSpellEvents       []OrderedSpellEvent
+}
+
+type MonsterTraceState struct {
+	MapID             string `json:"map_id"`
+	X                 int    `json:"x"`
+	Y                 int    `json:"y"`
+	Dir               int    `json:"dir"`
+	TargetCharacterID string `json:"target_character_id"`
+	TargetX           int    `json:"target_x"`
+	TargetY           int    `json:"target_y"`
+	RunAwayMode       bool   `json:"run_away_mode"`
+	Alive             bool   `json:"alive"`
+	Hidden            bool   `json:"hidden"`
+	FixedHideMode     bool   `json:"fixed_hide_mode"`
+	AdminMode         bool   `json:"admin_mode"`
+	LastWalkAtMS      int64  `json:"last_walk_at_ms"`
+	WalkWaitLocked    bool   `json:"walk_wait_locked"`
+	WalkWaitTickMS    int64  `json:"walk_wait_tick_ms"`
+	WalkCount         int    `json:"walk_count"`
+}
+
+type MonsterRandomTrace struct {
+	Label string `json:"label"`
+	Limit int    `json:"limit"`
+	Value int    `json:"value"`
+}
+
+type MonsterTickTrace struct {
+	Tick        int64                `json:"tick"`
+	NowMS       int64                `json:"now_ms"`
+	MonsterID   string               `json:"monster_id"`
+	Decision    string               `json:"decision"`
+	StateBefore MonsterTraceState    `json:"state_before"`
+	StateAfter  MonsterTraceState    `json:"state_after"`
+	Random      []MonsterRandomTrace `json:"random"`
+	Actions     []MonsterAction      `json:"actions"`
+}
+
+func (w *World) EnableMonsterTrace(enabled bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.monsterTraceEnabled = enabled
+	if !enabled {
+		w.monsterTraceCurrent = nil
+	}
 }
 
 type OrderedSpellEventKind uint8

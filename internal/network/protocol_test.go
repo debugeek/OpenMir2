@@ -46,8 +46,8 @@ func TestDecodeCapturedPlain6RunLoginFrame(t *testing.T) {
 }
 
 func TestAbilityLength(t *testing.T) {
-	if got := len(Ability(world.AbilityStats{Level: 1, HP: 35, MaxHP: 35})); got != 50 {
-		t.Fatalf("Ability length = %d, want 50", got)
+	if got := len(Ability(world.AbilityStats{Level: 1, HP: 35, MaxHP: 35})); got != 40 {
+		t.Fatalf("Ability length = %d, want 40", got)
 	}
 }
 
@@ -57,7 +57,7 @@ func TestAbilityEncodesFieldsAtReferenceOffsets(t *testing.T) {
 		HP: 30, MP: 20, MaxHP: 35, MaxMP: 25,
 		Exp: 100, MaxExp: 200,
 	})
-	if got := binary.LittleEndian.Uint16(body[0:2]); got != 3 {
+	if got := body[0]; got != 3 {
 		t.Fatalf("Level = %d, want 3", got)
 	}
 	checks := []struct {
@@ -65,53 +65,30 @@ func TestAbilityEncodesFieldsAtReferenceOffsets(t *testing.T) {
 		offset int
 		want   uint32
 	}{
-		{"AC", 2, 0x01020304}, {"MAC", 6, 0x05060708}, {"DC", 10, 0x090a0b0c}, {"MC", 14, 0x0d0e0f10}, {"SC", 18, 0x11121314},
+		{"AC", 2, 0x0304}, {"MAC", 4, 0x0708}, {"DC", 6, 0x0b0c}, {"MC", 8, 0x0f10}, {"SC", 10, 0x1314},
 	}
 	for _, c := range checks {
-		if got := binary.LittleEndian.Uint32(body[c.offset : c.offset+4]); got != c.want {
+		if got := uint32(binary.LittleEndian.Uint16(body[c.offset : c.offset+2])); got != c.want {
 			t.Fatalf("%s at offset %d = %d, want %d", c.name, c.offset, got, c.want)
 		}
 	}
-	if got := binary.LittleEndian.Uint16(body[22:24]); got != 30 {
+	if got := binary.LittleEndian.Uint16(body[12:14]); got != 30 {
 		t.Fatalf("HP = %d, want 30", got)
 	}
-	if got := binary.LittleEndian.Uint16(body[24:26]); got != 20 {
+	if got := binary.LittleEndian.Uint16(body[14:16]); got != 20 {
 		t.Fatalf("MP = %d, want 20", got)
 	}
-	if got := binary.LittleEndian.Uint16(body[26:28]); got != 35 {
+	if got := binary.LittleEndian.Uint16(body[16:18]); got != 35 {
 		t.Fatalf("MaxHP = %d, want 35", got)
 	}
-	if got := binary.LittleEndian.Uint16(body[28:30]); got != 25 {
+	if got := binary.LittleEndian.Uint16(body[18:20]); got != 25 {
 		t.Fatalf("MaxMP = %d, want 25", got)
 	}
-	if got := binary.LittleEndian.Uint32(body[30:34]); got != 100 {
+	if got := binary.LittleEndian.Uint32(body[24:28]); got != 100 {
 		t.Fatalf("Exp = %d, want 100", got)
 	}
-	if got := binary.LittleEndian.Uint32(body[34:38]); got != 200 {
+	if got := binary.LittleEndian.Uint32(body[28:32]); got != 200 {
 		t.Fatalf("MaxExp = %d, want 200", got)
-	}
-}
-
-func TestOldAbilityEncodesReferenceLegacyLayout(t *testing.T) {
-	body := OldAbility(world.AbilityStats{
-		Level: 300, AC: 0x012c, MAC: 5, DC: 6, MC: 7, SC: 8,
-		HP: 30, MP: 20, MaxHP: 35, MaxMP: 25,
-		Exp: 100, MaxExp: 200, WearWeight: 300, MaxWearWeight: 400,
-	})
-	if got := binary.LittleEndian.Uint16(body[0:2]); got != 300 {
-		t.Fatalf("legacy Level = %d, want 300", got)
-	}
-	if got := binary.LittleEndian.Uint16(body[2:4]); got != 0x00ff {
-		t.Fatalf("legacy AC = %#x, want %#x", got, 0x00ff)
-	}
-	if got := binary.LittleEndian.Uint16(body[12:14]); got != 30 {
-		t.Fatalf("legacy HP = %d, want 30", got)
-	}
-	if got := binary.LittleEndian.Uint32(body[24:28]); got != 100 {
-		t.Fatalf("legacy Exp = %d, want 100", got)
-	}
-	if body[36] != 255 || body[37] != 255 {
-		t.Fatalf("legacy byte weights = %d/%d, want 255/255", body[36], body[37])
 	}
 }
 
@@ -202,49 +179,16 @@ func TestClientItemBodyMatchesReferenceLayout(t *testing.T) {
 	}
 }
 
-func TestLegacyClientItemBodyMatchesReferenceLayout(t *testing.T) {
-	item := data.StdItem{Name: "Sword", StdMode: 1, Shape: 2, Weight: 3, AniCount: 4, SpecialPwr: 5, ItemDesc: 6, NeedIdentify: 7, Looks: 7, DuraMax: 8, Price: 13}
-	body := LegacyClientItemBody(item, 38, 39, 40)
-	if got := len(body); got != 50 {
-		t.Fatalf("LegacyClientItemBody length = %d, want 50", got)
-	}
-	if got := binary.LittleEndian.Uint32(body[38:42]); got != 13 {
-		t.Fatalf("legacy Price = %d, want 13", got)
-	}
-	if got := binary.LittleEndian.Uint32(body[42:46]); got != 38 {
-		t.Fatalf("legacy MakeIndex = %d, want 38", got)
-	}
-	if got := binary.LittleEndian.Uint16(body[46:48]); got != 39 {
-		t.Fatalf("legacy Dura = %d, want 39", got)
-	}
-	if got := binary.LittleEndian.Uint16(body[48:50]); got != 40 {
-		t.Fatalf("legacy DuraMax = %d, want 40", got)
-	}
-}
-
-func TestSplitClientVersionMatchesReference(t *testing.T) {
-	oldVersion, extendedVersion := splitClientVersion(120020522)
-	if oldVersion != 20020522 || extendedVersion != 100000000 {
-		t.Fatalf("splitClientVersion() = (%d, %d), want (20020522, 100000000)", oldVersion, extendedVersion)
-	}
-}
-
-func TestItemBodyVersionBranchesMatchReference(t *testing.T) {
+func TestItemBodyUsesCurrentLayout(t *testing.T) {
 	item := data.StdItem{Name: "Sword", StdMode: 1, DuraMax: 40}
-	legacy := storage.Character{}
-	modern := storage.Character{SoftVersionDateEx: 1}
-	ticked := storage.Character{ClientTick: 1}
 
-	if got := len(itemBodyForAdd(legacy, item, [14]byte{}, 1, 2, 3)); got != 50 {
-		t.Fatalf("legacy add item body length = %d, want 50", got)
+	if got := len(itemBodyForAdd(storage.Character{}, item, [14]byte{}, 1, 2, 3)); got != 56 {
+		t.Fatalf("add item body length = %d, want 56", got)
 	}
-	if got := len(itemBodyForAdd(modern, item, [14]byte{}, 1, 2, 3)); got != 56 {
-		t.Fatalf("modern add item body length = %d, want 56", got)
+	if got := len(itemBodyForBag(storage.Character{}, item, [14]byte{}, 1, 2, 3)); got != 56 {
+		t.Fatalf("bag item body length = %d, want 56", got)
 	}
-	if got := len(itemBodyForBag(ticked, item, [14]byte{}, 1, 2, 3)); got != 50 {
-		t.Fatalf("ticked bag item body length = %d, want 50", got)
-	}
-	if got := len(itemBodyForEquipped(ticked, item, [14]byte{}, 1, 2, 3)); got != 56 {
+	if got := len(itemBodyForEquipped(storage.Character{}, item, [14]byte{}, 1, 2, 3)); got != 56 {
 		t.Fatalf("ticked equipped item body length = %d, want 56", got)
 	}
 }

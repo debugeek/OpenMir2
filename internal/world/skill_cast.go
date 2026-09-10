@@ -421,11 +421,6 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 	}()
 	result.SpellStarted = true
 	spellStarted = true
-	magicID, _ := w.MagicIDByName(skillID)
-	if ch.SoftVersionDateEx == 0 && ch.ClientTick == 0 && magicID > 40 {
-		result.SpellFailed = true
-		return result, fmt.Errorf("skill %s is unsupported by legacy client", skillID)
-	}
 	skillTrained := false
 	poisonApplied := false
 	fireWallCreated := 0
@@ -868,13 +863,15 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 		skillTrained = fireWallCreated > 0
 	case "召唤骷髅", "召唤神兽":
 		templateID := "骷髅"
+		amuletCost := uint16(1)
 		if skillID == "召唤神兽" {
 			templateID = "神兽"
-			if !w.consumeMagicAmuletLocked(&ch, 5) {
-				result.Character = ch
-				result.SpellFailed = true
-				break
-			}
+			amuletCost = 5
+		}
+		if !w.consumeMagicAmuletLocked(&ch, amuletCost) {
+			result.Character = ch
+			result.SpellFailed = true
+			break
 		}
 		if existing := w.activeSummonedMonsterByTemplateLocked(ch.ID, templateID, now); existing != nil {
 			if skillID == "召唤神兽" && w.recallSummonedMonsterNearCharacterLocked(existing, ch, players) {

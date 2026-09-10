@@ -144,7 +144,7 @@ func (w *World) useBagItemEntryLocked(ch storage.Character, idx int) (storage.Ch
 	if prev.MapID != ch.MapID || prev.X != ch.X || prev.Y != ch.Y {
 		result.Teleport = newTeleportEvent(prev, ch)
 	}
-	if prev.HP != ch.HP || prev.MP != ch.MP || result.LevelUp {
+	if prev.HP != ch.HP || prev.MP != ch.MP || prev.IncHealth != ch.IncHealth || prev.IncSpell != ch.IncSpell || result.LevelUp {
 		result.HealthChanged = true
 	}
 	w.pruneStaleEquippedItemsLocked(&ch)

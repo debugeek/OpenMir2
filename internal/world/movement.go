@@ -32,38 +32,24 @@ func (w *World) Turn(ch storage.Character, x, y, dir int) (storage.Character, er
 	return ch, w.store.SaveCharacter(ch)
 }
 
-func (w *World) Walk(ch storage.Character, x, y, dir int) (storage.Character, error) {
+func (w *World) Walk(ch storage.Character, x, y, dir int, blockers ...storage.Character) (storage.Character, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if err := validDir(dir); err != nil {
 		return ch, err
 	}
 	ch.Dir = dir
-	return w.directionalStepLocked(ch, x, y, dir, 1)
+	return w.directionalStepLocked(ch, x, y, dir, 1, blockers)
 }
 
-func (w *World) Run(ch storage.Character, x, y, dir int) (storage.Character, error) {
+func (w *World) Run(ch storage.Character, x, y, dir int, blockers ...storage.Character) (storage.Character, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if err := validDir(dir); err != nil {
 		return ch, err
 	}
 	ch.Dir = dir
-	return w.directionalStepLocked(ch, x, y, dir, 2)
-}
-
-func (w *World) SitDown(ch storage.Character, x, y, dir int) (storage.Character, error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if err := validDir(dir); err != nil {
-		return ch, err
-	}
-	if x != ch.X || y != ch.Y {
-		return ch, fmt.Errorf("sitdown coordinates do not match current position")
-	}
-	ch.Dir = dir
-	ch.Sitting = !ch.Sitting
-	return ch, w.store.SaveCharacter(ch)
+	return w.directionalStepLocked(ch, x, y, dir, 2, blockers)
 }
 
 // Hit resolves a melee swing (CM_HIT and its variants) in the character's
@@ -384,17 +370,28 @@ func (w *World) stepLocked(ch storage.Character, x, y, maxDist int) (storage.Cha
 // only checking the final tile. The client's (x, y) must match the derived
 // destination exactly, which also rejects diagonal-skewed moves (e.g. a run
 // claiming dx=2, dy=1) that no direction actually produces.
-func (w *World) directionalStepLocked(ch storage.Character, x, y, dir, steps int) (storage.Character, error) {
+func (w *World) directionalStepLocked(ch storage.Character, x, y, dir, steps int, blockers []storage.Character) (storage.Character, error) {
 	mp, ok := w.data.Maps[ch.MapID]
 	if !ok {
 		return ch, fmt.Errorf("map %s not found", ch.MapID)
 	}
 	off := dirOffsets[dir]
 	destX, destY := ch.X, ch.Y
+	ignoreRunObjects := steps == 2 && w.gameplay.Movement.DisableHumanRun
+	ignoreRunHumans := steps == 2 && (ignoreRunObjects || w.gameplay.Movement.RunHuman || mp.RunHuman)
+	ignoreRunMonsters := steps == 2 && (ignoreRunObjects || w.gameplay.Movement.RunMon || mp.RunMon)
 	for i := 1; i <= steps; i++ {
 		destX, destY = ch.X+off[0]*i, ch.Y+off[1]*i
 		if !mp.Walkable(destX, destY) {
 			return ch, fmt.Errorf("move is blocked")
+		}
+		if w.monsterAtLockedWithRun(ch.MapID, destX, destY, "", ignoreRunMonsters) {
+			return ch, fmt.Errorf("move is blocked")
+		}
+		for _, blocker := range blockers {
+			if blocker.ID != "" && blocker.ID != ch.ID && blocker.HP > 0 && !blocker.AdminMode && !ignoreRunHumans && blocker.MapID == ch.MapID && blocker.X == destX && blocker.Y == destY {
+				return ch, fmt.Errorf("move is blocked")
+			}
 		}
 	}
 	if x != destX || y != destY {
