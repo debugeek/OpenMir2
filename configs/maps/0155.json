@@ -1,9 +1,8 @@
 {
   "id": "0155",
   "name": "布料店",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 20,
+  "height": 24,
   "connections": [
     {
       "to_map": "3",
@@ -20,5 +19,6 @@
       "to_y": 275
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "/////////////////////5////D/B/7/wP89+I/hfwD+R/B/hv8M/IPgHwD/A/h/wP8H/v/8/7//////"
 }

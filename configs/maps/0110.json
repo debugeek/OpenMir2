@@ -1,9 +1,8 @@
 {
   "id": "0110",
   "name": "研究院",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 17,
+  "height": 21,
   "connections": [
     {
       "to_map": "0",
@@ -20,5 +19,6 @@
       "to_y": 230
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "//////////////+f/5//n/2f4R+BnwCeAbwB8AHwAfAH8B/wf/D/8f/3//8f"
 }

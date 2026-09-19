@@ -1,7 +1,7 @@
 {
   "id": "传送员-5",
   "name": "传送员",
-  "kind": "special",
+  "kind": "normal",
   "map_id": "5",
   "x": 137,
   "y": 326,

@@ -17,6 +17,7 @@ type AttackSyncer interface {
 	BroadcastCharacterStruck(CharacterHit)
 	BroadcastCharacterNameColor(storage.Character)
 	BroadcastHitImpact(AttackResult)
+	BroadcastNPCTraining([]NPCTrainingHit)
 	SendSkillExp(uint16, byte, int, time.Duration)
 }
 
@@ -39,6 +40,9 @@ func ApplyAttackSync(syncer AttackSyncer, result AttackResult, attackIdent uint1
 		}
 	} else if result.MonsterID != "" && result.Damage > 0 {
 		syncer.BroadcastHitImpact(result)
+	}
+	if len(result.NPCTrainingHits) > 0 {
+		syncer.BroadcastNPCTraining(result.NPCTrainingHits)
 	}
 	syncer.SendActionOK()
 	for _, hit := range result.CharacterHits {

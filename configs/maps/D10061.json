@@ -1,9 +1,8 @@
 {
   "id": "D10061",
   "name": "恶魔祭坛",
-  "width": 170,
-  "height": 170,
-  "blocked": [],
+  "width": 30,
+  "height": 30,
   "connections": [
     {
       "to_map": "D10051",
@@ -78,5 +77,6 @@
       "count": 5,
       "respawn_seconds": 5
     }
-  ]
+  ],
+  "blocked_bits": "//////////////////////////////////////////////+f////5/////D//wf5/38A///fB///w4P//+CB/x8w4P+AA/g/AQDgXwAg/c8ACP+DAeD/gAD/f+DA/z988P+PH/3/9+///////////w8="
 }

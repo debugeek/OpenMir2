@@ -231,9 +231,8 @@ func (w *World) attackMonsterWithDamageModeAndMeatLocked(ch storage.Character, m
 		}
 		summoned := mon.MasterID != ""
 		w.removeMonsterLocked(mon, !summoned)
-		delay := mon.Spawn.RespawnSeconds
-		if !summoned && delay > 0 {
-			mon.RespawnAt = now.Add(time.Duration(delay) * time.Second)
+		if !summoned {
+			w.scheduleMonsterRespawnLocked(mon, now)
 		}
 		var expGained int
 		var leveled bool
@@ -442,9 +441,8 @@ func (w *World) killMonsterWithDamageLocked(ch storage.Character, mon *Monster, 
 	}
 	summoned := mon.MasterID != ""
 	w.removeMonsterLocked(mon, !summoned)
-	delay := mon.Spawn.RespawnSeconds
-	if !summoned && delay > 0 {
-		mon.RespawnAt = now.Add(time.Duration(delay) * time.Second)
+	if !summoned {
+		w.scheduleMonsterRespawnLocked(mon, now)
 	}
 	var expGained int
 	var leveled bool
@@ -817,16 +815,43 @@ func (w *World) monsterAttackCharacterLocked(mon *Monster, ch storage.Character)
 	if mon.MaxAttack > mon.MinAttack {
 		damage += w.rand.Intn(mon.MaxAttack - mon.MinAttack + 1)
 	}
-	if damage < 1 {
-		damage = 1
-	}
 	return w.monsterAttackCharacterWithDamageLocked(mon, ch, damage)
 }
 
-func (w *World) monsterAttackCharacterWithDamageLocked(mon *Monster, ch storage.Character, damage int) (storage.Character, CharacterHit, error) {
-	if damage < 1 {
-		damage = 1
+func (w *World) monsterMagicAttackCharacterLocked(mon *Monster, ch storage.Character) (storage.Character, CharacterHit, error) {
+	damage := mon.MagicAttack
+	maxDamage := mon.MagicAttackMax
+	if damage <= 0 {
+		damage = mon.MinAttack
+		maxDamage = mon.MaxAttack
 	}
+	if maxDamage > damage {
+		damage += w.rand.Intn(maxDamage - damage + 1)
+	}
+	oldMagic := mon.UseMagic
+	mon.UseMagic = true
+	updated, hit, err := w.monsterAttackCharacterWithDamageLocked(mon, ch, damage)
+	mon.UseMagic = oldMagic
+	hit.Magic = true
+	hit.ImpactDelay = 200 * time.Millisecond
+	return updated, hit, err
+}
+
+func (w *World) monsterMixedAttackCharacterLocked(mon *Monster, ch storage.Character) (storage.Character, CharacterHit, error) {
+	power := mon.MinAttack
+	if mon.MaxAttack > power {
+		power += w.rand.Intn(mon.MaxAttack - power + 1)
+	}
+	physical := w.characterPhysicalDamageAfterDefenseLocked(&ch, power/2)
+	magical := w.characterMagicDamageAfterDefenseLocked(ch, power/2, time.Now())
+	if physical+magical <= 0 {
+		hit := CharacterHit{Character: ch, AttackerID: mon.ID, AttackerRaceImg: mon.RaceImg, AttackerAppr: mon.Appr, AttackerX: mon.X, AttackerY: mon.Y, ImpactDelay: 200 * time.Millisecond}
+		return ch, hit, nil
+	}
+	return w.attackCharacterDirectDamageLocked(storage.Character{ID: mon.ID}, ch, physical+magical)
+}
+
+func (w *World) monsterAttackCharacterWithDamageLocked(mon *Monster, ch storage.Character, damage int) (storage.Character, CharacterHit, error) {
 	now := time.Now()
 	stats := w.combatStatsLocked(ch)
 	defenceBonus, magicDefenceBonus, bubbleLevel, bubbleActive := activeProtectionBuffs(ch, now)
@@ -895,8 +920,12 @@ func (w *World) monsterAttackCharacterWithDamageLocked(mon *Monster, ch storage.
 	if change.Dead {
 		dead = true
 		mon.TargetCharacterID = ""
+		mon.TargetX, mon.TargetY = -1, -1
 		mon.TargetFocusAt = time.Time{}
-		mon.NextSearchAt = time.Now()
+		mon.NextSearchAt = w.actionNow
+		if mon.NextSearchAt.IsZero() {
+			mon.NextSearchAt = time.Now()
+		}
 	}
 	hit := CharacterHit{
 		Character:       ch,

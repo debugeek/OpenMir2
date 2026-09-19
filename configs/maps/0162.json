@@ -1,9 +1,9 @@
 {
   "id": "0162",
   "name": "监狱",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 17,
+  "height": 20,
   "connections": [],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "////////////P/9//7/zf/u/mz97f5v/E3/wfyB/YP+B/2P/H/9/////Dw=="
 }

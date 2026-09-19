@@ -189,10 +189,7 @@ func (w *World) applyMonsterPoisonTickLocked(mon *Monster, players map[string]st
 			if state.activeCount > 0 {
 				state.activeCount--
 			}
-			delay := mon.Spawn.RespawnSeconds
-			if delay > 0 {
-				mon.RespawnAt = now.Add(time.Duration(delay) * time.Second)
-			}
+			w.scheduleMonsterRespawnLocked(mon, now)
 			result.Dead = true
 			result.Character = storage.Character{MapID: mon.MapID, X: mon.X, Y: mon.Y}
 		}

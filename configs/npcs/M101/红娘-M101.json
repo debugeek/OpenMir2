@@ -1,7 +1,7 @@
 {
   "id": "红娘-M101",
   "name": "红娘",
-  "kind": "special",
+  "kind": "normal",
   "map_id": "M101",
   "x": 27,
   "y": 32,

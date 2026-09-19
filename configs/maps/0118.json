@@ -1,9 +1,8 @@
 {
   "id": "0118",
   "name": "入口",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 14,
+  "height": 16,
   "connections": [
     {
       "to_map": "0",
@@ -27,5 +26,6 @@
       "to_y": 8
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "//////////////+P/+E/8Af+wB/wA/7AP/z//w=="
 }

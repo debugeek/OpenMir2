@@ -11,7 +11,10 @@ import (
 
 func (w *World) spawnInitial() {
 	for _, sp := range w.data.Spawns {
-		tpl := w.data.Monsters[sp.MonsterID]
+		tpl, ok := w.data.Monsters[sp.MonsterID]
+		if !ok {
+			continue
+		}
 		desired := w.desiredSpawnCountLocked(sp)
 		cluster := sp.MissionGenRate > 0 && w.rand.Intn(100) < sp.MissionGenRate
 		centerX, centerY := sp.X, sp.Y
@@ -56,7 +59,16 @@ func (w *World) respawnLocked(now time.Time) {
 				mon.RespawnAt = now.Add(time.Second)
 				continue
 			}
-			mon.HP = mon.MaxHP
+			if mon.ZilkinRebirth {
+				mon.MaxHP /= 2
+				if mon.MaxHP < 1 {
+					mon.MaxHP = 1
+				}
+				mon.HP = mon.MaxHP
+				mon.ZilkinRebirth = false
+			} else {
+				mon.HP = mon.MaxHP
+			}
 			mon.Alive = true
 			mon.X, mon.Y = x, y
 			mon.Dir = 4
@@ -74,6 +86,17 @@ func (w *World) respawnLocked(now time.Time) {
 			mon.ExpHitterID = ""
 			mon.ExpHitterAt = time.Time{}
 			mon.TargetFocusAt = time.Time{}
+			if mon.Race == 107 {
+				mon.TargetFocusAt = now
+			}
+			mon.NextSearchAt = time.Time{}
+			mon.NextRunAt = time.Time{}
+			mon.CowKingPhase = 0
+			mon.CowKingState = 0
+			mon.CowKingPhaseAt = time.Time{}
+			mon.CowKingStoredAttack = 0
+			mon.CowKingStoredWalk = 0
+			mon.CowKingMoveAt = time.Time{}
 			mon.LastAttackAt = time.Time{}
 			mon.LastWalkAt = time.Time{}
 			mon.WalkCount = 0

@@ -153,6 +153,43 @@ func TestBroadcastMonsterSpaceMoveHidesOldObserversWithoutNewObservers(t *testin
 	}
 }
 
+func TestApplyWorldTickBroadcastsSpawnedMonsterToObserver(t *testing.T) {
+	s := newTestServer(t)
+	serverConn, clientConn := net.Pipe()
+	defer serverConn.Close()
+	defer clientConn.Close()
+	observer := storage.Character{ID: "spawn-observer", MapID: testMapID, X: 10, Y: 10, HP: 100, MaxHP: 100}
+	s.registerClient(serverConn, observer)
+	defer s.unregisterClient(serverConn)
+	mon := world.Monster{ID: "delayed-spawn-monster", Name: "测试怪物", MapID: testMapID, X: 10, Y: 10, HP: 100, MaxHP: 100, Alive: true}
+	done := make(chan struct{})
+	go func() {
+		s.applyWorldTick(world.TickResult{SpawnedMonsters: []world.Monster{mon}}, time.Unix(10, 0))
+		close(done)
+	}()
+	first := readFrame(t, clientConn)
+	firstCmd, _, err := decodeMessageLikeClient(first)
+	if err != nil {
+		t.Fatalf("decode spawned monster turn error = %v", err)
+	}
+	if firstCmd.Ident != mir176.SMTurn || firstCmd.Recog != world.MonsterActorID(mon) {
+		t.Fatalf("spawned monster turn = %+v, want monster SM_TURN", firstCmd)
+	}
+	second := readFrame(t, clientConn)
+	secondCmd, _, err := decodeMessageLikeClient(second)
+	if err != nil {
+		t.Fatalf("decode spawned monster feature error = %v", err)
+	}
+	if secondCmd.Ident != mir176.SMFeatureChanged || secondCmd.Recog != world.MonsterActorID(mon) {
+		t.Fatalf("spawned monster feature = %+v, want monster SM_FEATURE_CHANGED", secondCmd)
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("applyWorldTick did not finish")
+	}
+}
+
 func TestStruckDisplayConfigSuppressesOnlyConfiguredRecipients(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -7279,12 +7316,13 @@ func TestHandleSpellLightningLineBroadcastsHits(t *testing.T) {
 	caster.MP = cost + 10
 
 	targetX, targetY := -1, -1
-	for dx := 8; dx < 16 && targetX < 0; dx++ {
-		tx := x + dx
-		ty := y
+	lineDX, lineDY := 0, 0
+	for _, dir := range [][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}} {
+		tx := x + dir[0]*8
+		ty := y + dir[1]*8
 		clear := true
 		for step := 1; step <= 8; step++ {
-			if !mp.Walkable(x+step, y) {
+			if !mp.Walkable(x+dir[0]*step, y+dir[1]*step) {
 				clear = false
 				break
 			}
@@ -7293,30 +7331,32 @@ func TestHandleSpellLightningLineBroadcastsHits(t *testing.T) {
 			continue
 		}
 		targetX, targetY = tx, ty
+		lineDX, lineDY = dir[0], dir[1]
+		break
 	}
 	if targetX < 0 {
 		t.Fatal("could not find clear line for lightning test")
 	}
-	first, err := s.world.SpawnMonsterByNameAt(mapID, x+1, y, "鸡", 1)
+	first, err := s.world.SpawnMonsterByNameAt(mapID, x+lineDX, y+lineDY, "鸡", 1)
 	if err != nil {
 		t.Fatalf("SpawnMonsterByNameAt() first error = %v", err)
 	}
 	if len(first.Monsters) != 1 {
 		t.Fatalf("SpawnMonsterByNameAt() first monsters = %d, want 1", len(first.Monsters))
 	}
-	second, err := s.world.SpawnMonsterByNameAt(mapID, x+4, y, "鸡", 1)
+	second, err := s.world.SpawnMonsterByNameAt(mapID, x+lineDX*4, y+lineDY*4, "鸡", 1)
 	if err != nil {
 		t.Fatalf("SpawnMonsterByNameAt() second error = %v", err)
 	}
 	if len(second.Monsters) != 1 {
 		t.Fatalf("SpawnMonsterByNameAt() second monsters = %d, want 1", len(second.Monsters))
 	}
-	target, err := s.world.CreateCharacterWithAppearance("test", "target", "warrior", 0, 0, mapID, x+6, y)
+	target, err := s.world.CreateCharacterWithAppearance("test", "target", "warrior", 0, 0, mapID, x+lineDX*6, y+lineDY*6)
 	if err != nil {
 		t.Fatalf("CreateCharacterWithAppearance() target error = %v", err)
 	}
 	target.ShowHPUntil = time.Now().Add(time.Minute).UnixNano()
-	observer, err := s.world.CreateCharacterWithAppearance("test", "observer", "wizard", 0, 0, mapID, x+8, y)
+	observer, err := s.world.CreateCharacterWithAppearance("test", "observer", "wizard", 0, 0, mapID, x+lineDX*8, y+lineDY*8)
 	if err != nil {
 		t.Fatalf("CreateCharacterWithAppearance() observer error = %v", err)
 	}
@@ -11662,6 +11702,120 @@ func TestHandleClickNPCSendsMerchantSay(t *testing.T) {
 	}
 }
 
+func TestBroadcastNPCTrainingReachesOnlySameMapAndFormatsSummary(t *testing.T) {
+	s := newTestServer(t)
+	trainer := npc.Entity{ID: "trainer", Name: "Trainer", MapID: testMapID, X: 10, Y: 10}
+	inside := storage.Character{ID: "inside", Name: "inside", MapID: testMapID, X: 10, Y: 10, HP: 10}
+	far := storage.Character{ID: "far", Name: "far", MapID: testMapID, X: 30, Y: 30, HP: 10}
+	outside := storage.Character{ID: "outside", Name: "outside", MapID: "1", X: 1, Y: 1, HP: 10}
+	serverInside, clientInside := net.Pipe()
+	defer serverInside.Close()
+	defer clientInside.Close()
+	serverOutside, clientOutside := net.Pipe()
+	defer serverOutside.Close()
+	defer clientOutside.Close()
+	s.registerClient(serverInside, inside)
+	defer s.unregisterClient(serverInside)
+	serverFar, clientFar := net.Pipe()
+	defer serverFar.Close()
+	defer clientFar.Close()
+	s.registerClient(serverFar, far)
+	defer s.unregisterClient(serverFar)
+	s.registerClient(serverOutside, outside)
+	defer s.unregisterClient(serverOutside)
+
+	s.broadcastNPCTraining([]world.NPCTrainingHit{{NPC: trainer, Damage: 12}})
+	frame, ok := readFrameWithTimeout(t, clientInside, time.Second)
+	if !ok {
+		t.Fatal("same-map client did not receive trainer hit")
+	}
+	cmd, body, err := decodeMessageLikeClient(frame)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text, err := mir176.DecodePlain6Payload(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cmd.Ident != mir176.SMHear || DecodeString(text) != "Trainer:破坏力12, 平均值12" {
+		t.Fatalf("trainer hit command = %+v %q", cmd, DecodeString(text))
+	}
+	if frame, ok := readFrameWithTimeout(t, clientOutside, 100*time.Millisecond); ok {
+		t.Fatalf("different-map client received trainer hit: %x", frame)
+	}
+	if frame, ok := readFrameWithTimeout(t, clientFar, 100*time.Millisecond); ok {
+		t.Fatalf("far same-map client received trainer hit: %x", frame)
+	}
+
+	s.broadcastNPCTraining([]world.NPCTrainingHit{{NPC: trainer, Damage: 8, Total: 20, HitCount: 2}})
+	frame, ok = readFrameWithTimeout(t, clientInside, time.Second)
+	if !ok {
+		t.Fatal("same-map client did not receive second trainer hit")
+	}
+	_, body, err = decodeMessageLikeClient(frame)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text, err = mir176.DecodePlain6Payload(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := DecodeString(text); got != "Trainer:破坏力 8, 平均值10" {
+		t.Fatalf("cumulative trainer average = %q", got)
+	}
+
+	s.broadcastNPCTraining([]world.NPCTrainingHit{{NPC: trainer, Total: 20, HitCount: 2, Summary: true}})
+	frame, ok = readFrameWithTimeout(t, clientInside, time.Second)
+	if !ok {
+		t.Fatal("same-map client did not receive trainer summary")
+	}
+	_, body, err = decodeMessageLikeClient(frame)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text, err = mir176.DecodePlain6Payload(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := DecodeString(text); got != "Trainer:总破坏力20, 平均破坏力10" {
+		t.Fatalf("trainer summary = %q", got)
+	}
+}
+
+func TestEnsureNPCVisibleBroadcastsPositionChangeOnly(t *testing.T) {
+	s := newTestServer(t)
+	ch := storage.Character{ID: "npc-observer", Name: "observer", MapID: testMapID, X: 1, Y: 1, HP: 10}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	active := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+	entity := npc.Entity{ID: "trainer", Name: "Trainer", Kind: npc.KindTrainer, MapID: testMapID, X: 10, Y: 10, Dir: 4}
+	active.ensureNPCVisible(s, entity)
+	for i := 0; i < 3; i++ {
+		if _, ok := readFrameWithTimeout(t, client, time.Second); !ok {
+			t.Fatalf("missing initial NPC frame %d", i)
+		}
+	}
+
+	entity.X++
+	active.ensureNPCVisible(s, entity)
+	frame, ok := readFrameWithTimeout(t, client, time.Second)
+	if !ok {
+		t.Fatal("missing NPC position update")
+	}
+	cmd, _, err := decodeMessageLikeClient(frame)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cmd.Ident != mir176.SMTurn || int(cmd.Param) != entity.X || int(cmd.Tag) != entity.Y {
+		t.Fatalf("NPC position update = %+v", cmd)
+	}
+	if extra, ok := readFrameWithTimeout(t, client, 100*time.Millisecond); ok {
+		t.Fatalf("NPC position update emitted extra frame: %x", extra)
+	}
+}
+
 func TestHandleMerchantDlgSelectContinuesNPCScript(t *testing.T) {
 	s := newTestServer(t)
 	entity := testGuideNPC()
@@ -15165,6 +15319,58 @@ func TestApplyWorldTickSendsOrderedCharacterMagicHitOnce(t *testing.T) {
 	buf := make([]byte, 256)
 	if n, err := client.Read(buf); err == nil {
 		t.Fatalf("duplicate character magic hit frame = %q", buf[:n])
+	}
+	<-done
+}
+
+func TestApplyWorldTickSendsMonsterActionBeforeCharacterHit(t *testing.T) {
+	s := newTestServer(t)
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	target := storage.Character{ID: "monster-action-target", MapID: testMapID, X: 10, Y: 10, HP: 99, MaxHP: 100}
+	s.registerClient(server, target)
+	defer s.unregisterClient(server)
+	action := world.MonsterAction{MonsterID: "ordered-monster", Name: "测试怪物", MapID: target.MapID, X: target.X, Y: target.Y, Kind: world.MonsterActionHit}
+	hit := world.CharacterHit{Character: target, Damage: 1, AttackerID: action.MonsterID}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.applyWorldTick(world.TickResult{MonsterActions: []world.MonsterAction{action}, CharacterHits: []world.CharacterHit{hit}}, time.Now())
+	}()
+	seenAction := false
+	for i := 0; i < 4 && !seenAction; i++ {
+		frame, _, err := decodeMessageLikeClient(readFrame(t, client))
+		if err != nil {
+			t.Fatalf("decode monster action frame error = %v", err)
+		}
+		if frame.Ident == mir176.SMStruck {
+			t.Fatalf("character hit arrived before monster action: %+v", frame)
+		}
+		if frame.Ident == mir176.SMHit {
+			if frame.Recog != world.MonsterActorID(world.Monster{ID: action.MonsterID}) {
+				t.Fatalf("monster action frame = %+v, want ordered monster", frame)
+			}
+			seenAction = true
+		}
+	}
+	if !seenAction {
+		t.Fatal("missing monster SM_HIT action frame")
+	}
+	for i := 0; i < 4; i++ {
+		frame, _, err := decodeMessageLikeClient(readFrame(t, client))
+		if err != nil {
+			t.Fatalf("decode character hit frame error = %v", err)
+		}
+		if frame.Ident == mir176.SMStruck {
+			if frame.Recog != world.CharacterActorID(target) {
+				t.Fatalf("character hit frame = %+v, want target", frame)
+			}
+			break
+		}
+		if i == 3 {
+			t.Fatalf("missing character SM_STRUCK frame")
+		}
 	}
 	<-done
 }

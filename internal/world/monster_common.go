@@ -171,6 +171,18 @@ func (w *World) removeMonsterLocked(mon *Monster, adjustSpawn bool) {
 	}
 }
 
+func (w *World) scheduleMonsterRespawnLocked(mon *Monster, now time.Time) {
+	if mon.Race == 96 && mon.ZilkinKillCount > 0 {
+		mon.ZilkinRebirth = true
+		mon.RespawnAt = now.Add(time.Duration(4+w.rand.Intn(20)) * time.Second)
+		mon.ZilkinKillCount--
+		return
+	}
+	if mon.Spawn.RespawnSeconds > 0 {
+		mon.RespawnAt = now.Add(time.Duration(mon.Spawn.RespawnSeconds) * time.Second)
+	}
+}
+
 func (w *World) setMonsterLastHitterLocked(mon *Monster, attackerID string) {
 	w.setMonsterLastHitterAtLocked(mon, attackerID, time.Now())
 }

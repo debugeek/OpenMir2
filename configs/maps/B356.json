@@ -1,9 +1,8 @@
 {
   "id": "B356",
   "name": "药店",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 24,
+  "height": 24,
   "connections": [
     {
       "to_map": "5",
@@ -13,5 +12,6 @@
       "to_y": 314
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "/////////////////////////////////////////4///yf/fyf+PwT/f4D///D//8H//+P///P///v/////////////////"
 }

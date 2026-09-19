@@ -1,9 +1,9 @@
 {
   "id": "G009",
   "name": "热血足球场",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 80,
+  "height": 80,
   "connections": [],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////z8AAAAAAAD///8fAAAAAAAA/v//HwAAAAAAAP7//x8AAAAAAAD+//8fAAAAAAAA/v//HwAAAAAAAP7//x8AAAAAAAD+//8fAAAAAAAA/v//HwAAAAAAAP7//x8AAAAAAAD+//8fAAAAAAAA/v//HwAAAAAAAP7//x8AAAAAAAD+//8fAAAAAAAA/v//HwAAAAAAAP7//x8AAAAAAAD+//8fAAAAAAAA/v//HwAAAAAAAP7//x8AAAAAAAD+//8fAAAAAAAA/v//PwAAAAAAAP///wAAAAAAAADA//8AAAAAAAAAwP//AAAAAAAAAMD//wAAAAAAAADA//8AAAAAAAAAwP//AAAAAAAAAMD//wAAAAAAAADA//8AAAAAAAAAwP//AAAAAAAAAMD//z8AAAAAAAD///8fAAAAAAAA/v//HwAAAAAAAP7//x8AAAAAAAD+//8fAAAAAAAA/v//HwAAAAAAAP7//x8AAAAAAAD+//8fAAAAAAAA/v//HwAAAAAAAP7//x8AAAAAAAD+//8fAAAAAAAA/v//HwAAAAAAAP7//x8AAAAAAAD+//8fAAAAAAAA/v//HwAAAAAAAP7//x8AAAAAAAD+//8fAAAAAAAA/v//HwAAAAAAAP7//x8AAAAAAAD+//8/AAAAAAAA//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////8="
 }

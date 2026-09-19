@@ -1,9 +1,8 @@
 {
   "id": "D615",
   "name": "邪恶势力",
-  "width": 108,
-  "height": 103,
-  "blocked": [],
+  "width": 100,
+  "height": 100,
   "connections": [
     {
       "to_map": "D614",
@@ -173,5 +172,6 @@
       "count": 8,
       "respawn_seconds": 7
     }
-  ]
+  ],
+  "blocked_bits": "////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////n/////////////////j//////////////wf//////////////z/A//////////////8g+P////////////8HgP////////////8/AOD///////////n/Bwb+/////////w//P3DA/////////z/2f4EH+P////////9n/AdggP+f//////8/gD8AAOD/4P////9/AfgAAAD+A/7/////BwAHAACAf+D/////PwAAAAAA+AP8///n/wAwADBwABeA//9//gfBD4AHAAAA+P//z38A/gD8AQDAAP7///kD4B/gPyAIHuD//z8OAP4D/wMD8AP4//9HAOB/+H94gH+A////gAD+x//PD/wH9v//Hx7g//7//+F/YPz///MD/////x//B4D///9/4P//////fwD4////D/z//////w+A/////4H///////8A+P///z/g//////8P4P////8H/v////9/AP//////gP//////APj/////H+D/////H8D//////wH+/////wD+/////x/g/////wPg//////8B/P///z8A/v////8fgP+f//8D4P//////A/D/4P9/AP7/////PwD8A/7/D/D//////wGAf+L//wH+/////48Z+AP8/z/A/////3/8AxeA//8H8P/////jfwAA+P//APz///8P/w8AAP7/H4D///9/+P8ZwOD//wHo////w///Ax74/x8A/v//P/7/f+AD//+B4P////P//w8QwP8fIPz//xf///8AQPj/A4P//3/w//8PAID/PwD4//8D////AAD8/wPA//8P8P//DwDA/x8A/v9/gP///wEA/n8A8P//B/D//x8A8P8DgP//PwD+///hgP8PAPz//+DA//8PD/x/AOD//wcA8P8f8OD/DwD///8AAP//AwD//wD4//8PgMH/XwD4/x/A////ATz8PwCA//8D/v//P8DH/4cA/v9/4P///wcg/H8A8P//D/7///8A8P8PgP///+H///8fgP//AP7//x/+////Afz/D+D////x////H+D//wD+//8f/v///wH//w/g////wf7//x/w//8h/v//P+j///8D//8f4P///wP+//8/8P//Af///z/A////A///D+D///8B4P//H/j/PwD8//8HAP7/PwD//wGA//8/EOD//wPg/wcC4P//gAD+/78A+D8AAP7/hy6A/38BAP4BAID/f0AA8P8HAMAfAAD4+Q8AAPw/AAD8MQAAD/4BAID/GACAAwcAAOA/AAD4hwEAAPwAAAD+D0iA/wAAAPAfAADg/8AG+A8IIID/cwAA+B984P/hAQL+/wcAgP/DA/8/P/jw//8AAPh/CPz//4eP//8fAOD/D8D////w/P//QwD//wH+//8f4P//f0D4/z/w////A////w/M//+H////f/j////h//9//P///8f///8/////7//////+//////////////////////////////////////////////////////////////////////////////8="
 }

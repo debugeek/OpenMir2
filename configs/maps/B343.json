@@ -1,9 +1,8 @@
 {
   "id": "B343",
   "name": "恶魔药书铺",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 24,
+  "height": 28,
   "connections": [
     {
       "to_map": "4",
@@ -20,5 +19,6 @@
       "to_y": 251
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "/////////////////////////////////////3///wf+/wf8/3P4/3D4/3D///D/f+D/f+D/H+D/P+D/f/j///j/////////////////////////"
 }

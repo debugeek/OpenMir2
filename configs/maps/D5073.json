@@ -1,9 +1,8 @@
 {
   "id": "D5073",
   "name": "祖玛神殿七层",
-  "width": 80,
-  "height": 90,
-  "blocked": [],
+  "width": 100,
+  "height": 100,
   "connections": [
     {
       "to_map": "D5072",
@@ -109,5 +108,6 @@
       "count": 6,
       "respawn_seconds": 8
     }
-  ]
+  ],
+  "blocked_bits": "/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////+///////////////z/8///+//////////+B/v/D//////z/9/8P4P8f+P///4f/P/5/AP7/AP///z/w/8D/A+D/B8D///8D/gf4HwD8PwD+//8fwD8A/wDg/wGA//9/APgB4AcA/w8A8P//B4AfAD4A+H8AAP7//wD8A/ABwP8PAMD//x/gf4APAP7/AQD4/+8Bnwd8APD/PwAA/z9c+HDhA4D//wcA4P+Bzgc6HwD8//8AAPwf4D+A/wDg//8fAID/A/4B+AcA////AwD8f+APgD8A+P//fwDg/w94AOABgOf//w8A//8BAwAMADr8//8A8P8/AAAAAHDB//8PAP//BwAAAIAH/P//Afj//wAAAAB8AP7/H4D//x8AAADgB8D//wDw//8DAAAAHwD8/wcA/v9/AAAA+APg/z8AwP//DwAAwH8A//8BAPj//wEAAP4P+P8PAID//z8AAPD/wf9/AAD8//8HAID/P/7/AwDg////AAD8////HwAA////HwDA/////wAA+P///wMA/P///wcAwP///zwA4P///z8AAP7//4cLAP7///8BAPD//z/QAcD///8PAID///8DPAD4//9/AAD8//8fwAcA////AwDg//9/APwA4P//HwAA////B8AfAPz//wAA8Pz//wD8A4D//w8AQIf//x/gfwDw/z8AAC74//8D/w8A/v8BAPCA//9/+P8BwP8PAIAPwP//z/8/APh/AAD8APj////PAwD/AwDgA4D///9/uADgHwAAfwD8////Ax0A/AAA+A/g////P8ADgAcAwP8B/////wF8ADAAAP4/+P///wfADwAAAPD/x////38A/AEAAADP//////8PwD8AAAB0+P//////Af4HAADggv//////P/D/AAAAD/j//////4f/HwAA+AD8///////8/wMAwA+A////8////38AAD4A+P//H/7///8HAPAHwP///8D///9/AID/AP7//w/4////DwD8H/D///8B/////wDg/4P///8f4P///wcA/3/8////Bfz//z8A8Pz//////4D///8BQIf//////x/w//8PAC7w//////8D/v9/APAA//////9/wP//A4APwP//////D/j/HwD8APj//////wH//wDgA4D//////z/g/wcAfwD8//////8H/D8A+A/g////////gP8BwP8B////////H/APAP4/+P///////wN+APD/x////////zzAA4D//////////4cLGAD8/////////z/QAQDg//////////8BPAAA//////////8PwAcA+P////////9/APwAwP//////////B8AfAP7//////////wD8A/D//////////x/gf4D///////////8D/w/8//////////9/+P/l////////////z/8///////////////////////////////////////////////////////////////////////////////////////////////////////////////8="
 }

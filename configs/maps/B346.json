@@ -1,9 +1,8 @@
 {
   "id": "B346",
   "name": "恶魔监牢",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 20,
+  "height": 26,
   "connections": [
     {
       "to_map": "4",
@@ -13,5 +12,6 @@
       "to_y": 219
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "/////////////////////////////////////2///8D/D/3/5P9H/z/+/8H/H/7/9/////////////////////8="
 }

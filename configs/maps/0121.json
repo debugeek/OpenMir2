@@ -1,9 +1,8 @@
 {
   "id": "0121",
   "name": "兵营",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 18,
+  "height": 20,
   "connections": [
     {
       "to_map": "0",
@@ -13,5 +12,6 @@
       "to_y": 615
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "//////////////f/j/8f+D/wf+D/wP+B/wP/B/4P/B/4//D/4///////////"
 }

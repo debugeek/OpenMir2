@@ -1,9 +1,8 @@
 {
   "id": "D2008",
   "name": "霸者大厅",
-  "width": 104,
-  "height": 104,
-  "blocked": [],
+  "width": 100,
+  "height": 100,
   "connections": [
     {
       "to_map": "D2009",
@@ -109,5 +108,6 @@
       "count": 10,
       "respawn_seconds": 16
     }
-  ]
+  ],
+  "blocked_bits": "/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////M//////////////h3/4////////////P/AD/////////////wEe4P///////////w/AAPz//////////38AAID/////////P/8DAADw/////////+EfAAAA/v///////w/8AAAAwP///////3+ABwAAAPj///////8DMAAAAAD///////8fAAAAAADg//////8/AAAAAAAA/P//////IwAAAAAAgP//////PwAAAAAAAPD//////wEAAAAAAAD+/////w8AAAAAAADA/////38CAAAAAAAA+P////8DAAAAAAAAAP////8fAAAAAAAAAOD/////AAAwAAAAAAD8////BwAAAwAAAADA////PwAAMAAAAAAA/v///wEAAAAAAAAA8P///x8AAAAAAAAAgP////8DAAAAAAAAAPj///9/AAAAAAAAAMD/////DwAAAAAAAAD8/////wAAAHAAAADA/////x/AAAAOAAAA+P////8BDADAAAAAAP////8fwAAAAADAAOD/////AAAAAAAAHgD8////BwAAAAIA8AOA////PwAAAAAYgD8A8P///wEAAACAAfwHAP7//w8AAAwAGOD/AMD//38AAMAAAAD+HwD4//8DAAAMAADw/wEA//8fAAAAAACA/z8A+P//AAAAAAAA/P8DwP//BwAAAAAAwP8/AP7/fwAAAAAAAP7/AfD//w8AAADAAOD/D4D///8BAAAADAD+fwD8//8/AIABwADA/wPg////AwAYAAAA+B8A////fwCAAQAAAP8A+P///wcAAAAAA+AHwP///38AAAAAeAA8AP7///8DAAAAwA+AAfD///8fAAAAAP4AAAD/////AAAAAPAfAAD4////BwAAAID/AwDA/////wAAAB/4fwAA/v///x8AAPDB/wdw4P////8DAAAf/v8ADv////9/AADw8f8PwPD/////DwAAH///AAD//////wEAAPj/BwDg/////z8AAID/PwAA/P////8HAAD4/wEAgP//////AAAA/w8AAPD/////HwAA4H8AGAD+/////wMAAPwDwAPA/////38AAIAfAH4A+P////8PAADwAPAPAP//////AQAABoD/AeD/////PwAAAAD8PwD8/////wdgAADg/wfg//////8ADwAA//8A/v////8f+AEA+P8f8P//////wz8AwP//A/7/////f/4HAP7/f+b/////////APD////+////////H4D//////////////wP8/////////////3/g//////////////8P////////////////+f////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////8="
 }

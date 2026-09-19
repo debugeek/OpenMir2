@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"openmir2/internal/npc"
 	"openmir2/internal/protocol/mir176"
 	"openmir2/internal/storage"
 )
@@ -139,6 +140,16 @@ func (w *World) HitWithIdent(ch storage.Character, x, y, dir int, attackIdent ui
 		result.CharacterHits = append(result.CharacterHits, hit)
 		result.Character = ch
 	}
+	appendNPCTrainingHit := func(entity npc.Entity, damage int) error {
+		hit, err := w.applyNPCTrainingHitLocked(entity.ID, ch.ID, damage, false, now)
+		if err != nil {
+			return err
+		}
+		if hit.Damage > 0 {
+			result.NPCTrainingHits = append(result.NPCTrainingHits, hit)
+		}
+		return nil
+	}
 	baseSecondaryDamage := 0
 	if attackIdent == mir176.CMLongHit || attackIdent == mir176.CMWideHit {
 		baseSecondaryDamage = w.characterAttackDamageLocked(ch, nil, mir176.CMHit)
@@ -160,6 +171,18 @@ func (w *World) HitWithIdent(ch storage.Character, x, y, dir int, attackIdent ui
 	}
 	points := w.hitPointsForAttackLocked(ch.X, ch.Y, dir, attackIdent)
 	for _, point := range points {
+		if entity, ok := w.trainerAtExactPointLocked(ch.MapID, point[0], point[1]); ok {
+			damage := w.characterHitDamageForAttackLocked(ch, attackIdent)
+			if attackIdent == mir176.CMLongHit || attackIdent == mir176.CMWideHit {
+				damage = secondaryDamage
+			}
+			if damage > 0 {
+				if err := appendNPCTrainingHit(entity, damage); err != nil {
+					return AttackResult{}, err
+				}
+			}
+			continue
+		}
 		if mon := w.monsterAtExactPointLocked(ch.MapID, point[0], point[1]); mon != nil {
 			if !w.isProperMonsterTargetLocked(ch, blockers, mon) {
 				continue

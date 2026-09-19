@@ -1,9 +1,8 @@
 {
   "id": "D5071",
   "name": "祖玛神殿七层大厅",
-  "width": 59,
-  "height": 63,
-  "blocked": [],
+  "width": 50,
+  "height": 50,
   "connections": [
     {
       "to_map": "D5069",
@@ -20,5 +19,6 @@
       "to_y": 51
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "////////////////////////////////////////////////////////////+f//////w///////BX7u////B/AQ////H4AR+P//fwAAwP//fwAAAP7//wMAAPD//x8AAID///8AAAD8//8HAADg//8fAAAA//9/AAAA+P//AwAAwP//DwAAAP7/HwAAAPz/PwAAAPj/fwAAAMD9/wMAAADy/w8ACADg/38AAADA//8AAADA//8DAAAA/v8fAAAA+P//AAAA4P//BwAAwP//PwAAAP///wEAAPj//w8AAMD//38AAAD+//8DAADw//8fAACA////AAAA////J2AA/v///8ED/P///58f8P///x//0P///3/+5///////////////////////////////////////////Dw=="
 }

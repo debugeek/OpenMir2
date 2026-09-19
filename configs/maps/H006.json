@@ -1,9 +1,8 @@
 {
   "id": "H006",
   "name": "幻境六层",
-  "width": 120,
-  "height": 120,
-  "blocked": [],
+  "width": 100,
+  "height": 100,
   "connections": [
     {
       "to_map": "H005",
@@ -140,5 +139,6 @@
       "count": 25,
       "respawn_seconds": 5
     }
-  ]
+  ],
+  "blocked_bits": "///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////f/P//////////////gP//////////////B/j/////////////PwJf/////////////zEw4P///////////78DAPj///////////8/AAf///////+f+f/7A/z5////////GP0fP+A//v//////B4D/4AP/5///////P4P4Dw7wf/7//////wMAPnAA/+f//////z8AwAED8H/+/////38AAAwQAP/3//////8DAAAAADB///////8fAAAAAAD5w///////GQAAAADAP/j/////3wEAAAAA+AD//////x8AAAAAAADw//////8BAAAAAAAA/////88/AAAAAAA44P/////wAAAAAADAA/////8PBwAAAAAAPvj///+fMAAAAAIA8If/////gAEAACAAAP//////BxgAAAAGAPD/////fwAAAABgAADz/////wcAAAYAEgAw/////w8AAHAAAAMA4P///38AAAADADAAgP////8DAAAAABADAPj///8/AAAAAAAAAMD/////AggAAAAAAAD/////B4ABAAAAAAD4////PwAoAAAAAACA/////wcAAAAAIAAA+P////8AAMAAAAAAgP////8fAAAMAAAAAPj/////AwBgAAAAAAD+/////wIAAAAAABjA/////z8AAAAQAIAB/P////8DAAAAAAAAwP////8/AAAAAAAAAOD/////AwAAAAAAAAD4////PwAAAAAAAACA/////wAAAAAAAAAA+P///wcAAAAAAAAAgPz//38AAAAAAAAAEID///8HAAAMAAAAgAH8//9/AADgAQAAABzg////BwAAHgAAAOCB/////wEAIAAAAAAf/P///x8AgAAAAAD4w/////8BAAAAAACA/////88/AAAAAAAA+P///3/wAAAAAAAAgPn///8DBwAAAAAAAJj///8fMAAAAAAAAADw////gAEAAAAAAADA////DxgAAAAABAAA/P///wEAAAAAAAAAwP///z8AAAAAAAAAAP7///8HYAAAAAAABOD/////AAMAAAAAYAD/////D9AAAAAAAAf4/////wEfAAIAAHjg/////z/gADAAAMAH//////8HAICDAAD++P////9/AAA8mADg////////DwDggwcA/v///////wEAf/gAYP7//////38A8P8fAOb///////8fAP//AwD8////////AzD/fwDw////////fwDz/w8A/////////w8A/v8D+P////////8B+P9/wP////////8fgP//D/7/////////Af7///H/////////P/D//7///////////wf////////////////9//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////8="
 }

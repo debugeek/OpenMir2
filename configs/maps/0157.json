@@ -1,9 +1,8 @@
 {
   "id": "0157",
   "name": "祖玛寺长廊",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 30,
+  "height": 32,
   "connections": [
     {
       "to_map": "3",
@@ -34,5 +33,6 @@
       "to_y": 216
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "////////////////////////////////////////////////F//P+ID/ARzgPwAC+AcADP8AgMc/AKD5HwAg/h8AwP8PAPj/BwD4/wMA+H8AAPwPAID/BwDw/wEA/D8AgP8PGfD/5w/+///H////+///////////"
 }

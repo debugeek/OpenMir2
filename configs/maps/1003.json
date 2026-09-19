@@ -1,9 +1,8 @@
 {
   "id": "1003",
   "name": "服装店",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 20,
+  "height": 26,
   "connections": [
     {
       "to_map": "11",
@@ -13,5 +12,6 @@
       "to_y": 319
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "////////////////////////7/9//P+P///w/wP+f8D/D/7/8/8/7f8D/j/w/4D/B/1/+P+D/x/4/8P/f/7///8="
 }

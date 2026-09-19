@@ -1,9 +1,8 @@
 {
   "id": "0111",
   "name": "研究院",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 17,
+  "height": 21,
   "connections": [
     {
       "to_map": "0",
@@ -20,14 +19,6 @@
       "to_y": 226
     }
   ],
-  "monster_spawns": [
-    {
-      "monster_id": "练功师",
-      "x": 8,
-      "y": 12,
-      "range": 0,
-      "count": 1,
-      "respawn_seconds": 100
-    }
-  ]
+  "monster_spawns": [],
+  "blocked_bits": "//////////////+f/5//n/2f4R+BnwCeAbwB8AHwAfAH8B/wf/D/8f/3//8f"
 }

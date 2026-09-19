@@ -1,9 +1,8 @@
 {
   "id": "T339",
   "name": "地狱烈焰",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 40,
+  "height": 40,
   "connections": [],
   "monster_spawns": [
     {
@@ -14,5 +13,6 @@
       "count": 1,
       "respawn_seconds": 120
     }
-  ]
+  ],
+  "blocked_bits": "////////////////////////////////////////////////////////z/////+H/////wP/////Af7///8g/P//fwD4//8/APD//z8AwP//HwDg//8HAID//wMAAP//AQAA/v8AIAD8fwBwAPg/APiA8D8IYADwfwAgAPj/AAAA/P8DAAD+/wcAAP//DwCA//8fAMD//z8A4P//fwDw//9/APj///8g/P///wH+////A/////+H/////8////////////////8="
 }

@@ -1,9 +1,8 @@
 {
   "id": "B347",
   "name": "恶魔钱庄",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 22,
+  "height": 24,
   "connections": [
     {
       "to_map": "4",
@@ -13,5 +12,6 @@
       "to_y": 182
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "//////////////////////////8///+H///w/x/8/w/+/wf//8H/f/j/H/7/5///////////////////////////"
 }

@@ -1,9 +1,8 @@
 {
   "id": "0107",
   "name": "会议室",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 15,
+  "height": 18,
   "connections": [
     {
       "to_map": "0",
@@ -13,5 +12,6 @@
       "to_y": 320
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "///////////f/8f/w//gH+wP8gN8AH+A/8D/+P/+////Pw=="
 }

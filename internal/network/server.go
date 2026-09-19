@@ -522,6 +522,10 @@ func (a attackSyncAdapter) BroadcastHitImpact(result world.AttackResult) {
 	}
 }
 
+func (a attackSyncAdapter) BroadcastNPCTraining(hits []world.NPCTrainingHit) {
+	a.s.broadcastNPCTraining(hits)
+}
+
 type groupSyncAdapter struct {
 	s *Server
 }
@@ -1460,6 +1464,10 @@ func (s *Server) processSpellDelivery(conn net.Conn, activeChar *storage.Charact
 		for _, event := range result.Events {
 			s.handleSpellEvent(conn, activeChar, skillID, data.StdSkill{}, event)
 		}
+		s.broadcastNPCTraining(result.NPCTrainingHits)
+		if len(result.NPCTrainingHits) > 0 {
+			s.syncVisibleNPCs()
+		}
 		*activeChar = result.Character
 		s.updateClient(conn, *activeChar)
 		s.recordSpellActionTick(conn)
@@ -1577,6 +1585,7 @@ func (s *Server) processSpellDelivery(conn net.Conn, activeChar *storage.Charact
 		for _, event := range result.Events {
 			s.handleSpellEvent(conn, activeChar, skillID, skill, event)
 		}
+		s.broadcastNPCTraining(result.NPCTrainingHits)
 		s.handleSpellEvent(conn, activeChar, skillID, skill, world.SpellEvent{Kind: world.SpellEventMagicFireFail, Character: *activeChar})
 		s.recordSpellDeliveryAction(conn, direction, lateDelivery)
 		s.sendActionOK(conn)
@@ -1585,6 +1594,7 @@ func (s *Server) processSpellDelivery(conn net.Conn, activeChar *storage.Charact
 	for _, event := range result.Events {
 		s.handleSpellEvent(conn, activeChar, skillID, skill, event)
 	}
+	s.broadcastNPCTraining(result.NPCTrainingHits)
 	*activeChar = result.Character
 	s.recordSpellDeliveryAction(conn, direction, lateDelivery)
 	s.sendActionOK(conn)
@@ -4422,6 +4432,9 @@ func (s *Server) applyWorldTick(result world.TickResult, now time.Time) {
 		}
 	}
 	for _, hit := range result.CharacterHits {
+		if hit.Damage <= 0 {
+			continue
+		}
 		if ordered := orderedCharacterHitIDs[hit.Character.ID]; ordered > 0 {
 			orderedCharacterHitIDs[hit.Character.ID]--
 			continue
@@ -4459,9 +4472,33 @@ func (s *Server) applyWorldTick(result world.TickResult, now time.Time) {
 	for _, mon := range result.NameMonsters {
 		s.broadcastMonsterUsername(mon)
 	}
+	if len(result.SpawnedMonsters) > 0 {
+		s.broadcastMonsterAppear(nil, result.SpawnedMonsters)
+	}
 	s.syncVisibleMonsters()
 	s.syncVisibleDrops()
 	s.syncVisibleNPCs()
+}
+
+func (s *Server) broadcastNPCTraining(hits []world.NPCTrainingHit) {
+	for _, hit := range hits {
+		if hit.NPC.ID == "" {
+			continue
+		}
+		average := hit.Damage
+		if hit.HitCount > 0 {
+			average = hit.Total / hit.HitCount
+		}
+		message := fmt.Sprintf("破坏力%2d, 平均值%2d", hit.Damage, average)
+		if hit.Summary {
+			average = 0
+			if hit.HitCount > 0 {
+				average = hit.Total / hit.HitCount
+			}
+			message = fmt.Sprintf("总破坏力%2d, 平均破坏力%2d", hit.Total, average)
+		}
+		s.broadcastHear(s.ClientsAround(hit.NPC.MapID, hit.NPC.X, hit.NPC.Y, playerViewRange), hit.NPC.Name+":"+message, 0x00, 0xFF)
+	}
 }
 
 func (s *Server) applyOrderedSpellEvents(events []world.OrderedSpellEvent) {
@@ -4511,6 +4548,8 @@ func (s *Server) applyOrderedSpellEvents(events []world.OrderedSpellEvent) {
 			if len(clients) > 0 {
 				s.broadcastHitImpact(clients, hit)
 			}
+		case world.OrderedSpellEventNPCTraining:
+			s.broadcastNPCTraining([]world.NPCTrainingHit{event.NPCTrainingHit})
 		}
 	}
 }
@@ -6042,6 +6081,10 @@ func (c *Client) ensureNPCVisible(s *Server, entity npc.Entity) {
 		c.visibleNPCs = map[string]npc.Entity{}
 	}
 	if _, ok := c.visibleNPCs[entity.ID]; ok {
+		previous := c.visibleNPCs[entity.ID]
+		if previous.MapID != entity.MapID || previous.X != entity.X || previous.Y != entity.Y || previous.Dir != entity.Dir {
+			c.writeCommandLocked(s, mir176.Command{Ident: mir176.SMTurn, Recog: s.world.NPCActorID(entity.ID), Param: uint16(entity.X), Tag: uint16(entity.Y), Series: uint16(entity.Dir)}, nil)
+		}
 		c.visibleNPCs[entity.ID] = entity
 		return
 	}

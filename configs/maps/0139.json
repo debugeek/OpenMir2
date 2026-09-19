@@ -1,9 +1,8 @@
 {
   "id": "0139",
   "name": "竞技之家一楼",
-  "width": 50,
+  "width": 46,
   "height": 50,
-  "blocked": [],
   "connections": [
     {
       "to_map": "0137",
@@ -20,5 +19,6 @@
       "to_y": 15
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "/////////////////////////////////////////////////////////+////////H///////D/////J/7/////wP7///8fGP7///8DAP///38AgP///w8AwP///wEG4P//PwAA+P//BwAA/P//HAAA/P+fBQAA//8jAADg/38YAADc/w8AAADh/wEAAAT4PwAAAEH/BwAAAPD/AAAAAPw/AAAAAP8bBAAA4H8AAAAA/D8GAACA/98AAADw/z8AAAD+/wcAAMD//wEAAPj/fwAAAP//PwAA4P//HwAD/P//DwCA////BwDw////AwD+////wcD/////EPj///9/Zv//////8P////9//P////+///////////////////8P"
 }

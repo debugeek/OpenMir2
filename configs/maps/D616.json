@@ -1,9 +1,8 @@
 {
   "id": "D616",
   "name": "幽名圣域",
-  "width": 106,
-  "height": 105,
-  "blocked": [],
+  "width": 100,
+  "height": 100,
   "connections": [
     {
       "to_map": "D612",
@@ -181,5 +180,6 @@
       "count": 18,
       "respawn_seconds": 9
     }
-  ]
+  ],
+  "blocked_bits": "/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////+f//////////////z/+///////////////B//////////v///8P8P///////7////8/AP7////////5////weH///////8P////DwD4//////9f4P///wGA////////Bfj//w8A+P//////D4D//18MCP7/////PwD4///BMMD//////wEA/v8PAADw//9//h8AwP8/DAAA/v//4/8DAfD/4QHA4f//j/x/AAD+Pz4ADv///wH/DwDg/wMB8Pn/hw/g/wFg/n8AAIz/P0AE/j8I4f8PAMD5/2AA4P8HgP//AQKA/48PAP5/FPz/PyCg+H/8IPj/B+D//4cHiN/hD8D/fwD////8APwA/wD+/wf4////H4AD+A/g///A/////wcQzP+B//8P/v///38A4P8f/P//8P////8HAP//4f//h/////9/APj/D///D/z/////B8D/H/j//+H/////fwj+/8P//w///////w/w/x/+/1/4//////+A/7/w//+B//////8P/P+D//8P+v////9/4P8f+f8/gP//////Af5/iP//Afj/////D+D/A/j/H8D/////PwD/P4H//wT6/////wH4/yH8/wMA/////w/A/weA/x8C4f////8h/z+A8f8DAPj///8P8P8HPP4/gID///8fAP9/4If/BwDh////A/D/D//4/wBA/P//PwD///kf/h8AwP///wfx////4/8DAPz///+A////f/x/AMD+//8f8P///w//BwDg5///A/7////gfwAAPP7/f4D///8P+gcAAOD//wfg////oP8AAAD//38A/P//D/gPABD4//8HwM///wH/wADA//9/AHj8/x/gDx4A/v//DwCA//8BfOBD4P///wAE4J8PAIB/gP///w9AAPwDQBD8D/z//38AAMAfAADg/+H///8YAwC4AAAA/x////+feQAAAIIQ+P/7////gA8AAHgAgP//////RUDAAcAPAPj/////nwIAPgD+AcD//////wAg8APwPwD8/////wMAgH+A/4fA/////58AAPwP/P8A+P////8BMOD/4f8fAP////8PAAP/H///A+D///8/AHj4//v/fwD4////AcDP/////weA////HwD+/////38A4P///wPg//////8HAP5//n+Y//////9/AsD/o/8P/P//////DwDwD/r/4f///////wAB/oD/H////////w8A4A/w//v//////38AAFwC/v////////8AAAAA8P////////8fAABCAP//////////AAAAAPj/////////BQAAAcD/////////HwAgAAD+/////////wMAAgDw/////////38AeACQ//////////8PwA8A/P//////////A/4B4P//////////P/A/EP///////////4f/h/v////////////8//z///////////////////////////////////////////////////8="
 }

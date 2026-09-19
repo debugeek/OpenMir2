@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"openmir2/internal/data"
+	"openmir2/internal/npc"
 	"openmir2/internal/storage"
 	"openmir2/internal/world/core"
 )
@@ -31,7 +32,7 @@ func (w *World) visibleSpellAreaTargetsLocked(players []storage.Character, mapID
 }
 
 func (w *World) occupiedActorsLocked(players []storage.Character) map[monsterPosition]string {
-	occupied := make(map[monsterPosition]string, len(players)+len(w.monsters))
+	occupied := make(map[monsterPosition]string, len(players)+len(w.monsters)+len(w.data.NPCs.Entities))
 	for _, ch := range players {
 		if ch.ID == "" || ch.HP <= 0 || ch.AdminMode || ch.MapID == "" {
 			continue
@@ -43,6 +44,12 @@ func (w *World) occupiedActorsLocked(players []storage.Character) map[monsterPos
 			continue
 		}
 		occupied[monsterPosition{MapID: mon.MapID, X: mon.X, Y: mon.Y}] = mon.ID
+	}
+	for _, entity := range w.data.NPCs.Entities {
+		if !npc.IsTrainer(entity) || entity.Hidden || entity.MapID == "" {
+			continue
+		}
+		occupied[monsterPosition{MapID: entity.MapID, X: entity.X, Y: entity.Y}] = entity.ID
 	}
 	return occupied
 }
@@ -204,6 +211,7 @@ func (w *World) castChargeDirectionLocked(result *SkillCastResult, ch storage.Ch
 	occupied := w.occupiedActorsLocked(players)
 	var lastCharacter storage.Character
 	var lastMonster *Monster
+	var lastTrainer npc.Entity
 	front := monsterPosition{MapID: ch.MapID, X: ch.X + dirOffsets[dir][0], Y: ch.Y + dirOffsets[dir][1]}
 	frontOccupied := false
 	if occupant, ok := occupied[front]; ok && occupant != ch.ID {
@@ -294,6 +302,24 @@ func (w *World) castChargeDirectionLocked(result *SkillCastResult, ch storage.Ch
 				for _, action := range actions {
 					result.OrderedEvents = append(result.OrderedEvents, SpellEvent{Kind: SpellEventMonsterAction, MonsterAction: action})
 				}
+			} else if entity, found := w.data.NPCs.Entities[occupant]; found && npc.IsTrainer(entity) && !entity.Hidden && entity.MapID == ch.MapID {
+				pushX := entity.X + dirOffsets[dir][0]
+				pushY := entity.Y + dirOffsets[dir][1]
+				if !w.canOccupyLocked(mp, occupied, entity.MapID, pushX, pushY, entity.ID) {
+					kung = true
+					break
+				}
+				delete(occupied, monsterPosition{MapID: entity.MapID, X: entity.X, Y: entity.Y})
+				entity.X = pushX
+				entity.Y = pushY
+				entity.Dir = (dir + 4) % len(dirOffsets)
+				w.data.NPCs.Entities[entity.ID] = entity
+				occupied[monsterPosition{MapID: entity.MapID, X: entity.X, Y: entity.Y}] = entity.ID
+				selfDamagePower = 0
+				lastCharacter = storage.Character{}
+				lastMonster = nil
+				lastTrainer = entity
+				break
 			} else {
 				kung = true
 				break
@@ -364,6 +390,16 @@ func (w *World) castChargeDirectionLocked(result *SkillCastResult, ch storage.Ch
 		if hit.Damage > 0 {
 			result.MonsterHits = append(result.MonsterHits, hit)
 			result.OrderedEvents = append(result.OrderedEvents, SpellEvent{Kind: SpellEventMonsterHit, MonsterHit: hit})
+		}
+	}
+	if lastTrainer.ID != "" {
+		damage := w.rand.Intn((remainingPower+1)*10) + ((remainingPower + 1) * 10)
+		hit, err := w.applyNPCTrainingHitLocked(lastTrainer.ID, ch.ID, damage, false, time.Now())
+		if err != nil {
+			return ch, err
+		}
+		if hit.Damage > 0 {
+			result.NPCTrainingHits = append(result.NPCTrainingHits, hit)
 		}
 	}
 	if kung {

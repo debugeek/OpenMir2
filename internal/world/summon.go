@@ -32,17 +32,14 @@ func (w *World) findClosestMonsterTargetExceptLocked(mon *Monster, players map[s
 	var target storage.Character
 	best := 999999
 	for _, ch := range players {
-		if ch.ID == excludeID || ch.MapID != mon.MapID || ch.HP <= 0 {
-			continue
-		}
-		if characterTransparentStatePresent(ch) && !monsterCanSeeTransparent(mon) {
+		if ch.ID == excludeID || !w.monsterCanTargetSummonCharacterLocked(mon, ch) {
 			continue
 		}
 		if abs(ch.X-mon.X) > viewRange || abs(ch.Y-mon.Y) > viewRange {
 			continue
 		}
 		dist := abs(ch.X-mon.X) + abs(ch.Y-mon.Y)
-		if dist < best {
+		if dist < best || dist == best && monsterTargetOrderPreferred(ch, target) {
 			best = dist
 			target = ch
 		}
@@ -57,20 +54,17 @@ func (w *World) findClosestMonsterTargetAgainstMasterFriendsLocked(mon *Monster,
 	var target storage.Character
 	best := 999999
 	for _, ch := range players {
-		if ch.ID == master.ID || ch.MapID != mon.MapID || ch.HP <= 0 {
+		if ch.ID == master.ID || !w.monsterCanTargetSummonCharacterLocked(mon, ch) {
 			continue
 		}
 		if w.isProperFriendLocked(master, ch) {
-			continue
-		}
-		if characterTransparentStatePresent(ch) && !monsterCanSeeTransparent(mon) {
 			continue
 		}
 		if abs(ch.X-mon.X) > viewRange || abs(ch.Y-mon.Y) > viewRange {
 			continue
 		}
 		dist := abs(ch.X-mon.X) + abs(ch.Y-mon.Y)
-		if dist < best {
+		if dist < best || dist == best && monsterTargetOrderPreferred(ch, target) {
 			best = dist
 			target = ch
 		}
@@ -79,6 +73,14 @@ func (w *World) findClosestMonsterTargetAgainstMasterFriendsLocked(mon *Monster,
 		return storage.Character{}, false
 	}
 	return target, true
+}
+
+func (w *World) monsterCanTargetSummonCharacterLocked(mon *Monster, ch storage.Character) bool {
+	if !w.monsterCanTargetCharacterLocked(mon, ch) {
+		return false
+	}
+	mapData, ok := w.data.Maps[ch.MapID]
+	return ok && !mapData.Safe
 }
 
 func (w *World) tickSummonedMonsterLocked(mon *Monster, players map[string]storage.Character, now time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
@@ -113,15 +115,44 @@ func (w *World) tickSummonedMonsterLocked(mon *Monster, players map[string]stora
 		return nil, nil, nil, nil
 	}
 	mon.MasterDeadSince = time.Time{}
+	if abs(mon.X-master.X) > 20 || abs(mon.Y-master.Y) > 20 {
+		previousMapID := mon.MapID
+		previousX, previousY := mon.X, mon.Y
+		if !w.recallSummonedMonsterNearCharacterLocked(mon, master, characterListFromMap(players)) {
+			return nil, nil, nil, nil
+		}
+		action := w.monsterActionLocked(mon, MonsterActionSpaceMove)
+		action.PreviousMapID = previousMapID
+		action.PreviousX = previousX
+		action.PreviousY = previousY
+		return []MonsterAction{action}, nil, nil, nil
+	}
 	if mon.TargetCharacterID == master.ID {
 		mon.TargetCharacterID = ""
 		mon.TargetFocusAt = time.Time{}
 	}
 	if mon.TargetCharacterID != "" {
 		target, ok := players[mon.TargetCharacterID]
-		if !ok || target.MapID != mon.MapID || target.HP <= 0 {
+		if !ok || !w.monsterCanKeepCharacterTargetLocked(mon, target) {
 			mon.TargetCharacterID = ""
 			mon.TargetFocusAt = time.Time{}
+			mon.TargetX, mon.TargetY = -1, -1
+			mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchNoTargetMSLocked(mon)) * time.Millisecond)
+		}
+	}
+	if mon.TargetCharacterID == "" && !now.Before(mon.NextSearchAt) {
+		for _, preferredID := range []string{master.TargetID, master.LastHitterID} {
+			target, found := players[preferredID]
+			if !found || !w.monsterCanTargetSummonCharacterLocked(mon, target) || w.isProperFriendLocked(master, target) {
+				continue
+			}
+			if abs(target.X-mon.X) > mon.ViewRange || abs(target.Y-mon.Y) > mon.ViewRange {
+				continue
+			}
+			mon.TargetCharacterID = target.ID
+			mon.TargetFocusAt = now
+			mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchHasTargetMSLocked(mon)) * time.Millisecond)
+			break
 		}
 	}
 	if mon.TargetCharacterID == "" && !now.Before(mon.NextSearchAt) {
@@ -159,7 +190,7 @@ func (w *World) recallSummonedMonsterNearCharacterLocked(mon *Monster, master st
 		dir = 0
 	}
 	off := dirOffsets[dir]
-	x, y := master.X+off[0], master.Y+off[1]
+	x, y := master.X-off[0], master.Y-off[1]
 	occupied := w.occupiedActorsLocked(players)
 	if !w.canOccupyLocked(mp, occupied, master.MapID, x, y, mon.ID) {
 		return false
@@ -171,6 +202,7 @@ func (w *World) recallSummonedMonsterNearCharacterLocked(mon *Monster, master st
 	w.occupyMonsterLocked(mon)
 	mon.Dir = dir
 	mon.TargetCharacterID = ""
+	mon.TargetX, mon.TargetY = -1, -1
 	mon.TargetFocusAt = time.Time{}
 	mon.NextSearchAt = time.Time{}
 	mon.RunAwayMode = false

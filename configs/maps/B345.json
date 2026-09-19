@@ -1,9 +1,8 @@
 {
   "id": "B345",
   "name": "恶魔服装店",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 24,
+  "height": 24,
   "connections": [
     {
       "to_map": "4",
@@ -34,5 +33,6 @@
       "to_y": 205
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "//////////////////////////////////n///D/P+D/n+D//+D//8D//4D//wP//xv+/zv+/x///9//////////////////"
 }

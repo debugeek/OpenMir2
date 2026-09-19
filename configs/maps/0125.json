@@ -1,9 +1,8 @@
 {
   "id": "0125",
   "name": "东方客栈",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 25,
+  "height": 24,
   "connections": [
     {
       "to_map": "0126",
@@ -27,5 +26,6 @@
       "to_y": 252
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "//////////////////v//+P//4P//xP///P4/3fw/7+A/38A/v8A+P8D5v8P3v8/Pv9/BPj/AuD/D8D/P9D///H///f/////////"
 }

@@ -1,9 +1,8 @@
 {
   "id": "0160",
   "name": "磨房",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 13,
+  "height": 19,
   "connections": [
     {
       "to_map": "3",
@@ -13,5 +12,6 @@
       "to_y": 352
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "////////////////+x//wD/4g37YB/3AH/7n////fw=="
 }

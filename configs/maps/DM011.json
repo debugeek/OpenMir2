@@ -1,9 +1,8 @@
 {
   "id": "DM011",
   "name": "奸商",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 9,
+  "height": 13,
   "connections": [
     {
       "to_map": "D012",
@@ -13,5 +12,6 @@
       "to_y": 145
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "//////////vjAwcffv8f"
 }

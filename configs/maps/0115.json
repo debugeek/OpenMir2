@@ -1,9 +1,8 @@
 {
   "id": "0115",
   "name": "高级魔法师之家",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 22,
+  "height": 25,
   "connections": [
     {
       "to_map": "0",
@@ -13,5 +12,6 @@
       "to_y": 475
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "///////////////3/P8Y/h8A/4+B/7fA/2Xwfwz4DwD/A2D+AYj/AMB/AMB/BuD/APwfgP9j8P8R/P8B///4/7////8/"
 }

@@ -1,9 +1,8 @@
 {
   "id": "D2012",
   "name": "炼狱回廊",
-  "width": 105,
-  "height": 106,
-  "blocked": [],
+  "width": 100,
+  "height": 100,
   "connections": [
     {
       "to_map": "D2013",
@@ -140,5 +139,6 @@
       "count": 10,
       "respawn_seconds": 10
     }
-  ]
+  ],
+  "blocked_bits": "///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////n/5////////////8//P/w////////////gf8H/v//////////D/A/wP//////////fwD+Afj//////////wPADwD//////////x8AeEDg//////////8AAAMO/P////////8HAADwgf////////8/AACAP/D///////+fAQAA+Af+////////EAAAwP/A////////BwAAAPwf+P//////PwAAAMD/A////////wEAAAD4f+D//////x8AAAAY/w/8//////8BAMCA4f+B//////8fAAAMGPw/8P//////AQDAAOD/B/7/////HwAAAAD//8D/////fwAAABj4/x/4/////wMAAIDB//8D/////x8AAAAc/v9/4P////8AAADA8P//D/z///8HAAAAgP///4D///8/AAAAAPz//x/w////AQAAAOD///8D/v//DwAAAAD+//N/wP//fwAAAADg/x/+B/j//wMAAAAA///A/wD//38AAAAA8P8H+A/4//8PAAAAAP8/AP/A////AQBgAOD/AeAH/v//PwAABgD8DwA84P///wcAYACAfwCAAf////8AAAAA8AMAAPj///8fAAAYAB4AAMD/////ATDAA8AAAAD8////HwADfgAQAADg/////wEw8AcAAAAA/v///x8AgP8AAAAA4P////8AAPwfAAAGAPz///8HBuD/AwBgAID///8/8AD/PwAABgDw////AR/4/wcAAAAA/v//D/jD/38AAAAAwP//f4B//v8HAAAAAPj//wP8//+/AAAAAAD//3/A////AQAAwADg//8P/P//DwAAAAwA/P//gf//fwAAAMAAgP//P/D//wMAAAAAAPD//wf+/x8AAAAAAAD+///A//8AGAACAADA//8f+P8HgAEAAPAA/v//A/8/ABgAAAAP8P//f+D/AQAAAAAAgP///w/8PwAAAAAAAPz///+B/wcAAAAAGOD///8/8P8AAAAAgAH/////B/4fAAAAAADw/////8D/AwAYAACA/////x/4fwCAAQAA/P////8D/wcAGAAA4P////9/4H8AAAAAAP7/////D/wPAAAAAPD//////4H/AAAAAAD//////z/wDwAAAADw//////8HfgAAwAAA/v//////wAMDAAwAwP//////Hxh4AMAAAPj//////wPADwAAAAD//////38A/gEAgAHg//////8P8D8AADwA/P//////gf8HAOAHwP//////P/z/AAD/APz//////+f/HwD4H8D//////////wPA/wP+/////////38A/n/w//////////8P8P/P////////////gf//////////////P/z//////////////+f///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////8="
 }

@@ -1,9 +1,8 @@
 {
   "id": "0102",
   "name": "肉店",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 15,
+  "height": 15,
   "connections": [
     {
       "to_map": "0",
@@ -13,5 +12,6 @@
       "to_y": 265
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "//////////////w//A/oF/Af/B//3////////wE="
 }

@@ -1,9 +1,8 @@
 {
   "id": "D515",
   "name": "祖玛教主之家",
-  "width": 93,
-  "height": 52,
-  "blocked": [],
+  "width": 40,
+  "height": 40,
   "connections": [
     {
       "to_map": "D5074",
@@ -38,5 +37,6 @@
       "count": 12,
       "respawn_seconds": 11
     }
-  ]
+  ],
+  "blocked_bits": "////////////////////////////////////////////////////////z/////+H/////wP/////Af7///8g/P//fwD4//8/APD//z8AwP//HwDg//8HAID//wMAAP//AQAA/v8AIAD8fwBwAPg/APiA8D8IYADwfwAgAPj/AAAA/P8DAAD+/wcAAP//DwCA//8PAMD//x8A4P//HwDw//8fAPj///8g/P///wH+////A/////+H/////8////////////////8="
 }

@@ -1,9 +1,8 @@
 {
   "id": "DM002",
   "name": "国王陵墓",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 32,
+  "height": 38,
   "connections": [
     {
       "to_map": "D002",
@@ -13,5 +12,6 @@
       "to_y": 176
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "/////////////////////////////////////////f////j//3/w//8/4P//H8D//x+I//8/HP//Zzj+/8tw/P+ZYPj/MgDwfwcA8L+PAfjfhxn8b4Mw/ucEbP/HANz/DwCb/x8gw/8/QOb/f8Dw/3+Q+f//Mfz//2P+//8H////j////9////////////////////////8="
 }

@@ -1,9 +1,8 @@
 {
   "id": "D10062",
   "name": "赤月魔穴",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 40,
+  "height": 40,
   "connections": [
     {
       "to_map": "D10052",
@@ -70,5 +69,6 @@
       "count": 5,
       "respawn_seconds": 8
     }
-  ]
+  ],
+  "blocked_bits": "////////////////////////////////////////////////////////////////////////////P/v//88P8///D4Hz//8AweP//wDhw///APDH/38A8Mf/fwBgx/9/AIDB/38AAMD/fwYcwP//Bxzg//8HHvD//yc8+P//Nxj+//8/AP7//38A/v///wD+////A//////3//////////////////////////////////////////////////////////////8="
 }

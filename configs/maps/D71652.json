@@ -3,7 +3,6 @@
   "name": "首饰修理间",
   "width": 50,
   "height": 50,
-  "blocked": [],
   "connections": [
     {
       "to_map": "D71602",
@@ -13,5 +12,6 @@
       "to_y": 34
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "/////////////////////////////////////////////////////////////////////3/z//////+A//////8B/P////8D4P////8FgP////8HAP7///8fAMD///8/AAD+//9/AADw////AACA////AwAA/v//C8AB4P//B8AfAP//D4D/APj/HwD/B+D/fwD8H4D//wHwfwDw/wTA/wEQ/xEA/wcA/AMAzB8A+D8AkD8A8P8BAP8A4P8PAPgAwP9/AAAAwP//AwAAAP//HwAAAP7//wAAAPz//wcAAPz//z8AAPj///8BAPD///8PAOD///9/AMD/////B4H/////P4D//////wH//////w/+///////8////////////////////////////////////////////Dw=="
 }

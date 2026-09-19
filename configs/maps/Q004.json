@@ -1,9 +1,8 @@
 {
   "id": "Q004",
   "name": "尸王殿",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 30,
+  "height": 30,
   "connections": [],
   "monster_spawns": [
     {
@@ -30,5 +29,6 @@
       "count": 6,
       "respawn_seconds": 120
     }
-  ]
+  ],
+  "blocked_bits": "////////////////////////////////8///f/j//w/8//8B/v8/AP//B4D//wDA/x8A4P8DAPD/AAD8fwCA/z8A8P8fAP7/D8D//wf4//8D////4f////z//////////////////////////////w8="
 }

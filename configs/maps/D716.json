@@ -1,9 +1,8 @@
 {
   "id": "D716",
   "name": "石墓六层",
-  "width": 57,
+  "width": 50,
   "height": 50,
-  "blocked": [],
   "connections": [
     {
       "to_map": "D717",
@@ -69,5 +68,6 @@
       "count": 9,
       "respawn_seconds": 10
     }
-  ]
+  ],
+  "blocked_bits": "/////////////////////////////////////////////////////////////////////3/z//////+A//////8B/P////8D4P////8HgP////8PAP7///8/AMD///8/AAD+//9/AADQ////AAAA////AwAA/P//CwAA4P//BwAAAP//DwAAAPj/HwAAAOD/fwAAAYD//wEADwDw/wQAPAAQ/xEAwAAA/AMAAAEA+D8AAAAA8P8BAAAA4P8PAAAAwP9/AAAAwP//AwAAAP//HwAAAP///wAAAP7//wcAAPz//z8AAPj///8DAPj///8PAOD///9/AMD/////B5H/////P+D//////8H//////4//////////////////////////////////////////////////////Dw=="
 }

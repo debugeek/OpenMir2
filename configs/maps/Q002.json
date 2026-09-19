@@ -1,9 +1,9 @@
 {
   "id": "Q002",
   "name": "勇斗寺殿",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 25,
+  "height": 25,
   "connections": [],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "/////////////////////////3/+/3/4/3/g/3+A/38A/v8A/P8D/P8P/P8//P///P//////////////////////////////////////AQ=="
 }

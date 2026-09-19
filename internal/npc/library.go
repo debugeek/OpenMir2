@@ -11,7 +11,7 @@ const (
 	KindMerchant = "merchant"
 	KindQuest    = "quest"
 	KindGuard    = "guard"
-	KindSpecial  = "special"
+	KindTrainer  = "trainer"
 )
 
 type Library struct {
@@ -33,8 +33,6 @@ type Entity struct {
 	Hidden        bool            `json:"hidden,omitempty"`
 	ScriptID      string          `json:"script_id,omitempty"`
 	Merchant      MerchantProfile `json:"merchant,omitempty"`
-	Dialogue      string          `json:"dialogue,omitempty"`
-	Metadata      map[string]any  `json:"metadata,omitempty"`
 }
 
 type MerchantProfile struct {
@@ -117,9 +115,15 @@ func NormalizeKind(kind string) string {
 		return KindQuest
 	case KindGuard, "castle_guard":
 		return KindGuard
+	case KindTrainer, "training":
+		return KindTrainer
 	default:
-		return KindSpecial
+		return KindNormal
 	}
+}
+
+func IsTrainer(entity Entity) bool {
+	return NormalizeKind(entity.Kind) == KindTrainer
 }
 
 func (l Library) Conversation(entityID, label string, ctx Context) (Conversation, bool) {
@@ -134,7 +138,6 @@ func (l Library) Conversation(entityID, label string, ctx Context) (Conversation
 		return Conversation{
 			NPC:   entity,
 			Label: label,
-			Text:  entity.Dialogue,
 		}, true
 	}
 	script, ok := l.Scripts[entity.ScriptID]
@@ -156,9 +159,6 @@ func (s Script) Conversation(entity Entity, label string, ctx Context) Conversat
 	conversation := Conversation{NPC: entity, Label: label}
 	lbl, ok := lookupLabel(s.Labels, label)
 	if !ok {
-		if entity.Dialogue != "" {
-			conversation.Text = entity.Dialogue
-		}
 		return conversation
 	}
 	for _, proc := range lbl.Procedures {
@@ -190,9 +190,6 @@ func (s Script) Conversation(entity Entity, label string, ctx Context) Conversat
 			}
 		}
 		return conversation
-	}
-	if entity.Dialogue != "" {
-		conversation.Text = renderDialogueText(entity.Dialogue, ctx, entity)
 	}
 	return conversation
 }

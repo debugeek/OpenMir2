@@ -119,6 +119,7 @@ type monsterAttributesConfig struct {
 	MinAttack          int               `json:"min_attack"`
 	MaxAttack          int               `json:"max_attack"`
 	MagicAttack        int               `json:"magic_attack"`
+	MagicAttackMax     int               `json:"magic_attack_max,omitempty"`
 	TaoAttack          int               `json:"tao_attack"`
 	Speed              int               `json:"speed"`
 	Hit                int               `json:"hit"`
@@ -273,6 +274,7 @@ func loadConfigMonsters(dir string, items map[string]StdItem, report *StdLoadRep
 			AntiMagic:          cfg.AntiMagic,
 			AntiPoison:         cfg.AntiPoison,
 			MagicAttack:        cfg.MagicAttack,
+			MagicAttackMax:     cfg.MagicAttackMax,
 			TaoAttack:          cfg.TaoAttack,
 			Experience:         cfg.Experience,
 			Speed:              cfg.Speed,

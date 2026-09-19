@@ -20,7 +20,7 @@ func (l Library) Validate() error {
 			return fmt.Errorf("npc %s dir must be between 0 and 7", id)
 		}
 		switch entity.Kind {
-		case KindNormal, KindMerchant, KindQuest, KindGuard, KindSpecial:
+		case KindNormal, KindMerchant, KindQuest, KindGuard, KindTrainer:
 		default:
 			return fmt.Errorf("npc %s has unsupported kind %q", id, entity.Kind)
 		}

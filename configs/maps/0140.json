@@ -1,9 +1,8 @@
 {
   "id": "0140",
   "name": "仓库",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 17,
+  "height": 20,
   "connections": [
     {
       "to_map": "0",
@@ -13,5 +12,6 @@
       "to_y": 628
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "//////////////////////9n/4f9B/Yf+H/g/4H/F/5/+P/h/+3/////Dw=="
 }

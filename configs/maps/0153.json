@@ -1,9 +1,8 @@
 {
   "id": "0153",
   "name": "药店",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 21,
+  "height": 25,
   "connections": [
     {
       "to_map": "3",
@@ -20,5 +19,6 @@
       "to_y": 326
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "///////////////////////v///4/w/+/wD/D+D/AP8/4P8O/I/B/wD8D8D/APwPwP8H/P/B/z/9/+////////8f"
 }

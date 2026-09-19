@@ -1,9 +1,8 @@
 {
   "id": "E402",
   "name": "连接通道",
-  "width": 90,
-  "height": 93,
-  "blocked": [],
+  "width": 100,
+  "height": 100,
   "connections": [
     {
       "to_map": "E401",
@@ -20,5 +19,6 @@
       "to_y": 78
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////H//////x/P////////H///8fx////////x/8////APD////////D7/j/BwD///////9/fI7/HwDw////9///hwTg/wEA+v//P////wAA/g8AAP///8L//x8A4H8AAPD//wP8//8BAPQD4AD8/z/A//8/AAA/AB/A//8B6P//AwDwAfgB/P8PDvz/PwAAEoB/gP9/4MH//wcQAAD8D/z/Ax/w/3+AAQDw/8D/P/AD/vMHPAAA/x/+/wM/4D8/wB8A8P/x/3/wA/ihAf4BgP+/////f4APAPg/APj//////wd4AID/H4D//////38cYQD4/wPw///////jAwbA/z8A/v////8fP/AA/P8H4P////9//IN/wP//APj/////xz/8D/j/DwD/////P/7n/wD//wHw/////+L//x/w/x8A/P///wf///8B/P8B4P///z/8//8fwP8/AP///3/A////A/z/A/j///8H/P//P8D/P+D///8/4P///8P//wH+////B/7//x/+/w/w////f+D////w/z+A/////w/8//8D//8A/P////+B//8f8P8P4P////8f+P//gP9/AP7/////A/7/B/j/A/D//////8H//4D/H8D//////x/8/x/w/wD8//////8D//8B/g/A////////4f8/4P8A/v//////H/7/A/gf4P///////4P/P8D/B/7//////z/4/wf+f8D///////+D/3/w/w/4//////9/0P8H//+D////////H/g/8P8/wP///////4H/Af//B/z//////z/gB////wP///////8ffvj//z/w////////48P///8H////////PyT8////oP///////wfg////D/D//////3+A/////wD///////8H+P///x/A////////gP////8B+P//////D/z///8fgP///////8D/////AOD//////wf8////BwAe/////z+A////HwDg8f////8A8P///wEIBPz///4DAP///w/AAcD//4c/AMD//78AHwD8/1/4AQD+j/8B8AOA/v8BDwDg//gPAD8A4P8fcACA/wd+APgDAP7/AwAA+D/AB4B/AOD//wAQgP8BPAD4B8D//w/AAfwPAAIAfwD///8BPMD/AAAA4AP4////4Q/8BwAAAB6A////P/6BXwAAAAAA+P///+Mf8AEAAAAAgP//////Aw8AAwAAwP//////PwAAMAAAAPz//////wMAgAcAAOD//////3+AAf4DeAD+//////8HHOA/gAf4//////9/4AP/B/zA////////Az/w/8A//P//////H/gD/w/8w///////f8B/8P/Bf/z//////wf+/////////////3/g//////////////8P/v////////////////////////////////////////////////////////////////////////////////////////////8="
 }

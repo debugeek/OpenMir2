@@ -32,12 +32,16 @@ func newMonster(w *World, id string, tpl data.StdMonster, mapID string, x, y int
 		SearchNoTargetMS: tpl.SearchNoTargetMS, SearchHasTargetMS: tpl.SearchHasTargetMS,
 		HP: tpl.HP, MaxHP: tpl.HP, MP: tpl.MP, MaxMP: tpl.MP, MinAttack: tpl.MinAttack,
 		MaxAttack: tpl.MaxAttack, Defense: tpl.Defense, MagicDefense: tpl.MagicDefense, MagicDefenseMax: tpl.MagicDefenseMax, AntiMagic: tpl.AntiMagic, AntiPoison: tpl.AntiPoison,
-		MagicAttack: tpl.MagicAttack, TaoAttack: tpl.TaoAttack, Speed: tpl.Speed, Hit: tpl.Hit,
+		MagicAttack: tpl.MagicAttack, MagicAttackMax: tpl.MagicAttackMax, TaoAttack: tpl.TaoAttack, Speed: tpl.Speed, Hit: tpl.Hit,
 		WalkSpeedMS: tpl.WalkSpeedMS, WalkStep: tpl.WalkStep, WalkWait: tpl.WalkWait,
+		RunIntervalMS:    250,
 		AttackIntervalMS: tpl.AttackIntervalMS, Experience: tpl.Experience,
 		Alive: true, Spawn: spawn, PerHealing: 5, PerHealth: 5, PerSpell: 5, IncHealthSpellAt: now.UnixMilli(),
 	}
 	mon.MeatQuality = initialMonsterMeatQuality(w, tpl, id)
+	if tpl.Race == 96 && w.rand.Intn(3) == 0 {
+		mon.ZilkinKillCount = w.rand.Intn(3) + 1
+	}
 	if w.nextObjectOrder > 0 {
 		mon.ObjectOrder = w.nextObjectOrder
 		w.nextObjectOrder++
@@ -50,6 +54,9 @@ func newMonster(w *World, id string, tpl data.StdMonster, mapID string, x, y int
 		mon.AttackCount = 0
 	}
 	mon.LastWalkAt = now.Add(-time.Duration(w.rand.Intn(3000)) * time.Millisecond)
+	if tpl.Race == 107 {
+		mon.TargetFocusAt = now
+	}
 	return mon
 }
 
@@ -76,7 +83,7 @@ func boostSummonedMonsterLocked(mon *Monster) {
 }
 
 func applyMonsterTemplateState(mon *Monster, tpl data.StdMonster) {
-	if tpl.Animal || tpl.Race == 51 || tpl.Race == 52 || tpl.Race == 53 {
+	if tpl.Animal || tpl.Race == 51 || tpl.Race == 52 || tpl.Race == 53 || tpl.Race == 82 || tpl.Race == 84 {
 		mon.Animal = true
 	}
 	if tpl.FleeOnSight {
@@ -89,6 +96,10 @@ func applyMonsterTemplateState(mon *Monster, tpl data.StdMonster) {
 		mon.Hidden = true
 	}
 	if tpl.FixedHideMode {
+		mon.FixedHideMode = true
+	}
+	if tpl.Race == 95 {
+		mon.Hidden = true
 		mon.FixedHideMode = true
 	}
 	if tpl.StoneMode {

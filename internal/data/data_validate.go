@@ -100,6 +100,10 @@ func (m StdMap) Walkable(x, y int) bool {
 	if x < 0 || y < 0 || x >= m.Width || y >= m.Height {
 		return false
 	}
+	index := y*m.Width + x
+	if len(m.BlockedBits) > index/8 && m.BlockedBits[index/8]&(1<<uint(index%8)) != 0 {
+		return false
+	}
 	for _, p := range m.Blocked {
 		if p.X == x && p.Y == y {
 			return false

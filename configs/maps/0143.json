@@ -1,9 +1,8 @@
 {
   "id": "0143",
   "name": "密室",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 24,
+  "height": 28,
   "connections": [
     {
       "to_map": "3",
@@ -13,5 +12,6 @@
       "to_y": 320
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "/////////////////////////7///x///w/+/wf8/wP8/wH4/wH4/wH5/wjRfwDAPyDgPwDwHwD4DwD8LwD+fwD//4D//8H//+P///f/////////"
 }

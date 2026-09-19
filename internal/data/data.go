@@ -137,6 +137,7 @@ type StdMonster struct {
 	AntiMagic          int    `json:"anti_magic"`
 	AntiPoison         int    `json:"anti_poison,omitempty"`
 	MagicAttack        int    `json:"magic_attack"`
+	MagicAttackMax     int    `json:"magic_attack_max,omitempty"`
 	TaoAttack          int    `json:"tao_attack"`
 	Experience         int    `json:"experience"`
 	Speed              int    `json:"speed"`
@@ -175,7 +176,8 @@ type StdMap struct {
 	Width            int                `json:"width"`
 	Height           int                `json:"height"`
 	MonsterSpawnRate int                `json:"monster_spawn_rate"`
-	Blocked          []StdPoint         `json:"blocked"`
+	Blocked          []StdPoint         `json:"-"`
+	BlockedBits      []byte             `json:"blocked_bits,omitempty"`
 	StartPoints      []StdStartPoint    `json:"start_points,omitempty"`
 	Connections      []StdMapConnection `json:"connections"`
 	Spawns           []StdMapSpawn      `json:"monster_spawns"`

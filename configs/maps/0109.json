@@ -1,9 +1,8 @@
 {
   "id": "0109",
   "name": "药品屋",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 10,
+  "height": 15,
   "connections": [
     {
       "to_map": "0108",
@@ -13,5 +12,6 @@
       "to_y": 14
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "//////////7hhw8+/Pn/////Pw=="
 }

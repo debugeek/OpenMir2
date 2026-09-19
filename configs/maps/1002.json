@@ -1,9 +1,8 @@
 {
   "id": "1002",
   "name": "虎卫堂",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 24,
+  "height": 24,
   "connections": [
     {
       "to_map": "11",
@@ -22,5 +21,6 @@
       "count": 1,
       "respawn_seconds": 120
     }
-  ]
+  ],
+  "blocked_bits": "/////////////////////////////////8f//8P//8H//wD/fwD+HwD6HwDwPwDwfwD4/wD4/wH4/wP8/wf+/w///5//////"
 }

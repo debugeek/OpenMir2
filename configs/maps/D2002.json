@@ -1,9 +1,8 @@
 {
   "id": "D2002",
   "name": "连接通道",
-  "width": 54,
-  "height": 59,
-  "blocked": [],
+  "width": 50,
+  "height": 50,
   "connections": [
     {
       "to_map": "D2004",
@@ -141,5 +140,6 @@
       "count": 3,
       "respawn_seconds": 60
     }
-  ]
+  ],
+  "blocked_bits": "////////////////////////////////////////////////////////////////////////////////////////////////5///////n//////7f9T///+P/wP///8X/B/4//8fAH/A////ADyA////A2AA////DwAA/v//fwAA+P///wEA8P///wcAwP///x8AAP///z8AAPz//38AAPj//38AAOD///8AAID///8CAAD8//8DAADg//8HAAAA/v8PAAAA8P9/YAAA4P//xQEAgP//nw8AAP//f38BAP////8PBvz///8/HOD/////+Zj//////3f+////////////////////////////////////////////////////////////////////////////////////Dw=="
 }

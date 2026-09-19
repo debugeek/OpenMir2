@@ -1,9 +1,8 @@
 {
   "id": "B354",
   "name": "仓库",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 26,
+  "height": 26,
   "connections": [
     {
       "to_map": "5",
@@ -20,5 +19,6 @@
       "to_y": 324
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "////////////////////////////////////////////f/7///D//4D//wP4/wfi/w8I/j9g+P+R8/9v/v//+f//////////////////////////Dw=="
 }

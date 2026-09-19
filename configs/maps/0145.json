@@ -1,9 +1,8 @@
 {
   "id": "0145",
   "name": "室内",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 20,
+  "height": 23,
   "connections": [
     {
       "to_map": "3",
@@ -34,5 +33,6 @@
       "to_y": 8
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "/////////v/H/3/8/+f/P/7/8/8f///5/5///+P/F/z/gP8P4P8B/x/4/8P///z/////////////Dw=="
 }

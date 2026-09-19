@@ -1,9 +1,8 @@
 {
   "id": "0150",
   "name": "城堡内",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 23,
+  "height": 27,
   "connections": [
     {
       "to_map": "3",
@@ -27,5 +26,6 @@
       "to_y": 274
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "////////////////////////////////7/z/Y/x/APx/APwXAPwHAP8BwP8A8D8A/AMA/wGA/wDA/wH0/wn//8b///H///z///////8f"
 }

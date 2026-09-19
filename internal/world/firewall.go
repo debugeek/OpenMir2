@@ -163,6 +163,12 @@ func (w *World) applyFireWallTickLocked(players map[string]storage.Character, no
 			}
 		}
 		ownerDied := owner.ID != "" && owner.HP <= 0
+		if entity, ok := w.trainerAtExactPointLocked(field.MapID, field.X, field.Y); ok {
+			hit, err := w.applyNPCTrainingHitLocked(entity.ID, owner.ID, field.Damage, true, now)
+			if err == nil && hit.Damage > 0 {
+				w.pendingNPCTraining = append(w.pendingNPCTraining, hit)
+			}
+		}
 		for _, areaTarget := range w.spellAreaTargetsLocked(playerList, field.MapID, field.X, field.Y, 0) {
 			if areaTarget.Monster != nil {
 				mon := areaTarget.Monster

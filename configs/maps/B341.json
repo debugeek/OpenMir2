@@ -1,9 +1,8 @@
 {
   "id": "B341",
   "name": "封魔堡",
-  "width": 50,
-  "height": 51,
-  "blocked": [],
+  "width": 40,
+  "height": 40,
   "connections": [
     {
       "to_map": "4",
@@ -43,5 +42,6 @@
       "count": 2,
       "respawn_seconds": 60
     }
-  ]
+  ],
+  "blocked_bits": "//////////////////////////////////////////////////////////////////////////////////+//v///w/8////B/b///8D4////wHB////AYD///8DAP///wcA/v//AQD8/+8AAP7/RwAA//9DAID//wEAwP//AADg///gAPD//7EB+P//HwH8//8HA/z//38C+P//S4T9///DxP///4fg////j/H///8f+P///z/8////f/7///////////////8="
 }

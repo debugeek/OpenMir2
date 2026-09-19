@@ -1,9 +1,8 @@
 {
   "id": "0116",
   "name": "山谷客栈",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 21,
+  "height": 27,
   "connections": [
     {
       "to_map": "2",
@@ -20,5 +19,6 @@
       "to_y": 475
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "///////////////////n/3/+/+f+f4j/B/B/DP7HgH8A8A8A8AMAfwDwDwD/A/D/Afx/AP8f4P8D/P/A/w/8/8P//////38="
 }

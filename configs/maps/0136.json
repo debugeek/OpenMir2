@@ -1,9 +1,8 @@
 {
   "id": "0136",
   "name": "边界旅馆",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 19,
+  "height": 24,
   "connections": [
     {
       "to_map": "0",
@@ -13,5 +12,6 @@
       "to_y": 650
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "//////////////////z/w/+P+H+A/wD4A5gPhDwC8BbAH8B/MP4B8w/A/wD/B/w/8P/P////////"
 }

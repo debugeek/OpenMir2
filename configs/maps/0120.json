@@ -1,9 +1,8 @@
 {
   "id": "0120",
   "name": "铁匠铺",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 17,
+  "height": 20,
   "connections": [
     {
       "to_map": "2",
@@ -13,5 +12,6 @@
       "to_y": 492
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "/////////////////z/+P/g/8D+wHzAeMDgw8DDwA+APwD/w//D/8///Dw=="
 }

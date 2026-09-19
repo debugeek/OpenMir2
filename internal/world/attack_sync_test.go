@@ -71,6 +71,10 @@ func (s *recordingAttackSyncer) BroadcastHitImpact(AttackResult) {
 	s.calls = append(s.calls, attackSyncCall{kind: "monster-hit"})
 }
 
+func (s *recordingAttackSyncer) BroadcastNPCTraining([]NPCTrainingHit) {
+	s.calls = append(s.calls, attackSyncCall{kind: "npc-training"})
+}
+
 func (s *recordingAttackSyncer) SendSkillExp(magicID uint16, level byte, train int, delay time.Duration) {
 	s.calls = append(s.calls, attackSyncCall{kind: "skill-exp", magic: magicID, level: level, train: train, delay: delay})
 }
@@ -100,6 +104,21 @@ func TestApplyAttackSyncSendsSkillExpAfterAttackResults(t *testing.T) {
 	last := syncer.calls[len(syncer.calls)-1]
 	if last.magic != result.SkillMagicID || last.level != result.SkillLevel || last.train != result.SkillTrain || last.delay != result.SkillExpDelay {
 		t.Fatalf("skill exp call = %+v, want magic=%d level=%d train=%d delay=%s", last, result.SkillMagicID, result.SkillLevel, result.SkillTrain, result.SkillExpDelay)
+	}
+}
+
+func TestApplyAttackSyncOrdersNPCTrainingBeforeAction(t *testing.T) {
+	syncer := &recordingAttackSyncer{}
+	ApplyAttackSync(syncer, AttackResult{
+		NPCTrainingHits: []NPCTrainingHit{{Damage: 9}},
+	}, 1)
+	got := make([]string, 0, len(syncer.calls))
+	for _, call := range syncer.calls {
+		got = append(got, call.kind)
+	}
+	want := []string{"update", "character-hit", "npc-training", "action"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("call order = %v, want %v", got, want)
 	}
 }
 

@@ -1,9 +1,8 @@
 {
   "id": "E701",
   "name": "香石墓穴",
-  "width": 109,
-  "height": 104,
-  "blocked": [],
+  "width": 100,
+  "height": 100,
   "connections": [
     {
       "to_map": "D701",
@@ -85,5 +84,6 @@
       "count": 9,
       "respawn_seconds": 120
     }
-  ]
+  ],
+  "blocked_bits": "////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////8P//////////////D/7//9/8////////f+D///+A/////////wP4//8H8P///////w8D//8/AP7//////3844P//AeD//+n///+DAf7/DwD+/x/8//8fAeD/fwAg///A////OADw/wMA4P8H8P//hwIA/B+AAfwfCPz/PywggP8AIID/AMD//0MCB/gPYAL4DwD8/y8w+AA+ECIAPgBA/v8AwR/AAQMAwAEAgP8/AP4TDJAAAAwAAPj/B/D/AQAYAAAAYID/f4D/HwCAAAAAAA/I/w/8/wEAAAAAAPAB8P/h/x8AAAAAAAA+AP9///8BAAAAAADAB/D///8HAAAAAAAA+AD///8/AAAAAAAAAA/w////AwAAIAAGAGAA////PwAAAAPwAAAA/P//fwAAADiAHwAA4P///wMABMAD/QMAgP///x8AAAA++H8AAP7///8BAADwh/8PAOD///8fAIAB////AQD+//8/AAA88P//PwDg////AQDgA/P//ycA/v//DwAAHzD///8D8P///wBg+ADg//8/APz//w8AxgeA////A4D//x8AADwA+P//PwDw//8AAIABgP///wMA//8HAAAAAPz//w8AwP9/AAAAAPD//38AAPD/BwAAAoD///8HAAD/DwAAAAD+//9/AADwfwAAAAD4////AAAA/wMAAACA////BwAA8D8AAAAA+P//PwIAAP8DAAAAhv///zEAAPgPAAAAYPj//78DAMD/AwAAAMD///8/AAD+fwAAAADw///7AwDw/w8QAAAA/v8fPwCA//8BAAwAwP//4AMA/v9/AOABAPz/Dw4A8P//DwA/AAD/P3AAwP///wD4BwDA/wEDAP///w/g/wCA+A8QAPD///8B/x8AgP8AAAD///8/+P8DAOADAADw////z/9/AAAcAAAA////////DwDAAIAA+P///////wMAAAAAAP7//////38AAAAAAMD///////+PAAAAgAD4////////DwAAAAyA/////////wAAAOAB4P///////w8AAAA/APj///////8AAAD4B4D///////8PAAjg/wP4////////AAAA/z8A/P//////AwAA+P/DAP//////HwAAwP8/HvD//////wEAAP//4wH//////w8AAPj/DwzA/////z8QAMD/fwAA/v////8BAwD+/wcA8P////8PUAD4/x8AwP//////AADA//8AgP7/////DwAA/v8HAPz//////wAA8P8/AMD//////w8AwP//AQD9//////8BAP7/DwD4//////8fAPD//wGA////////A4D//z8A/P//////fwD+//8P8P///////x/w////gf////////+D////P/z///////8//P///+f/////////7/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////8="
 }

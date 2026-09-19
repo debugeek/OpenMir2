@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net"
 	"testing"
+	"time"
 
 	"openmir2/internal/storage"
 	"openmir2/internal/world"
@@ -80,5 +81,69 @@ func TestMonsterPacketTraceRecordsSpaceMoveObserverPhases(t *testing.T) {
 	}
 	if !bytes.Equal(traces[0].Frame, oldFrame) || !bytes.Equal(traces[1].Frame, newFrame) {
 		t.Fatal("space move trace frames differ from emitted frames")
+	}
+}
+
+func TestMonsterPacketTraceRecordsSameMapSpaceMovePhases(t *testing.T) {
+	s := newTestServer(t)
+	oldServer, oldClient := net.Pipe()
+	newServer, newClient := net.Pipe()
+	defer oldServer.Close()
+	defer oldClient.Close()
+	defer newServer.Close()
+	defer newClient.Close()
+	s.registerClient(oldServer, storage.Character{ID: "same-old", MapID: testMapID, X: 10, Y: 10, HP: 100, MaxHP: 100})
+	s.registerClient(newServer, storage.Character{ID: "same-new", MapID: testMapID, X: 20, Y: 20, HP: 100, MaxHP: 100})
+	defer s.unregisterClient(oldServer)
+	defer s.unregisterClient(newServer)
+	action := world.MonsterAction{MonsterID: "same-space", PreviousMapID: testMapID, PreviousX: 10, PreviousY: 10, MapID: testMapID, X: 20, Y: 20, Dir: 4, Status: 3, Kind: world.MonsterActionSpaceMove}
+	s.EnableMonsterPacketTrace(true)
+	done := make(chan struct{})
+	go func() {
+		s.broadcastMonsterSpaceMove(action)
+		close(done)
+	}()
+	oldFrame := readFrame(t, oldClient)
+	newFrame := readFrame(t, newClient)
+	<-done
+	if len(oldFrame) == 0 || len(newFrame) == 0 {
+		t.Fatal("same-map space move emitted an empty frame")
+	}
+	traces := s.MonsterPacketTraces()
+	if len(traces) != 4 || traces[0].Phase != "old.hide" || traces[1].Phase != "old.hide" || traces[2].Phase != "new.show" || traces[3].Phase != "new.show" {
+		t.Fatalf("same-map space move traces = %+v, want two old.hide then two new.show packets", traces)
+	}
+}
+
+func TestApplyWorldTickBroadcastsSummonSpaceMoveToBothMaps(t *testing.T) {
+	s := newTestServer(t)
+	oldServer, oldClient := net.Pipe()
+	newServer, newClient := net.Pipe()
+	defer oldServer.Close()
+	defer oldClient.Close()
+	defer newServer.Close()
+	defer newClient.Close()
+	oldMap := testMapID
+	newMap := "1"
+	s.registerClient(oldServer, storage.Character{ID: "summon-old", MapID: oldMap, X: 10, Y: 10, HP: 100, MaxHP: 100})
+	s.registerClient(newServer, storage.Character{ID: "summon-new", MapID: newMap, X: 10, Y: 10, HP: 100, MaxHP: 100})
+	defer s.unregisterClient(oldServer)
+	defer s.unregisterClient(newServer)
+	action := world.MonsterAction{MonsterID: "summon-space", PreviousMapID: oldMap, PreviousX: 10, PreviousY: 10, MapID: newMap, X: 10, Y: 10, Dir: 4, Status: 3, Kind: world.MonsterActionSpaceMove}
+	s.EnableMonsterPacketTrace(true)
+	done := make(chan struct{})
+	go func() {
+		s.applyWorldTick(world.TickResult{MonsterActions: []world.MonsterAction{action}}, time.Unix(10, 0))
+		close(done)
+	}()
+	oldFrame := readFrame(t, oldClient)
+	newFrame := readFrame(t, newClient)
+	<-done
+	if len(oldFrame) == 0 || len(newFrame) == 0 {
+		t.Fatal("summon space move emitted an empty frame")
+	}
+	traces := s.MonsterPacketTraces()
+	if len(traces) != 2 || traces[0].Phase != "old.hide" || traces[1].Phase != "new.show" {
+		t.Fatalf("summon space move traces = %+v, want old.hide then new.show", traces)
 	}
 }

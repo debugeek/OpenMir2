@@ -1,9 +1,8 @@
 {
   "id": "0132",
   "name": "边界书店",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 22,
+  "height": 24,
   "connections": [
     {
       "to_map": "0",
@@ -27,5 +26,6 @@
       "to_y": 636
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "////////////////////////+P8//v8H/38O/8/B/wPw/wH+x8D/YODfAfxzoP9I/H+Y/z/z/3/+/8//////////"
 }

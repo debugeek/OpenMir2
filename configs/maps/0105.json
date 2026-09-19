@@ -1,9 +1,8 @@
 {
   "id": "0105",
   "name": "首饰店",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 27,
+  "height": 29,
   "connections": [
     {
       "to_map": "0",
@@ -34,5 +33,6 @@
       "to_y": 277
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "//////////////////////////3//wf//x/+/38g//8H8P9/gP/fA/5/EPz/4ej/B8L/fwD+/wf4/z3o/wfh/x+O/38g+P8H4P9/gP//A/7/H/z//+n//9///////////38="
 }

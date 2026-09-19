@@ -1,9 +1,8 @@
 {
   "id": "0148",
   "name": "客栈",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 15,
+  "height": 19,
   "connections": [
     {
       "to_map": "3",
@@ -13,5 +12,6 @@
       "to_y": 368
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "///////////////////////f/Bf8AXwBv8Af4L/xf//f//8f"
 }

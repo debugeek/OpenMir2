@@ -1,9 +1,8 @@
 {
   "id": "0122",
   "name": "宫殿",
-  "width": 50,
-  "height": 64,
-  "blocked": [],
+  "width": 51,
+  "height": 55,
   "connections": [
     {
       "to_map": "0",
@@ -27,5 +26,6 @@
       "to_y": 187
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "//////////////////////////////////////////////////////////////+f//////9/+P//////gf//////B/j/////H4D/////fwD4/////wGA/////wcA+P///x8AgP///38CAvj///8BAID///9nBAD4//8fAACA//9/AAAA+v//AQYAgP//BwACQPj/HwCEAYD/fwAAHgL4/wEIkAGA/wcAwBgA+B8AAMMAgH8AAAwDAPgBCAAMAIAfAABgAAL4AQCAAQDAHwAABAAA/wEAAAQA/B8AAAAE8P8BAAAAwP8fAABgAP//AQAAAPz/HwAAAPT//wEACMD//wcAAED//z8AAAD8//8BAADw//8fAQjA////HQAA/////wEA/P///x8A8P////8BwP////8fAP//////Afz/////H/D//////8H//////x/////////9//////////8f"
 }

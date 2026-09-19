@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"openmir2/internal/data"
+	"openmir2/internal/npc"
 	"openmir2/internal/storage"
 )
 
@@ -35,6 +36,7 @@ type pendingSpell struct {
 	DueAt                   time.Time
 	CasterID                string
 	TargetMonsterID         string
+	TargetNPCID             string
 	TargetCharacterID       string
 	SetCasterTarget         bool
 	CharacterDamage         bool
@@ -206,6 +208,7 @@ type SkillCastResult struct {
 	DefenceDurationSeconds int
 	MonsterHit             *AttackResult
 	MonsterHits            []AttackResult
+	NPCTrainingHits        []NPCTrainingHit
 	MonsterActions         []MonsterAction
 	CharacterHits          []CharacterHit
 	NameColorCharacters    []storage.Character
@@ -348,6 +351,16 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 			targetIDResolved = target.Alive
 		}
 		if !targetIDResolved {
+			for _, entity := range w.data.NPCs.Entities {
+				if npc.IsTrainer(entity) && !entity.Hidden && entity.MapID == ch.MapID && w.NPCActorID(entity.ID) == targetID && abs(entity.X-targetX) <= 1 && abs(entity.Y-targetY) <= 1 {
+					targetX, targetY = entity.X, entity.Y
+					startTargetID = targetID
+					targetIDResolved = true
+					break
+				}
+			}
+		}
+		if !targetIDResolved {
 			for _, target := range players {
 				if target.HP > 0 && target.MapID == ch.MapID && CharacterActorID(target) == targetID && abs(target.X-targetX) <= 1 && abs(target.Y-targetY) <= 1 {
 					targetX, targetY = target.X, target.Y
@@ -439,6 +452,17 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 				result.TargetIDResolved = false
 			}
 			result.Character = ch
+			break
+		}
+		if entity, ok := w.trainerByActorIDLocked(targetID, ch.MapID, targetX, targetY); ok {
+			if !w.magCanHitTargetLocked(ch.MapID, ch.X, ch.Y, entity.X, entity.Y) {
+				result.TargetIDResolved = false
+				result.Character = ch
+				break
+			}
+			damage := w.spellDamageLocked(ch, skill, state)
+			w.pendingSpells = append(w.pendingSpells, pendingSpell{DueAt: now.Add(spellDelayMagic), CasterID: ch.ID, TargetNPCID: entity.ID, TargetX: targetX, TargetY: targetY, Damage: damage})
+			result.MagicTargetID = targetID
 			break
 		}
 		target, ok := w.explicitCharacterTargetLocked(players, ch.MapID, targetX, targetY, targetID)
@@ -789,6 +813,17 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 			skillTrained = mon.Race >= 50
 			break
 		}
+		if entity, ok := w.trainerByActorIDLocked(targetID, ch.MapID, targetX, targetY); ok {
+			if !w.magCanHitTargetLocked(ch.MapID, ch.X, ch.Y, entity.X, entity.Y) {
+				result.TargetIDResolved = false
+				result.Character = ch
+				break
+			}
+			damage := w.spellSpiritDamageLocked(ch, skill, state)
+			w.pendingSpells = append(w.pendingSpells, pendingSpell{DueAt: now.Add(1200 * time.Millisecond), CasterID: ch.ID, TargetNPCID: entity.ID, TargetX: targetX, TargetY: targetY, Damage: damage})
+			result.MagicTargetID = targetID
+			break
+		}
 		target, ok := w.explicitCharacterTargetLocked(players, ch.MapID, targetX, targetY, targetID)
 		if !ok || !w.magCanHitTargetLocked(ch.MapID, ch.X, ch.Y, target.X, target.Y) || !w.isProperCharacterTargetLocked(ch, target) || !w.characterMagicHitAllowedLocked(target) {
 			result.TargetIDResolved = false
@@ -812,6 +847,16 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 			w.pendingSpells = append(w.pendingSpells, pendingSpell{DueAt: now.Add(spellDelayMagic), CasterID: ch.ID, TargetMonsterID: mon.ID, TargetX: targetX, TargetY: targetY, Damage: damage, SetCasterTarget: true})
 			result.MagicTargetID = MonsterActorID(*mon)
 			skillTrained = mon.Race >= 50
+			break
+		}
+		if entity, ok := w.trainerByActorIDLocked(targetID, ch.MapID, targetX, targetY); ok {
+			if !w.magCanHitTargetLocked(ch.MapID, ch.X, ch.Y, entity.X, entity.Y) {
+				result.TargetIDResolved = false
+				result.Character = ch
+				break
+			}
+			w.pendingSpells = append(w.pendingSpells, pendingSpell{DueAt: now.Add(spellDelayMagic), CasterID: ch.ID, TargetNPCID: entity.ID, TargetX: targetX, TargetY: targetY, Damage: w.spellDamageLocked(ch, skill, state)})
+			result.MagicTargetID = targetID
 			break
 		}
 		target, ok := w.explicitCharacterTargetLocked(players, ch.MapID, targetX, targetY, targetID)

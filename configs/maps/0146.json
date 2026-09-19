@@ -1,9 +1,8 @@
 {
   "id": "0146",
   "name": "二楼",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 20,
+  "height": 24,
   "connections": [
     {
       "to_map": "0145",
@@ -20,5 +19,6 @@
       "to_y": 4
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "//////////////////////7/x/8/+P8f/9/4/8D/D/z/gf8f8P8Z/v/A/2f4/wv/3/D/p/9/////////"
 }

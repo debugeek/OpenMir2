@@ -1,9 +1,8 @@
 {
   "id": "D614",
   "name": "传奇部落",
-  "width": 107,
-  "height": 102,
-  "blocked": [],
+  "width": 100,
+  "height": 100,
   "connections": [
     {
       "to_map": "D615",
@@ -181,5 +180,6 @@
       "count": 18,
       "respawn_seconds": 10
     }
-  ]
+  ],
+  "blocked_bits": "/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////5/////////////////4//////////////+D////////f///n/9/4P////////f///j/U/7//////z///wf/F4D///////+w/7/FfwD4///5//8B+P8A+AMA//+P//8fBP8HgA8AwP8/8P//AcA/MHAAAPj/C/z/H2D4BwAAAID+D4D/fwCAPwAAAADgfwj4/wcMQAEAABAG/gPG/z8CAAAQAAjwwX8Y/v8AABAAAYQBP/iD8f8HAMADfAA8/AMXgP9/AAB+wGfg9z8AAPz/DwDwD3gP//8DAOD//wGA/xjw+P8/AAD//z+A/P/D3///AwH4//8HwP9//v//fwDA////APz//////wcA/v//H8D//////38A8P///wP8//////8DgP///3/g//////+PAfz///8P/P////9/AOD/////gf//////AQD/////H+D/////DwH4/////wH4////f0DA/////x8A/////w8A/v////8B8P///38A5P////8/AP////8CAP7/////A/D///8PAOD/////P8D//z9/wDD+/////2H+///wAR7x/////wP///8PjvED/v///3/4////CIB/wP7////D////3wP4D+j///8X/P///3+A/wH+//9/wP////8P+D/A////E/z/////gf8H+P//D8D/////P/z/AP//fwj+/////4P/H8D//w/A/////z/w/wP4//8A+PP///8D/n+A//8fAB79//8/4P8P+P//AwLA////h///Af//fwCA/P//f/z/H4D//w8AsP///+f//wH4//8BSPH//z///x/g//8/AAD//3/4//8B////BwDG///P//8/+P///wAA/P9//P/5w////x8AAP//4v+BP/7///8DAMD/D/4f8PH///9/AAD8f+D/AYD/////DwDA/wH+HwD4/////wEQ+A/gfwDg/////x8AAP8Q/wcw//////8BAPgf4D+A//////8fAID/A/ww/P//////AQD8PwCH4f//////PwDm/wMAAP7//////wP4/z8EAOD//////z/A//8DAAD+//////8B/P9/AADg//////8D4P//BwAA//////8fAPz/fwAA4P//////AMH//wMAAuz/////BwD8/w8DAID+////fwDg/394AADg/////wMA/P/BDwAA/P///w8AgP8P/gEAgP///38AAOD/8D8AAPj///8jgAD8h/+HAQD+//8/AgCAH/z/gADh////+wAA8OD/Hx4Q+P//lw8AAwD///PDh///f/AIeAD4//9/fPj//w+IgA+A////j4f///8BHv4B/v///0H+//8/8PMf8P///z/w////h///h/////+H//////z/f/z///9//P///////+//////7/////////////////////////////////////////////////////8="
 }

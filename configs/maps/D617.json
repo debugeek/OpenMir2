@@ -1,9 +1,8 @@
 {
   "id": "D617",
   "name": "恐怖空间",
-  "width": 110,
-  "height": 104,
-  "blocked": [],
+  "width": 100,
+  "height": 100,
   "connections": [
     {
       "to_map": "D616",
@@ -181,5 +180,6 @@
       "count": 10,
       "respawn_seconds": 7
     }
-  ]
+  ],
+  "blocked_bits": "/////////////////////////////////////////////////////////////////////////////////////////////////////////////////7/////////////////5/////////////+ef/////////////z/+8P/////////////BBf7///////////8PAID///////////8/ABj4////////////AACA////////////HwAAgP///////////wMAAPj//////////38AAID////////8//8PAADw//////8f/v//AQDA////////kP//fwAQ/v//////Afj//weA8f//////DwD+/38A/P//////fwCg//8H8P///////8MA+v9/AP///////x8egP//B/j////////wA/D//8D///////+PfwD+/w/+//////8//A/Y///w////////4f8B8P+H////////D/9/AP8P+P//////f/j/B+D/gf//////f4L/fwD/D/j//////wP4/wf4f4D//////x+A/3/A/wP8////f/4A+P8H/z+A/////+MDwP//8P8H8P///08cgPj/j///APz///8BAAD///j/HwD///8PAAD+/4f//wPg//9fAADg/w/4/38A/v//AcAA/v+B//8PwP//DzA/4P8P/P//AeD/PwDww/8HgP//P8D4/wGA//x/ALD//weA/z8A/P//BwD6/38A4P8H4P//fxCA//9HAP5/AP///0EA8f9/AOD/B/j//x8AAP7/BzD/f8D///8AAOP//4D//wf+//8DAAH+/y/8/3/w//8fcAD4/+fg//8P////Aw/A/z8G////+P//P/gB/v8B+P//j////4c/8P8PwP//P/j////8h/8/Av7//4P///////z/AfD//3/4z///////H4D///+H//D//////wD4//9/8A/+/////4OA////B1yg/////x8A+P//fwAI+v////8MgP///wcAhv////8fAfz///8AAPD/////AID///8PAAD+////R+Dx////BADg////PwA//v//BwAA+P///wPwg///HyAAgP///3+Af/j//wMBQOD///8P/A/+/38AAAD+////4f/h//8PAQDA//////8/3P//AwAA8P//////B/z/PwAAAP7//P//f8D//wcAAMD/A////4fs//8AAAD8H+D//38A/v8/IADA/2H+//8H4P//AwMY/A/o////AP7/f3gAAD4C+P//T/j//88PAMABkP/+/8D/////AQAAAOCP/wf+////PwAAAAD++B/g/////8cAAADABf6A///////MAAIAAOAD/P////8fHgAwQgEc4P//////8QMBIwAAAP//////v39AgAcAAPj///////8PwPwAAMD/////////A+AfAAD+////////Pwj/AwDw/////////wf4fwCA///////////A/w8G/P////////8f/v9h4P//////////8f8/AP7/////////////h/n//////////////8D//////////////x/+///////////////x//////////////+///////////////////////////////////////////////////////8="
 }

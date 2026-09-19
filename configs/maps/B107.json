@@ -1,9 +1,8 @@
 {
   "id": "B107",
   "name": "圣域",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 21,
+  "height": 21,
   "connections": [],
   "monster_spawns": [
     {
@@ -14,5 +13,6 @@
       "count": 1,
       "respawn_seconds": 6
     }
-  ]
+  ],
+  "blocked_bits": "///////////////////////+/4f/f+D/B/h/AP4HgP8B+H+A/x/4/4f///n//////////////wE="
 }

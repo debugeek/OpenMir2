@@ -1,9 +1,8 @@
 {
   "id": "B355",
   "name": "书店",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 20,
+  "height": 20,
   "connections": [
     {
       "to_map": "5",
@@ -27,5 +26,6 @@
       "to_y": 294
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "////////////////////////f///wP8P/n/w/w///8H/d/4/8P+H///4/9////////8="
 }

@@ -597,6 +597,10 @@ func (w *World) castLightningLineSkillLocked(result *SkillCastResult, ch storage
 	hitMonsters := map[string]struct{}{}
 	hitCharacters := map[string]struct{}{}
 	for i := 0; i < 13; i++ {
+		if entity, ok := w.trainerAtExactPointLocked(ch.MapID, sx, sy); ok {
+			w.pendingSpells = append(w.pendingSpells, pendingSpell{DueAt: now.Add(spellDelayMagic), CasterID: ch.ID, TargetNPCID: entity.ID, TargetX: sx, TargetY: sy, TargetRange: 1, Damage: lineDamage})
+			hitCount++
+		}
 		areaTarget := w.movingObjectAtPointLocked(players, ch.MapID, sx, sy)
 		if areaTarget.Monster != nil {
 			mon := areaTarget.Monster
@@ -694,6 +698,16 @@ func (w *World) castExplosionSkillLocked(result *SkillCastResult, ch storage.Cha
 		}
 		hitCharacters[target.ID] = struct{}{}
 	}
+	for _, entity := range w.trainersInRadiusLocked(ch.MapID, targetX, targetY, skillExplosionRadius) {
+		validTarget = true
+		hit, err := w.applyNPCTrainingHitLocked(entity.ID, ch.ID, damage, true, time.Now())
+		if err != nil {
+			return ch, false, err
+		}
+		if hit.Damage > 0 {
+			result.NPCTrainingHits = append(result.NPCTrainingHits, hit)
+		}
+	}
 	result.Character = ch
 	return ch, validTarget, nil
 }
@@ -747,6 +761,20 @@ func (w *World) castElectricBlizzardSkillLocked(result *SkillCastResult, ch stor
 			result.Impacts = append(result.Impacts, SpellImpact{CharacterHit: &hit})
 		}
 		hitCharacters[target.ID] = struct{}{}
+	}
+	for _, entity := range w.trainersInRadiusLocked(ch.MapID, ch.X, ch.Y, skillElectricBlizzardSize) {
+		validTarget = true
+		applied := damage / 10
+		if applied <= 0 {
+			continue
+		}
+		hit, err := w.applyNPCTrainingHitLocked(entity.ID, ch.ID, applied, true, time.Now())
+		if err != nil {
+			return ch, false, err
+		}
+		if hit.Damage > 0 {
+			result.NPCTrainingHits = append(result.NPCTrainingHits, hit)
+		}
 	}
 	result.Character = ch
 	return ch, validTarget, nil

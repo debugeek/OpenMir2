@@ -1,9 +1,8 @@
 {
   "id": "B342",
   "name": "恶魔铁匠铺",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 26,
+  "height": 28,
   "connections": [
     {
       "to_map": "4",
@@ -20,5 +19,6 @@
       "to_y": 234
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "////////////////////////////////7///v///f/z//+D//wH//wH4/wPo/w/w/3/g//+h//+D//8H//8P//9/+P//6////////////////////////////w=="
 }

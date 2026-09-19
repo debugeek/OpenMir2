@@ -1,9 +1,8 @@
 {
   "id": "0137",
   "name": "竞技之地",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 30,
+  "height": 33,
   "connections": [
     {
       "to_map": "0139",
@@ -41,5 +40,6 @@
       "to_y": 243
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "////////////////////////////9/////j//9/9///b/v9/Y///b7D//wnI/z8D8/+DYPx/IIz/H+Px/4M8/j80wP8PB/j/HQD/nwXg/zMI+P8GA//fgOD/MzD+/xjG/3/M+P8/Hv//H+P//w/8//+H////8///////Pw=="
 }

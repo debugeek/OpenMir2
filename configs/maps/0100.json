@@ -1,9 +1,8 @@
 {
   "id": "0100",
   "name": "厨房",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 15,
+  "height": 18,
   "connections": [
     {
       "to_map": "0101",
@@ -13,5 +12,6 @@
       "to_y": 20
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "/////////////////X/8H/4H/gH4GP4H/4H/2P/+////Pw=="
 }

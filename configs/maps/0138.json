@@ -1,9 +1,8 @@
 {
   "id": "0138",
   "name": "旅馆一楼",
-  "width": 50,
-  "height": 50,
-  "blocked": [],
+  "width": 15,
+  "height": 18,
   "connections": [
     {
       "to_map": "0",
@@ -13,5 +12,6 @@
       "to_y": 637
     }
   ],
-  "monster_spawns": []
+  "monster_spawns": [],
+  "blocked_bits": "////////////////9//1H/YH8gH4A/6Bf+D/+P/4////Pw=="
 }
