@@ -23,11 +23,11 @@ func (w *World) monsterIsStickLocked(mon *Monster) bool {
 }
 
 func (w *World) monsterCannotBePushedLocked(mon *Monster) bool {
-	return mon.Race == 85 || mon.Race == 103 || mon.Race == 107 || mon.Race == 116
+	return mon.Race == 85 || mon.Race == 103 || mon.Race == 116 || mon.Behavior == "centipede_king"
 }
 
 func (w *World) monsterIsCentipedeLocked(mon *Monster) bool {
-	return mon.Race == 107
+	return mon.Behavior == "centipede_king"
 }
 
 func (w *World) monsterIsArcherLocked(mon *Monster) bool {
@@ -35,7 +35,7 @@ func (w *World) monsterIsArcherLocked(mon *Monster) bool {
 }
 
 func (w *World) monsterIsWhiteSkeletonLocked(mon *Monster) bool {
-	return mon.Race == 87 && mon.TemplateID == "变异骷髅"
+	return mon.Race == 100 || mon.Race == 87 && mon.TemplateID == "变异骷髅"
 }
 
 func (w *World) monsterIsStoneLocked(mon *Monster) bool {

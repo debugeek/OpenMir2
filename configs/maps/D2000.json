@@ -1,6 +1,7 @@
 {
   "id": "D2000",
   "name": "封魔矿区",
+  "mine": true,
   "width": 200,
   "height": 200,
   "connections": [

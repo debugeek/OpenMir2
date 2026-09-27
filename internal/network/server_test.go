@@ -1506,6 +1506,40 @@ func TestPoisonSystemMessageUsesReferenceRedStyle(t *testing.T) {
 	<-done
 }
 
+func TestApplyWorldTickSendsPKDeathMessageBeforeDeath(t *testing.T) {
+	s := newTestServer(t)
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	killer := storage.Character{ID: "pk-killer", Name: "killer", MapID: testMapID}
+	s.registerClient(server, killer)
+	defer s.unregisterClient(server)
+	victim := storage.Character{ID: "pk-victim", Name: "victim", MapID: testMapID}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.applyWorldTick(world.TickResult{
+			PKDeathMessages: []world.PKDeathMessage{{Character: killer, Text: "你杀了人！"}},
+			CharacterDeaths: []storage.Character{victim},
+		}, time.Now())
+	}()
+	cmd, body, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode PK message error = %v", err)
+	}
+	if cmd.Ident != mir176.SMSystemMessage || cmd.Recog != world.CharacterActorID(killer) {
+		t.Fatalf("PK system command = %+v, want killer system message", cmd)
+	}
+	decoded, err := mir176.DecodePlain6Payload(body)
+	if err != nil {
+		t.Fatalf("decode PK message body error = %v", err)
+	}
+	if got := DecodeString(decoded); got != "你杀了人！" {
+		t.Fatalf("PK message body = %q", got)
+	}
+	<-done
+}
+
 func TestApplyWorldTickDoesNotDropUnorderedPoisonNotifications(t *testing.T) {
 	s := newTestServer(t)
 	firstServer, firstClient := net.Pipe()
@@ -2936,6 +2970,96 @@ func TestHandleHitBroadcastsDeathWhenMonsterHPReachesZero(t *testing.T) {
 	}
 }
 
+func TestHandleSpecialHitsBroadcastDeathSequence(t *testing.T) {
+	cases := []struct {
+		name  string
+		ident uint16
+		skill string
+		armed bool
+		dist  int
+		wideY int
+	}{
+		{name: "heavy", ident: mir176.CMHeavyHit},
+		{name: "big", ident: mir176.CMBigHit},
+		{name: "power", ident: mir176.CMPowerHit, skill: "攻杀剑术", armed: true},
+		{name: "long", ident: mir176.CMLongHit, skill: "刺杀剑术", dist: 1},
+		{name: "wide", ident: mir176.CMWideHit, skill: "半月弯刀", wideY: -1},
+		{name: "fire", ident: mir176.CMFireHit, skill: "烈火剑法", armed: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s, ch, server, client := newGuaranteedDropServer(t)
+			defer server.Close()
+			defer client.Close()
+			defer s.unregisterClient(server)
+			monsters, _ := s.world.SnapshotAround(ch.MapID, 0, 0, 99999)
+			if len(monsters) != 1 {
+				t.Fatalf("monsters = %d, want one", len(monsters))
+			}
+			mon := monsters[0]
+			ch.X = mon.X - tc.dist - 1
+			ch.Y = mon.Y
+			if tc.wideY != 0 {
+				ch.X = mon.X - 1
+				ch.Y = mon.Y + tc.wideY
+			}
+			ch.BonusAbil.Hit = 100
+			ch.MP = 100
+			if tc.skill != "" {
+				ch.Skills = storage.SkillStates{{ID: tc.skill, Level: 0}}
+			}
+			if tc.armed {
+				if tc.ident == mir176.CMPowerHit {
+					ch.PowerHitArmed = true
+				} else {
+					ch.FireHitArmed = true
+				}
+			}
+			recog := int32(uint32(ch.X) | uint32(ch.Y)<<16)
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				s.handleHit(server, &ch, mir176.Command{Ident: tc.ident, Recog: recog, Tag: 2})
+			}()
+			if _, ok := readFrameWithTimeout(t, client, time.Second); !ok {
+				t.Fatal("timed out waiting for attack output")
+			}
+			<-done
+			tick, err := s.world.Tick(s.PlayerSnapshots(), time.Now())
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.applyWorldTick(tick, time.Now())
+			seenExp, seenDeath, seenDrop := false, false, false
+			for {
+				frame, ok := readFrameWithTimeout(t, client, 300*time.Millisecond)
+				if !ok {
+					break
+				}
+				body, unwrapErr := mir176.UnwrapFrame(frame)
+				if unwrapErr == nil && strings.HasPrefix(string(body), "+") {
+					continue
+				}
+				cmd, _, decodeErr := decodeMessageLikeClient(frame)
+				if decodeErr != nil {
+					continue
+				}
+				switch cmd.Ident {
+				case mir176.SMWinExp:
+					seenExp = true
+				case mir176.SMItemShow:
+					seenDrop = true
+				case mir176.SMNowDeath:
+					seenDeath = true
+				}
+			}
+			if !seenExp || !seenDrop || !seenDeath {
+				t.Fatalf("death sequence for %s: exp=%t drop=%t death=%t", tc.name, seenExp, seenDrop, seenDeath)
+			}
+		})
+	}
+}
+
 func TestHandleHitBroadcastsDropWhenMonsterDies(t *testing.T) {
 	s, ch, server, client := newGuaranteedDropServer(t)
 	defer server.Close()
@@ -4353,6 +4477,11 @@ func TestHandleHitBroadcastsSpecialWeaponActionsToTargets(t *testing.T) {
 		mp         int
 	}{
 		{
+			name:       "normal",
+			ident:      mir176.CMHit,
+			wantAction: mir176.SMHit,
+		},
+		{
 			name:       "heavy",
 			ident:      mir176.CMHeavyHit,
 			wantAction: mir176.SMHeavyHit,
@@ -4383,6 +4512,11 @@ func TestHandleHitBroadcastsSpecialWeaponActionsToTargets(t *testing.T) {
 			ident:      mir176.CMWideHit,
 			wantAction: mir176.SMWideHit,
 			mp:         1,
+		},
+		{
+			name:       "fire",
+			ident:      mir176.CMFireHit,
+			wantAction: mir176.SMFireHit,
 		},
 	}
 
@@ -4451,6 +4585,10 @@ func TestHandleHitBroadcastsSpecialWeaponActionsToTargets(t *testing.T) {
 			if tc.ident == mir176.CMWideHit {
 				attacker.Skills = storage.SkillStates{{ID: "半月弯刀", Level: 0, Train: 0}}
 				attacker.MP = tc.mp
+			}
+			if tc.ident == mir176.CMFireHit {
+				attacker.Skills = storage.SkillStates{{ID: "烈火剑法", Level: 0, Train: 0}}
+				attacker.FireHitArmed = true
 			}
 			target.HP = 1000
 			target.MaxHP = s.world.AbilityStats(target).MaxHP
@@ -15375,6 +15513,446 @@ func TestApplyWorldTickSendsMonsterActionBeforeCharacterHit(t *testing.T) {
 	<-done
 }
 
+func TestGasMonsterTickReachesNetworkInActionThenStruckOrder(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	target, err := s.world.CreateCharacterWithAppearance("test", "gas-target", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacterWithAppearance() error = %v", err)
+	}
+	spawned, err := s.world.SpawnMonsterByNameAt(mapID, x+1, y, "楔蛾", 1)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
+	}
+	if len(spawned.Monsters) != 1 {
+		t.Fatalf("SpawnMonsterByNameAt() monsters = %d, want 1", len(spawned.Monsters))
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, target)
+	defer s.unregisterClient(server)
+
+	var tick world.TickResult
+	found := false
+	for i := 0; i < 20; i++ {
+		tick, err = s.world.Tick([]world.PlayerSnapshot{{Character: target}}, time.Now().Add(time.Duration(i+20)*time.Second))
+		if err != nil {
+			t.Fatalf("World.Tick() error = %v", err)
+		}
+		if len(tick.Characters) > 0 {
+			target = tick.Characters[0]
+		}
+		for _, action := range tick.MonsterActions {
+			if action.MonsterID == spawned.Monsters[0].ID && action.Kind == world.MonsterActionHit {
+				for _, hit := range tick.CharacterHits {
+					if hit.AttackerID == action.MonsterID && hit.Character.ID == target.ID {
+						found = true
+						break
+					}
+				}
+			}
+		}
+		if found {
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("楔蛾 Tick() produced no action and character hit: actions=%+v hits=%+v", tick.MonsterActions, tick.CharacterHits)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.applyWorldTick(tick, time.Now())
+	}()
+	seenAction, seenStruck := false, false
+	for i := 0; i < 12 && !seenStruck; i++ {
+		frame := readFrame(t, client)
+		cmd, _, err := decodeMessageLikeClient(frame)
+		if err != nil {
+			t.Fatalf("decode 楔蛾 network frame error = %v", err)
+		}
+		if cmd.Ident == mir176.SMHit && cmd.Recog == world.MonsterActorID(spawned.Monsters[0]) {
+			seenAction = true
+		}
+		if cmd.Ident == mir176.SMStruck && cmd.Recog == world.CharacterActorID(target) {
+			if !seenAction {
+				t.Fatalf("楔蛾 SM_STRUCK arrived before SM_HIT")
+			}
+			seenStruck = true
+		}
+	}
+	if !seenAction || !seenStruck {
+		t.Fatalf("楔蛾 network frames missing action/struck: action=%t struck=%t", seenAction, seenStruck)
+	}
+	<-done
+}
+
+func TestCentipedeKingTickReachesNetworkAction(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	target, err := s.world.CreateCharacterWithAppearance("test", "centipede-target", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacterWithAppearance() error = %v", err)
+	}
+	spawned, err := s.world.SpawnMonsterByNameAt(mapID, x+1, y, "触龙神", 1)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
+	}
+	if len(spawned.Monsters) != 1 {
+		t.Fatalf("SpawnMonsterByNameAt() monsters = %d, want 1", len(spawned.Monsters))
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, target)
+	defer s.unregisterClient(server)
+
+	var tick world.TickResult
+	found := false
+	for i := 0; i < 20; i++ {
+		tick, err = s.world.Tick([]world.PlayerSnapshot{{Character: target}}, time.Now().Add(time.Duration(i+20)*time.Second))
+		if err != nil {
+			t.Fatalf("World.Tick() error = %v", err)
+		}
+		if len(tick.Characters) > 0 {
+			target = tick.Characters[0]
+		}
+		for _, action := range tick.MonsterActions {
+			if action.MonsterID == spawned.Monsters[0].ID && action.Kind == world.MonsterActionHit {
+				found = true
+				break
+			}
+		}
+		if found {
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("触龙神 Tick() produced no monster action: %+v", tick.MonsterActions)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.applyWorldTick(tick, time.Now())
+	}()
+	seen := false
+	for i := 0; i < 12; i++ {
+		frame := readFrame(t, client)
+		cmd, _, err := decodeMessageLikeClient(frame)
+		if err != nil {
+			t.Fatalf("decode 触龙神 network frame error = %v", err)
+		}
+		if cmd.Ident == mir176.SMHit && cmd.Recog == world.MonsterActorID(spawned.Monsters[0]) {
+			seen = true
+			break
+		}
+	}
+	if !seen {
+		t.Fatal("触龙神 network output missing SM_HIT action")
+	}
+	<-done
+}
+
+func TestStoneMonsterTickReachesNetworkAction(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	target, err := s.world.CreateCharacterWithAppearance("test", "stone-target", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacterWithAppearance() error = %v", err)
+	}
+	spawned, err := s.world.SpawnMonsterByNameAt(mapID, x+1, y, "祖玛雕像", 1)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
+	}
+	if len(spawned.Monsters) != 1 {
+		t.Fatalf("SpawnMonsterByNameAt() monsters = %d, want 1", len(spawned.Monsters))
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, target)
+	defer s.unregisterClient(server)
+
+	var tick world.TickResult
+	found := false
+	for i := 0; i < 20; i++ {
+		tick, err = s.world.Tick([]world.PlayerSnapshot{{Character: target}}, time.Now().Add(time.Duration(i+20)*time.Second))
+		if err != nil {
+			t.Fatalf("World.Tick() error = %v", err)
+		}
+		if len(tick.Characters) > 0 {
+			target = tick.Characters[0]
+		}
+		for _, action := range tick.MonsterActions {
+			if action.MonsterID == spawned.Monsters[0].ID && action.Kind == world.MonsterActionHit {
+				found = true
+				break
+			}
+		}
+		if found {
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("祖玛雕像 Tick() produced no monster action: %+v", tick.MonsterActions)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.applyWorldTick(tick, time.Now())
+	}()
+	seen := false
+	for i := 0; i < 12; i++ {
+		frame := readFrame(t, client)
+		cmd, _, err := decodeMessageLikeClient(frame)
+		if err != nil {
+			t.Fatalf("decode 祖玛雕像 network frame error = %v", err)
+		}
+		if cmd.Ident == mir176.SMHit && cmd.Recog == world.MonsterActorID(spawned.Monsters[0]) {
+			seen = true
+			break
+		}
+	}
+	if !seen {
+		t.Fatal("祖玛雕像 network output missing SM_HIT action")
+	}
+	<-done
+}
+
+func TestArcherMonsterTickReachesNetworkAction(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	target, err := s.world.CreateCharacterWithAppearance("test", "archer-target", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacterWithAppearance() error = %v", err)
+	}
+	spawned, err := s.world.SpawnMonsterByNameAt(mapID, x+3, y, "弓箭护卫", 1)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
+	}
+	if len(spawned.Monsters) != 1 {
+		t.Fatalf("SpawnMonsterByNameAt() monsters = %d, want 1", len(spawned.Monsters))
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, target)
+	defer s.unregisterClient(server)
+
+	var tick world.TickResult
+	found := false
+	for i := 0; i < 20; i++ {
+		tick, err = s.world.Tick([]world.PlayerSnapshot{{Character: target}}, time.Now().Add(time.Duration(i+20)*time.Second))
+		if err != nil {
+			t.Fatalf("World.Tick() error = %v", err)
+		}
+		if len(tick.Characters) > 0 {
+			target = tick.Characters[0]
+		}
+		for _, action := range tick.MonsterActions {
+			if action.MonsterID == spawned.Monsters[0].ID && action.Kind == world.MonsterActionHit {
+				found = true
+				break
+			}
+		}
+		if found {
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("弓箭护卫 Tick() produced no monster action: %+v", tick.MonsterActions)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.applyWorldTick(tick, time.Now())
+	}()
+	seen := false
+	for i := 0; i < 12; i++ {
+		frame := readFrame(t, client)
+		cmd, _, err := decodeMessageLikeClient(frame)
+		if err != nil {
+			t.Fatalf("decode 弓箭护卫 network frame error = %v", err)
+		}
+		if cmd.Ident == mir176.SMHit && cmd.Recog == world.MonsterActorID(spawned.Monsters[0]) {
+			seen = true
+			break
+		}
+	}
+	if !seen {
+		t.Fatal("弓箭护卫 network output missing SM_HIT action")
+	}
+	<-done
+}
+
+func TestSpitSpiderTickReachesNetworkAction(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	target, err := s.world.CreateCharacterWithAppearance("test", "spider-target", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacterWithAppearance() error = %v", err)
+	}
+	spawned, err := s.world.SpawnMonsterByNameAt(mapID, x+1, y, "毒蜘蛛", 1)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
+	}
+	if len(spawned.Monsters) != 1 {
+		t.Fatalf("SpawnMonsterByNameAt() monsters = %d, want 1", len(spawned.Monsters))
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, target)
+	defer s.unregisterClient(server)
+
+	var tick world.TickResult
+	found := false
+	for i := 0; i < 20; i++ {
+		tick, err = s.world.Tick([]world.PlayerSnapshot{{Character: target}}, time.Now().Add(time.Duration(i+20)*time.Second))
+		if err != nil {
+			t.Fatalf("World.Tick() error = %v", err)
+		}
+		if len(tick.Characters) > 0 {
+			target = tick.Characters[0]
+		}
+		for _, action := range tick.MonsterActions {
+			if action.MonsterID == spawned.Monsters[0].ID && action.Kind == world.MonsterActionHit {
+				found = true
+				break
+			}
+		}
+		if found {
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("毒蜘蛛 Tick() produced no monster action: %+v", tick.MonsterActions)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.applyWorldTick(tick, time.Now())
+	}()
+	seen := false
+	for i := 0; i < 12; i++ {
+		frame := readFrame(t, client)
+		cmd, _, err := decodeMessageLikeClient(frame)
+		if err != nil {
+			t.Fatalf("decode 毒蜘蛛 network frame error = %v", err)
+		}
+		if cmd.Ident == mir176.SMHit && cmd.Recog == world.MonsterActorID(spawned.Monsters[0]) {
+			seen = true
+			break
+		}
+	}
+	if !seen {
+		t.Fatal("毒蜘蛛 network output missing SM_HIT action")
+	}
+	<-done
+}
+
+func TestHolyLandMageTickReachesNetworkAction(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	target, err := s.world.CreateCharacterWithAppearance("test", "holy-land-mage-target", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacterWithAppearance() error = %v", err)
+	}
+	spawned, err := s.world.SpawnMonsterByNameAt(mapID, x+2, y, "圣域法师", 1)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, target)
+	defer s.unregisterClient(server)
+
+	for i := 0; i < 20; i++ {
+		tick, tickErr := s.world.Tick([]world.PlayerSnapshot{{Character: target}}, time.Now().Add(time.Duration(i+20)*time.Second))
+		if tickErr != nil {
+			t.Fatalf("World.Tick() error = %v", tickErr)
+		}
+		if len(tick.Characters) > 0 {
+			target = tick.Characters[0]
+		}
+		for _, action := range tick.MonsterActions {
+			if action.MonsterID != spawned.Monsters[0].ID || action.Kind != world.MonsterActionHit {
+				continue
+			}
+			done := make(chan struct{})
+			go func() { defer close(done); s.applyWorldTick(tick, time.Now()) }()
+			for j := 0; j < 8; j++ {
+				frame := readFrame(t, client)
+				cmd, _, decodeErr := decodeMessageLikeClient(frame)
+				if decodeErr != nil {
+					t.Fatalf("decode 圣域法师 network frame error = %v", decodeErr)
+				}
+				if cmd.Ident == mir176.SMHit && cmd.Recog == world.MonsterActorID(spawned.Monsters[0]) {
+					<-done
+					return
+				}
+			}
+			<-done
+		}
+	}
+	t.Fatalf("圣域法师 Tick() produced no network action")
+}
+
+func TestFireWomaTickReachesNetworkAction(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	target, err := s.world.CreateCharacterWithAppearance("test", "fire-woma-target", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacterWithAppearance() error = %v", err)
+	}
+	spawned, err := s.world.SpawnMonsterByNameAt(mapID, x+1, y, "火焰沃玛", 1)
+	if err != nil {
+		t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, target)
+	defer s.unregisterClient(server)
+
+	for i := 0; i < 20; i++ {
+		tick, tickErr := s.world.Tick([]world.PlayerSnapshot{{Character: target}}, time.Now().Add(time.Duration(i+20)*time.Second))
+		if tickErr != nil {
+			t.Fatalf("World.Tick() error = %v", tickErr)
+		}
+		if len(tick.Characters) > 0 {
+			target = tick.Characters[0]
+		}
+		for _, action := range tick.MonsterActions {
+			if action.MonsterID != spawned.Monsters[0].ID || action.Kind != world.MonsterActionHit {
+				continue
+			}
+			done := make(chan struct{})
+			go func() { defer close(done); s.applyWorldTick(tick, time.Now()) }()
+			for j := 0; j < 8; j++ {
+				frame := readFrame(t, client)
+				cmd, _, decodeErr := decodeMessageLikeClient(frame)
+				if decodeErr != nil {
+					t.Fatalf("decode 火焰沃玛 network frame error = %v", decodeErr)
+				}
+				if cmd.Ident == mir176.SMHit && cmd.Recog == world.MonsterActorID(spawned.Monsters[0]) {
+					<-done
+					return
+				}
+			}
+			<-done
+		}
+	}
+	t.Fatalf("火焰沃玛 Tick() produced no network action")
+}
+
 func TestApplyWorldTickPreservesMultipleCharacterHitsForOneTarget(t *testing.T) {
 	s := newTestServer(t)
 	server, client := net.Pipe()
@@ -15536,6 +16114,41 @@ func TestApplyWorldTickSendsExperienceBeforeMonsterDeath(t *testing.T) {
 	}
 	if deathCmd.Ident != mir176.SMNowDeath {
 		t.Fatalf("death command ident = %d, want SM_NOWDEATH (%d)", deathCmd.Ident, mir176.SMNowDeath)
+	}
+	<-done
+}
+
+func TestApplyWorldTickSendsCharacterDropBeforeDeath(t *testing.T) {
+	s := newTestServer(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "taoist", 0, 0, "D12", 0, 0)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+	drop := world.GroundDrop{ID: "character-drop", MapID: ch.MapID, X: ch.X, Y: ch.Y, ItemID: "金币", Count: 1}
+	dead := ch
+	dead.HP = 0
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.applyWorldTick(world.TickResult{CharacterDrops: []world.GroundDrop{drop}, CharacterDeaths: []storage.Character{dead}}, time.Now())
+	}()
+	dropCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode character drop error = %v", err)
+	}
+	if dropCmd.Ident != mir176.SMItemShow || dropCmd.Recog != world.DropActorID(drop) {
+		t.Fatalf("drop frame = %+v, want SM_ITEMSHOW for character drop", dropCmd)
+	}
+	deathCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode character death error = %v", err)
+	}
+	if deathCmd.Ident != mir176.SMNowDeath || deathCmd.Recog != world.CharacterActorID(dead) {
+		t.Fatalf("death frame = %+v, want SM_NOWDEATH after drop", deathCmd)
 	}
 	<-done
 }
@@ -16040,7 +16653,7 @@ func TestHandleEatItemShape13SendsExperienceAndKeepsWeightOrder(t *testing.T) {
 		DuraMax: 75,
 	}
 	gameplay := config.DefaultGameplay()
-	gameplay.Progression.RequiredExperiencePerLevel = 1000
+	gameplay.Progression.LevelExperience = []int{1000}
 	s := newTestServerWithBundle(t, bundle, gameplay)
 	mapID, x, y := testDefaultSpawn(t)
 	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
@@ -16106,7 +16719,7 @@ func TestHandleEatItemShape13LevelsUpSendsMirbetaSequence(t *testing.T) {
 		DuraMax: 150,
 	}
 	gameplay := config.DefaultGameplay()
-	gameplay.Progression.RequiredExperiencePerLevel = 100
+	gameplay.Progression.LevelExperience = []int{100}
 	s := newTestServerWithBundle(t, bundle, gameplay)
 	mapID, x, y := testDefaultSpawn(t)
 	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)

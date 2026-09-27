@@ -1,6 +1,7 @@
 package world
 
 import (
+	"fmt"
 	"math"
 	"sort"
 	"time"
@@ -10,6 +11,64 @@ import (
 	"openmir2/internal/storage"
 	"openmir2/internal/world/core"
 )
+
+func (w *World) experienceGroupMembersLocked(killer storage.Character, players map[string]storage.Character) []storage.Character {
+	if killer.ID == "" || killer.GroupOwnerID == "" {
+		return nil
+	}
+	members := make([]storage.Character, 0, len(players))
+	for _, member := range players {
+		if member.HP <= 0 || member.MapID != killer.MapID || member.GroupOwnerID != killer.GroupOwnerID {
+			continue
+		}
+		if absInt(member.X-killer.X) > 12 || absInt(member.Y-killer.Y) > 12 {
+			continue
+		}
+		members = append(members, member)
+	}
+	return members
+}
+
+func (w *World) settleCharacterDeathLocked(ch *storage.Character) []GroundDrop {
+	if ch == nil {
+		return nil
+	}
+	drops := make([]GroundDrop, 0)
+	if w.gameplay.Combat.DieScatterBag {
+		for _, entry := range ch.BagItems {
+			if entry.ItemID == "" {
+				continue
+			}
+			drops = append(drops, GroundDrop{
+				ID:        fmt.Sprintf("drop-%d", w.nextID),
+				MapID:     ch.MapID,
+				ItemID:    entry.ItemID,
+				Count:     1,
+				MakeIndex: entry.MakeIndex,
+				PickupAt:  time.Now().Add(time.Duration(w.gameplay.Item.FloorItemCanPickUpMS) * time.Millisecond),
+				Dura:      entry.Dura,
+				DuraMax:   entry.DuraMax,
+				Desc:      entry.Desc,
+			})
+			w.nextID++
+		}
+		ch.BagItems = nil
+	}
+	if w.gameplay.Combat.DieDropGold && ch.Gold > 0 {
+		drops = append(drops, GroundDrop{ID: fmt.Sprintf("drop-%d", w.nextID), MapID: ch.MapID, ItemID: "金币", Count: ch.Gold, PickupAt: time.Now().Add(time.Duration(w.gameplay.Item.FloorItemCanPickUpMS) * time.Millisecond)})
+		w.nextID++
+		ch.Gold = 0
+	}
+	ch.GroupOwnerID = ""
+	return w.placeDropsLocked(ch.MapID, ch.X, ch.Y, 3, drops)
+}
+
+func absInt(value int) int {
+	if value < 0 {
+		return -value
+	}
+	return value
+}
 
 func (w *World) Tick(players []PlayerSnapshot, now time.Time) (TickResult, error) {
 	w.mu.Lock()
@@ -164,6 +223,20 @@ func (w *World) Tick(players []PlayerSnapshot, now time.Time) (TickResult, error
 				}
 			}
 			w.finalizedCharacterDeaths[ch.ID] = struct{}{}
+			result.CharacterDrops = append(result.CharacterDrops, w.settleCharacterDeathLocked(&ch)...)
+			if killer, ok := playersByID[ch.LastHitterID]; ok && w.resolvePKDeathLocked(&ch, &killer) {
+				playersByID[killer.ID] = killer
+				updated[killer.ID] = killer
+				result.PKDeathMessages = append(result.PKDeathMessages,
+					PKDeathMessage{Character: killer, Text: w.gameplay.Combat.PKMurderMessage},
+					PKDeathMessage{Character: ch, Text: fmt.Sprintf(w.gameplay.Combat.PKKilledMessage, killer.Name)},
+				)
+			}
+			playersByID[ch.ID] = ch
+			updated[ch.ID] = ch
+			if err := w.store.SaveCharacter(ch); err != nil {
+				return TickResult{}, err
+			}
 			result.CharacterDeaths = append(result.CharacterDeaths, ch)
 		}
 	}
@@ -305,12 +378,20 @@ func (w *World) Tick(players []PlayerSnapshot, now time.Time) (TickResult, error
 			if killerID == "" {
 				killerID = mon.LastHitterID
 			}
-			killer := playersByID[killerID]
-			death, err := w.killMonsterWithDamageLocked(killer, mon, 0)
+			killer, killerOK := w.monsterExperienceOwnerLocked(killerID, playersByID)
+			if !killerOK {
+				killer = storage.Character{}
+			}
+			groupMembers := w.experienceGroupMembersLocked(killer, playersByID)
+			death, err := w.killMonsterWithDamageLocked(killer, mon, 0, groupMembers)
 			if err != nil {
 				return TickResult{}, err
 			}
 			result.MonsterDeaths = append(result.MonsterDeaths, death)
+			if death.Character.ID != "" {
+				playersByID[death.Character.ID] = death.Character
+				updated[death.Character.ID] = death.Character
+			}
 			if death.Experience > 0 || death.LevelUp {
 				result.SpellExperience = append(result.SpellExperience, SpellExperience{
 					CharacterID: killer.ID, Experience: death.Experience,
@@ -318,6 +399,7 @@ func (w *World) Tick(players []PlayerSnapshot, now time.Time) (TickResult, error
 					Character: death.Character,
 				})
 			}
+			result.SpellExperience = append(result.SpellExperience, death.GroupExperiences...)
 			continue
 		}
 		if !mon.Alive {
@@ -422,6 +504,24 @@ func (w *World) monsterAttackerAliveLocked(id string, players map[string]storage
 		return attacker.Alive && attacker.HP > 0
 	}
 	return false
+}
+
+func (w *World) monsterExperienceOwnerLocked(attackerID string, players map[string]storage.Character) (storage.Character, bool) {
+	if attacker, ok := players[attackerID]; ok {
+		return attacker, true
+	}
+	attacker, ok := w.monsters[attackerID]
+	if !ok || attacker.MasterID == "" {
+		return storage.Character{}, false
+	}
+	owner, ok := players[attacker.MasterID]
+	if !ok || owner.HP <= 0 {
+		return storage.Character{}, false
+	}
+	if !attacker.MasterExpiresAt.IsZero() && time.Now().After(attacker.MasterExpiresAt) {
+		return storage.Character{}, false
+	}
+	return owner, true
 }
 
 func (w *World) applyCharacterNaturalSpellTickLocked(ch *storage.Character, now time.Time) bool {
@@ -1242,6 +1342,14 @@ func (w *World) tickBeeQueenLocked(mon *Monster, players map[string]storage.Char
 	if mon.TargetCharacterID == "" {
 		return nil, nil, nil, nil
 	}
+	target, ok := players[mon.TargetCharacterID]
+	if !ok || !w.monsterCanKeepCharacterTargetLocked(mon, target) {
+		mon.TargetCharacterID = ""
+		mon.TargetX, mon.TargetY = -1, -1
+		mon.TargetFocusAt = time.Time{}
+		mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchNoTargetMSLocked(mon)) * time.Millisecond)
+		return nil, nil, nil, nil
+	}
 	if w.countMonsterChildrenLocked(mon.ID) >= 15 {
 		return nil, nil, nil, nil
 	}
@@ -1250,7 +1358,7 @@ func (w *World) tickBeeQueenLocked(mon *Monster, players map[string]storage.Char
 	}
 	mon.LastAttackAt = now
 	mon.TargetFocusAt = now
-	childName := "蝙蝠"
+	childName := "蜜蜂"
 	for _, pending := range w.pendingMonsterSpawns {
 		if pending.ParentID == mon.ID && pending.ChildName == childName {
 			return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHit)}, nil, nil, nil
@@ -1947,6 +2055,11 @@ func (w *World) tickFleeAnimalMonsterLocked(mon *Monster, players map[string]sto
 
 func (w *World) explosionSpiderLocked(mon *Monster, players map[string]storage.Character) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
 	mon.HP = core.ApplyHPDelta(mon.HP, mon.MaxHP, -mon.HP).HP
+	mon.PendingDeath = true
+	mon.DeathHitterID = mon.ExpHitterID
+	if mon.DeathHitterID == "" {
+		mon.DeathHitterID = mon.LastHitterID
+	}
 	var hits []CharacterHit
 	var updated []storage.Character
 	var nearest storage.Character
@@ -2146,6 +2259,13 @@ func (w *World) tickSpiderHouseLocked(mon *Monster, players map[string]storage.C
 	}
 	w.searchMonsterTargetLocked(mon, players, now)
 	if mon.TargetCharacterID == "" {
+		return nil, nil, nil, nil
+	}
+	target, ok := players[mon.TargetCharacterID]
+	if !ok || !w.monsterCanKeepCharacterTargetLocked(mon, target) {
+		mon.TargetCharacterID = ""
+		mon.TargetX, mon.TargetY = -1, -1
+		mon.TargetFocusAt = time.Time{}
 		return nil, nil, nil, nil
 	}
 	if w.countMonsterChildrenLocked(mon.ID) >= 15 {

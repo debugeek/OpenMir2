@@ -79,6 +79,14 @@ func (w *World) HitWithIdent(ch storage.Character, x, y, dir int, attackIdent ui
 	ch.Dir = dir
 	applyAttackRecoveryDelay(&ch)
 	w.respawnLocked(now)
+	if attackIdent == mir176.CMHeavyHit {
+		if mineResult, handled, err := w.mineWithHeavyHitLocked(ch, dir); handled {
+			if err != nil {
+				return AttackResult{}, err
+			}
+			return mineResult, nil
+		}
+	}
 	result := AttackResult{Character: ch}
 	consumeSpecialHit := func(hit *AttackResult) {
 		if !fireHitActive && !powerHitActive {

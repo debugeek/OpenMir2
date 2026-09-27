@@ -72,7 +72,7 @@ func (w *World) respawnLocked(now time.Time) {
 			mon.Alive = true
 			mon.X, mon.Y = x, y
 			mon.Dir = 4
-			if mon.Race == 107 {
+			if mon.Behavior == "centipede_king" {
 				mon.Dir = 5
 			}
 			w.spawnStateForLocked(mon.Spawn).activeCount++
@@ -86,7 +86,7 @@ func (w *World) respawnLocked(now time.Time) {
 			mon.ExpHitterID = ""
 			mon.ExpHitterAt = time.Time{}
 			mon.TargetFocusAt = time.Time{}
-			if mon.Race == 107 {
+			if mon.Behavior == "centipede_king" {
 				mon.TargetFocusAt = now
 			}
 			mon.NextSearchAt = time.Time{}

@@ -461,6 +461,14 @@ func (a attackSyncAdapter) SendWinExp(exp int, currentExp int) {
 	a.s.sendWinExp(a.conn, exp, currentExp)
 }
 
+func (a attackSyncAdapter) SendBagAddItem(ch storage.Character, item storage.UserItem) {
+	a.s.sendBagAddItem(a.conn, ch, item.ItemID, item.MakeIndex)
+}
+
+func (a attackSyncAdapter) SendWeightChanged(ch storage.Character) {
+	a.s.sendWeightChanged(a.conn, a.s.world.AbilityStats(ch))
+}
+
 func (a attackSyncAdapter) SendLevelUp(ch storage.Character) {
 	a.s.sendLevelUp(a.conn, ch)
 }
@@ -839,7 +847,7 @@ func (s *Server) processTurn(conn net.Conn, activeChar *storage.Character, cmd m
 }
 
 func (s *Server) broadcastCharacterTurn(conn net.Conn, ch storage.Character) {
-	clients := s.ClientsAroundExcept(ch.MapID, ch.X, ch.Y, playerViewRange, conn)
+	clients := s.ClientsAroundExcept(ch.MapID, ch.X, ch.Y, s.viewRange(), conn)
 	actorID := world.CharacterActorID(ch)
 	turn := mir176.Command{
 		Ident:  mir176.SMTurn,
@@ -966,7 +974,7 @@ func (s *Server) processMove(conn net.Conn, activeChar *storage.Character, cmd m
 }
 
 func (s *Server) broadcastCharacterMove(conn net.Conn, ch storage.Character, run bool) {
-	clients := s.ClientsAroundExcept(ch.MapID, ch.X, ch.Y, playerViewRange, conn)
+	clients := s.ClientsAroundExcept(ch.MapID, ch.X, ch.Y, s.viewRange(), conn)
 	ident := uint16(mir176.SMWalk)
 	if run {
 		ident = mir176.SMRun
@@ -3446,7 +3454,7 @@ func (s *Server) sendInitialLoginState(conn net.Conn, ch storage.Character) {
 	s.sendBagItems(conn, ch)
 	s.sendUseMagic(conn, ch)
 	if client := s.clientForConn(conn); client != nil {
-		for _, event := range s.world.GroundEventsAround(ch.MapID, ch.X, ch.Y, playerViewRange, time.Now()) {
+		for _, event := range s.world.GroundEventsAround(ch.MapID, ch.X, ch.Y, s.viewRange(), time.Now()) {
 			s.broadcastGroundShowToClient(client, event)
 		}
 	}
@@ -3746,6 +3754,10 @@ const (
 	playerViewRange = 12
 )
 
+func (s *Server) viewRange() int {
+	return s.world.SendRefMsgRange()
+}
+
 func (s *Server) sendEnterWorld(conn net.Conn, login RunLogin) (storage.Character, bool) {
 	ch, ok := s.characterByName(login.Account, login.CharName)
 	if !ok {
@@ -3788,12 +3800,12 @@ func (s *Server) sendEnterWorldState(conn net.Conn, ch storage.Character) {
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMUserName, Recog: actorID, Param: s.world.CharacterNameColor(ch)}, EncodeString(s.world.CharacterDisplayName(ch)))
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMAreaState, Recog: s.world.CharacterAreaState(ch)}, nil)
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMMapDescription, Recog: -1}, EncodeString(s.world.MapName(ch.MapID)))
-	monsters, _ := s.world.SnapshotAround(ch.MapID, ch.X, ch.Y, playerViewRange)
+	monsters, _ := s.world.SnapshotAround(ch.MapID, ch.X, ch.Y, s.viewRange())
 	for _, mon := range monsters {
 		s.sendCommand(conn, MonsterTurnCommand(mon, s.world.MapLight(mon.MapID)), MonsterTurnBody(mon))
 		s.sendCommand(conn, MonsterFeatureCommand(mon), nil)
 	}
-	_, drops := s.world.SnapshotAround(ch.MapID, ch.X, ch.Y, playerViewRange)
+	_, drops := s.world.SnapshotAround(ch.MapID, ch.X, ch.Y, s.viewRange())
 	for _, drop := range drops {
 		s.sendDropShow(conn, drop)
 	}
@@ -3942,7 +3954,7 @@ func (s *Server) broadcastMonsterAppear(clients []*Client, monsters []world.Mons
 		if mon.Hidden {
 			continue
 		}
-		nearby := s.ClientsAround(mon.MapID, mon.X, mon.Y, playerViewRange)
+		nearby := s.ClientsAround(mon.MapID, mon.X, mon.Y, s.viewRange())
 		for _, client := range nearby {
 			client.ensureMonsterVisible(s, mon)
 		}
@@ -3974,12 +3986,12 @@ func (s *Server) broadcastDropHide(clients []*Client, dropID string) {
 
 func (s *Server) broadcastTeleportMove(conn net.Conn, from, to storage.Character) {
 	if from.MapID != "" {
-		clients := s.ClientsAroundExcept(from.MapID, from.X, from.Y, playerViewRange, conn)
+		clients := s.ClientsAroundExcept(from.MapID, from.X, from.Y, s.viewRange(), conn)
 		if len(clients) > 0 {
 			s.broadcastCharacterDisappear(clients, from)
 		}
 	}
-	clients := s.ClientsAroundExcept(to.MapID, to.X, to.Y, playerViewRange, conn)
+	clients := s.ClientsAroundExcept(to.MapID, to.X, to.Y, s.viewRange(), conn)
 	if len(clients) > 0 {
 		s.broadcastCharacterAppear(clients, to)
 	}
@@ -3989,7 +4001,7 @@ func (s *Server) sendTeleportRingMove(conn net.Conn, from, to storage.Character)
 	actorID := world.CharacterActorID(to)
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMSpacemoveHide, Recog: actorID}, nil)
 	if from.MapID != "" {
-		for _, client := range s.ClientsAroundExcept(from.MapID, from.X, from.Y, playerViewRange, conn) {
+		for _, client := range s.ClientsAroundExcept(from.MapID, from.X, from.Y, s.viewRange(), conn) {
 			client.writeCommand(s, mir176.Command{Ident: mir176.SMSpacemoveHide, Recog: actorID}, nil)
 		}
 	}
@@ -4001,7 +4013,7 @@ func (s *Server) sendTeleportRingMove(conn net.Conn, from, to storage.Character)
 		Tag:    uint16(to.Y),
 		Series: uint16(makeWord(byte(to.Dir), byte(s.world.MapLight(to.MapID)))),
 	}, body)
-	for _, client := range s.ClientsAroundExcept(to.MapID, to.X, to.Y, playerViewRange, conn) {
+	for _, client := range s.ClientsAroundExcept(to.MapID, to.X, to.Y, s.viewRange(), conn) {
 		client.writeCommand(s, mir176.Command{
 			Ident:  mir176.SMSpacemoveShow,
 			Recog:  actorID,
@@ -4015,12 +4027,12 @@ func (s *Server) sendTeleportRingMove(conn net.Conn, from, to storage.Character)
 func (s *Server) dispatchSpellTeleport(conn net.Conn, from, to storage.Character) {
 	seen := map[*Client]struct{}{}
 	if from.MapID != "" {
-		for _, client := range s.ClientsAroundExcept(from.MapID, from.X, from.Y, playerViewRange, conn) {
+		for _, client := range s.ClientsAroundExcept(from.MapID, from.X, from.Y, s.viewRange(), conn) {
 			seen[client] = struct{}{}
 			client.enqueueSpellMessage(s, spellObjectMessage{kind: spellObjectMessageTeleport, teleportFrom: from, teleportTo: to})
 		}
 	}
-	for _, client := range s.ClientsAroundExcept(to.MapID, to.X, to.Y, playerViewRange, conn) {
+	for _, client := range s.ClientsAroundExcept(to.MapID, to.X, to.Y, s.viewRange(), conn) {
 		if _, ok := seen[client]; ok {
 			continue
 		}
@@ -4091,7 +4103,7 @@ func (s *Server) sendNPCsAround(conn net.Conn, ch storage.Character) {
 	}
 	current := map[string]struct{}{}
 	for _, entity := range npcs {
-		if absInt(entity.X-ch.X) > playerViewRange || absInt(entity.Y-ch.Y) > playerViewRange {
+		if absInt(entity.X-ch.X) > s.viewRange() || absInt(entity.Y-ch.Y) > s.viewRange() {
 			continue
 		}
 		current[entity.ID] = struct{}{}
@@ -4398,6 +4410,7 @@ func (s *Server) applyWorldTick(result world.TickResult, now time.Time) {
 		}
 	}
 	for _, hit := range result.MonsterHits {
+		s.applyAttackResourceResult(hit)
 		if ordered := orderedMonsterHitIDs[hit.MonsterID]; ordered > 0 {
 			orderedMonsterHitIDs[hit.MonsterID]--
 			continue
@@ -4457,6 +4470,14 @@ func (s *Server) applyWorldTick(result world.TickResult, now time.Time) {
 			}
 		}
 	}
+	for _, notice := range result.PKDeathMessages {
+		if client, ok := s.ClientByCharacterID(notice.Character.ID); ok {
+			s.sendSystemMessageStyle(client.conn, notice.Character, notice.Text, 0xFF, 0x38)
+		}
+	}
+	for _, drop := range result.CharacterDrops {
+		s.broadcastDropAppear(s.ClientsAround(drop.MapID, drop.X, drop.Y, s.viewRange()), []world.GroundDrop{drop})
+	}
 	for _, ch := range result.CharacterDeaths {
 		clients := s.spellRefClients(ch)
 		for _, client := range clients {
@@ -4480,6 +4501,25 @@ func (s *Server) applyWorldTick(result world.TickResult, now time.Time) {
 	s.syncVisibleNPCs()
 }
 
+func (s *Server) applyAttackResourceResult(hit world.AttackResult) {
+	if hit.Character.ID == "" {
+		return
+	}
+	client, ok := s.ClientByCharacterID(hit.Character.ID)
+	if !ok {
+		return
+	}
+	s.sendCharacterDeletedItems(client.conn, hit.Character, hit.DeletedItems)
+	s.updateClientByCharacterID(hit.Character)
+	if hit.FeatureChanged {
+		client.sendCharacterStateRefresh(s, hit.Character)
+		s.broadcastCharacterStateRefreshExcept(hit.Character, hit.Character.ID)
+	}
+	for _, durability := range hit.Durability {
+		s.sendCommand(client.conn, DurabilityCommand(durability), nil)
+	}
+}
+
 func (s *Server) broadcastNPCTraining(hits []world.NPCTrainingHit) {
 	for _, hit := range hits {
 		if hit.NPC.ID == "" {
@@ -4497,7 +4537,7 @@ func (s *Server) broadcastNPCTraining(hits []world.NPCTrainingHit) {
 			}
 			message = fmt.Sprintf("总破坏力%2d, 平均破坏力%2d", hit.Total, average)
 		}
-		s.broadcastHear(s.ClientsAround(hit.NPC.MapID, hit.NPC.X, hit.NPC.Y, playerViewRange), hit.NPC.Name+":"+message, 0x00, 0xFF)
+		s.broadcastHear(s.ClientsAround(hit.NPC.MapID, hit.NPC.X, hit.NPC.Y, s.viewRange()), hit.NPC.Name+":"+message, 0x00, 0xFF)
 	}
 }
 
@@ -4594,7 +4634,7 @@ func (s *Server) syncVisibleNPCs() {
 		npcs := s.world.NPCsInMap(ch.MapID)
 		current := map[string]struct{}{}
 		for _, entity := range npcs {
-			if absInt(entity.X-ch.X) > playerViewRange || absInt(entity.Y-ch.Y) > playerViewRange {
+			if absInt(entity.X-ch.X) > s.viewRange() || absInt(entity.Y-ch.Y) > s.viewRange() {
 				continue
 			}
 			current[entity.ID] = struct{}{}
@@ -4607,7 +4647,7 @@ func (s *Server) syncVisibleNPCs() {
 func (s *Server) syncVisibleMonsters() {
 	for _, client := range s.allClients() {
 		ch := client.character()
-		monsters, _ := s.world.SnapshotAround(ch.MapID, ch.X, ch.Y, playerViewRange)
+		monsters, _ := s.world.SnapshotAround(ch.MapID, ch.X, ch.Y, s.viewRange())
 		current := map[string]struct{}{}
 		for _, mon := range monsters {
 			current[mon.ID] = struct{}{}
@@ -4620,7 +4660,7 @@ func (s *Server) syncVisibleMonsters() {
 func (s *Server) syncVisibleDrops() {
 	for _, client := range s.allClients() {
 		ch := client.character()
-		_, drops := s.world.SnapshotAround(ch.MapID, ch.X, ch.Y, playerViewRange)
+		_, drops := s.world.SnapshotAround(ch.MapID, ch.X, ch.Y, s.viewRange())
 		current := map[string]struct{}{}
 		for _, drop := range drops {
 			current[drop.ID] = struct{}{}
@@ -4694,7 +4734,7 @@ func (s *Server) broadcastCharacterPushExcept(push world.CharacterPush, except n
 }
 
 func (s *Server) broadcastGroundShow(event world.SpellGroundEvent) {
-	clients := s.ClientsAround(event.MapID, event.X, event.Y, playerViewRange)
+	clients := s.ClientsAround(event.MapID, event.X, event.Y, s.viewRange())
 	for _, client := range clients {
 		client.mu.Lock()
 		if client.visibleEvents == nil {
@@ -4716,7 +4756,7 @@ func (s *Server) syncGroundEvents(events []world.SpellGroundEvent) {
 		hides := make([]world.SpellGroundEvent, 0)
 		client.mu.Lock()
 		for id, event := range client.visibleEvents {
-			if _, ok := active[id]; !ok || event.MapID != ch.MapID || absInt(event.X-ch.X) > playerViewRange || absInt(event.Y-ch.Y) > playerViewRange {
+			if _, ok := active[id]; !ok || event.MapID != ch.MapID || absInt(event.X-ch.X) > s.viewRange() || absInt(event.Y-ch.Y) > s.viewRange() {
 				delete(client.visibleEvents, id)
 				hides = append(hides, event)
 			}
@@ -4737,7 +4777,7 @@ func (s *Server) syncGroundEvents(events []world.SpellGroundEvent) {
 		}
 	}
 	for _, event := range events {
-		for _, client := range s.ClientsAround(event.MapID, event.X, event.Y, playerViewRange) {
+		for _, client := range s.ClientsAround(event.MapID, event.X, event.Y, s.viewRange()) {
 			client.mu.Lock()
 			_, visible := client.visibleEvents[event.ID]
 			client.mu.Unlock()
@@ -5639,7 +5679,7 @@ func (s *Server) registerClient(conn net.Conn, ch storage.Character) *Client {
 	}
 	s.rememberFireHitState(ch)
 	s.rememberPowerHitState(ch)
-	monsters, _ := s.world.SnapshotAround(ch.MapID, ch.X, ch.Y, playerViewRange)
+	monsters, _ := s.world.SnapshotAround(ch.MapID, ch.X, ch.Y, s.viewRange())
 	for _, mon := range monsters {
 		client.visibleMonsters[mon.ID] = mon
 	}
@@ -5948,12 +5988,12 @@ func (s *Server) spellRefClientsFor(ownerID, mapID string, x, y int) []*Client {
 	snapshot, ok := s.spellRefs[ownerID]
 	if !ok || now.Sub(snapshot.at) >= 500*time.Millisecond || snapshot.mapID != mapID {
 		snapshot = spellRefSnapshot{at: now, mapID: mapID, x: x, y: y, clients: map[string]struct{}{}}
-		for _, client := range s.ClientsAround(mapID, x, y, playerViewRange) {
+		for _, client := range s.ClientsAround(mapID, x, y, s.viewRange()) {
 			snapshot.clients[client.ch.ID] = struct{}{}
 		}
 		s.spellRefs[ownerID] = snapshot
 		s.spellRefMu.Unlock()
-		return s.clientsByIDs(snapshot.clients, mapID, x, y, playerViewRange, false)
+		return s.clientsByIDs(snapshot.clients, mapID, x, y, s.viewRange(), false)
 	}
 	s.spellRefMu.Unlock()
 	return s.clientsByIDs(snapshot.clients, mapID, x, y, 10, true)

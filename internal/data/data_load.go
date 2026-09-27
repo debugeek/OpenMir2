@@ -89,6 +89,7 @@ func loadConfigMakeItems(path string) (map[string][]StdMakeIngredient, error) {
 type monsterAttributesConfig struct {
 	ID                 string            `json:"id"`
 	Name               string            `json:"name"`
+	Behavior           string            `json:"behavior,omitempty"`
 	Race               int               `json:"race"`
 	RaceImg            int               `json:"race_img"`
 	Appr               int               `json:"appr"`
@@ -245,6 +246,7 @@ func loadConfigMonsters(dir string, items map[string]StdItem, report *StdLoadRep
 		out[cfg.ID] = StdMonster{
 			ID:                 cfg.ID,
 			Name:               cfg.Name,
+			Behavior:           cfg.Behavior,
 			Race:               cfg.Race,
 			RaceImg:            cfg.RaceImg,
 			Appr:               cfg.Appr,

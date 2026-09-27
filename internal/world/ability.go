@@ -395,6 +395,13 @@ func (w *World) characterHasEquipmentShapeLocked(ch storage.Character, shape int
 	return false
 }
 
+func (w *World) skillTrainingMultiplierLocked(ch storage.Character) int {
+	if w.characterHasEquipmentShapeLocked(ch, 120) {
+		return 3
+	}
+	return 1
+}
+
 func (w *World) combatStatsLocked(ch storage.Character) CombatStats {
 	var stats CombatStats
 	for slot := 0; slot < useSlotCount; slot++ {

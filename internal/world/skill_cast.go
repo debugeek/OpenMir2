@@ -294,8 +294,9 @@ func (w *World) DoCharge(ch storage.Character, dir int, players []storage.Charac
 	if skillTrained {
 		previousTrain := state.Train
 		previousLevel := state.Level
-		if state.Level < 3 && ch.Level > skillNeedLevel(skill, state.Level) {
-			if w.applySkillTrainingLocked(ch.Level, skill, &state, magicTrainPointsForSkill(w.rand)) {
+		if state.Level < 3 && ch.Level >= skillNeedLevel(skill, state.Level) {
+			points := magicTrainPointsForSkill(w.rand) * w.skillTrainingMultiplierLocked(ch)
+			if w.applySkillTrainingLocked(ch.Level, skill, &state, points) {
 				result.SkillChanged = true
 				result.SkillLevelUp = state.Level > previousLevel
 			}
@@ -1152,7 +1153,7 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 		previousTrain := state.Train
 		previousLevel := state.Level
 		if state.Level < 3 && ch.Level >= skillNeedLevel(skill, state.Level) {
-			points := magicTrainPointsForSkill(w.rand)
+			points := magicTrainPointsForSkill(w.rand) * w.skillTrainingMultiplierLocked(ch)
 			if w.applySkillTrainingLocked(ch.Level, skill, &state, points) {
 				result.SkillChanged = true
 				result.SkillLevelUp = state.Level > previousLevel

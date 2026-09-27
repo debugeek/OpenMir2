@@ -1,6 +1,7 @@
 {
   "id": "D413",
   "name": "矿区A一层",
+  "mine": true,
   "width": 100,
   "height": 100,
   "connections": [

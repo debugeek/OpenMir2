@@ -24,7 +24,7 @@ func (w *World) monsterTemplateByIDLocked(id string) (data.StdMonster, bool) {
 func newMonster(w *World, id string, tpl data.StdMonster, mapID string, x, y int, spawn data.StdSpawn) *Monster {
 	now := time.Now()
 	mon := &Monster{
-		ID: id, TemplateID: tpl.ID, Name: tpl.Name, Race: tpl.Race, RaceImg: tpl.RaceImg, MonsterWeapon: tpl.MP & 0xFF, Appr: tpl.Appr,
+		ID: id, TemplateID: tpl.ID, Name: tpl.Name, Behavior: tpl.Behavior, Race: tpl.Race, RaceImg: tpl.RaceImg, MonsterWeapon: tpl.MP & 0xFF, Appr: tpl.Appr,
 		Level: tpl.Level, Undead: tpl.Undead, MapID: mapID, X: x, Y: y, Dir: 4, TargetX: -1, TargetY: -1, CoolEye: tpl.CoolEye,
 		NoTame:           tpl.NoTame,
 		ViewRange:        tpl.ViewRange,
@@ -54,7 +54,7 @@ func newMonster(w *World, id string, tpl data.StdMonster, mapID string, x, y int
 		mon.AttackCount = 0
 	}
 	mon.LastWalkAt = now.Add(-time.Duration(w.rand.Intn(3000)) * time.Millisecond)
-	if tpl.Race == 107 {
+	if tpl.Behavior == "centipede_king" {
 		mon.TargetFocusAt = now
 	}
 	return mon
@@ -111,9 +111,11 @@ func applyMonsterTemplateState(mon *Monster, tpl data.StdMonster) {
 	if tpl.AttackMax > 0 {
 		mon.AttackMax = tpl.AttackMax
 	}
-	switch tpl.Race {
-	case 107:
+	switch tpl.Behavior {
+	case "centipede_king":
 		mon.Dir = 5
+	}
+	switch tpl.Race {
 	case 112:
 		mon.GuardDirection = mon.Dir
 	case 117:

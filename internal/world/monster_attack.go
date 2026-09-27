@@ -1,6 +1,7 @@
 package world
 
 import (
+	"math"
 	"math/rand"
 	"time"
 
@@ -53,6 +54,7 @@ func (w *World) applyMeleeTrainingLocked(result *AttackResult, attackIdent uint1
 		if !ok {
 			continue
 		}
+		points *= w.skillTrainingMultiplierLocked(result.Character)
 		updated, changed, levelUp := w.trainMeleeSkillLocked(result.Character, ident, points)
 		if !changed {
 			continue
@@ -208,6 +210,12 @@ func (w *World) attackMonsterWithDamageModeAndMeatLocked(ch storage.Character, m
 	if damage > 0 && applyDefense && w.characterHasParalysisRingLocked(ch) && w.rand.Intn(mon.AntiPoison+5) == 0 {
 		mon.ParalyzedUntil = now.Add(5 * time.Second)
 	}
+	var durability []SpellDurability
+	var deletedItems []storage.UserItem
+	featureChanged := false
+	if damage > 0 && applyDefense && !mon.UseMagic {
+		durability, deletedItems, featureChanged = w.applyWeaponDamageLocked(&ch)
+	}
 	result := AttackResult{
 		MonsterID:      mon.ID,
 		MonsterMapID:   mon.MapID,
@@ -221,6 +229,10 @@ func (w *World) attackMonsterWithDamageModeAndMeatLocked(ch storage.Character, m
 		MonsterY:       mon.Y,
 		MonsterDir:     mon.Dir,
 		MonsterStatus:  MonsterStatus(*mon, now),
+		Character:      ch,
+		Durability:     durability,
+		DeletedItems:   deletedItems,
+		FeatureChanged: featureChanged,
 	}
 	if hp.Dead {
 		if deferDeath {
@@ -393,7 +405,7 @@ func (w *World) applyMonsterMagicDamageLocked(ch storage.Character, mon *Monster
 	return result, w.store.SaveCharacter(ch)
 }
 
-func (w *World) killMonsterWithDamageLocked(ch storage.Character, mon *Monster, damage int, blockers ...storage.Character) (AttackResult, error) {
+func (w *World) killMonsterWithDamageLocked(ch storage.Character, mon *Monster, damage int, groupMembers []storage.Character, blockers ...storage.Character) (AttackResult, error) {
 	now := time.Now()
 	noKiller := ch.ID == ""
 	if noKiller {
@@ -448,13 +460,37 @@ func (w *World) killMonsterWithDamageLocked(ch storage.Character, mon *Monster, 
 	var leveled bool
 	var err error
 	if !summoned && !noKiller {
-		ch, _, expGained, leveled, err = gainExperienceLocked(w, ch, mon.Experience)
-		if err != nil {
-			return AttackResult{}, err
+		if len(groupMembers) > 1 {
+			bonus := []float64{1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2, 2.1, 2.2}[minInt(len(groupMembers)-1, 11)]
+			sumLevels := 0
+			for _, member := range groupMembers {
+				sumLevels += member.Level
+			}
+			for _, member := range groupMembers {
+				share := int(math.Round(float64(mon.Experience) * bonus * float64(member.Level) / float64(sumLevels)))
+				if w.gameplay.Combat.HighLevelGroupFixExp {
+					share = int(math.Round(float64(mon.Experience) * bonus / float64(len(groupMembers))))
+				}
+				updated, _, memberExp, memberLevelUp, gainErr := gainExperienceLocked(w, member, share)
+				if gainErr != nil {
+					return AttackResult{}, gainErr
+				}
+				if member.ID == ch.ID {
+					ch, expGained, leveled = updated, memberExp, memberLevelUp
+					result.Experience, result.CurrentExp, result.LevelUp = memberExp, updated.Experience, memberLevelUp
+				} else if memberExp > 0 || memberLevelUp {
+					result.GroupExperiences = append(result.GroupExperiences, SpellExperience{CharacterID: updated.ID, Experience: memberExp, CurrentExp: updated.Experience, LevelUp: memberLevelUp, Character: updated})
+				}
+			}
+		} else {
+			ch, _, expGained, leveled, err = gainExperienceLocked(w, ch, mon.Experience)
+			if err != nil {
+				return AttackResult{}, err
+			}
+			result.Experience = expGained
+			result.CurrentExp = ch.Experience
+			result.LevelUp = leveled
 		}
-		result.Experience = expGained
-		result.CurrentExp = ch.Experience
-		result.LevelUp = leveled
 	}
 	result.Dead = true
 	if mon.Animal {
@@ -808,6 +844,33 @@ func (w *World) applyCharacterStruckLocked(target storage.Character, damage int)
 		applyDurability(slot)
 	}
 	return target, damage, durability, deletedItems, featureChanged
+}
+
+func (w *World) applyWeaponDamageLocked(ch *storage.Character) ([]SpellDurability, []storage.UserItem, bool) {
+	if ch == nil || ch.ID == "" || ch.EquippedItems == nil {
+		return nil, nil, false
+	}
+	weapon, ok := ch.EquippedItems[SlotWeapon]
+	if !ok || weapon.ItemID == "" || weapon.Dura == 0 {
+		return nil, nil, false
+	}
+	loss := w.rand.Intn(5) + 2
+	oldDisplay := int(weapon.Dura / 1000)
+	deleted := make([]storage.UserItem, 0, 1)
+	featureChanged := false
+	if int(weapon.Dura) <= loss {
+		deleted = append(deleted, weapon)
+		weapon.Dura = 0
+		weapon.ItemID = ""
+		featureChanged = true
+	} else {
+		weapon.Dura -= uint16(loss)
+	}
+	ch.EquippedItems[SlotWeapon] = weapon
+	if oldDisplay == int(weapon.Dura/1000) {
+		return nil, deleted, featureChanged
+	}
+	return []SpellDurability{{Slot: SlotWeapon, Dura: weapon.Dura, DuraMax: weapon.DuraMax}}, deleted, featureChanged
 }
 
 func (w *World) monsterAttackCharacterLocked(mon *Monster, ch storage.Character) (storage.Character, CharacterHit, error) {

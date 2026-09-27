@@ -1,6 +1,7 @@
 {
   "id": "D421",
   "name": "山谷矿区",
+  "mine": true,
   "width": 400,
   "height": 400,
   "connections": [

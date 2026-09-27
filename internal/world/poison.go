@@ -17,6 +17,14 @@ const (
 	poisonBaseHealthPowerYellow = 30
 )
 
+func (w *World) poisonHealthTickInterval() time.Duration {
+	interval := w.gameplay.Combat.PoisonTickIntervalMS
+	if interval <= 0 {
+		interval = int(poisonHealthTickInterval / time.Millisecond)
+	}
+	return time.Duration(interval) * time.Millisecond
+}
+
 func poisonChanceOK(rng *rand.Rand, avoid int) bool {
 	if avoid < 0 {
 		avoid = 0
@@ -104,9 +112,10 @@ func (w *World) applyCharacterPoisonTickLocked(ch storage.Character, now time.Ti
 	next := ch
 	changed := false
 	if ch.HP > 0 && characterPoisonHealthActive(ch, now) {
-		nextTick := now.Add(poisonHealthTickInterval)
+		interval := w.poisonHealthTickInterval()
+		nextTick := now.Add(interval)
 		if ch.PoisonHealthTickAt > 0 {
-			nextTick = time.Unix(0, ch.PoisonHealthTickAt).Add(poisonHealthTickInterval)
+			nextTick = time.Unix(0, ch.PoisonHealthTickAt).Add(interval)
 		}
 		if now.After(nextTick) {
 			damage := poisonDamageFromLevel(ch.PoisonHealthLevel)
@@ -150,7 +159,7 @@ func (w *World) applyMonsterPoisonTickLocked(mon *Monster, players map[string]st
 		}
 		return nil, false, nil
 	}
-	nextTick := mon.PoisonHealthTickAt.Add(poisonHealthTickInterval)
+	nextTick := mon.PoisonHealthTickAt.Add(w.poisonHealthTickInterval())
 	if mon.PoisonHealthTickAt.IsZero() || now.After(nextTick) {
 		damage := poisonDamageFromLevel(mon.PoisonHealthLevel)
 		source := players[mon.PoisonSourceID]
@@ -167,33 +176,18 @@ func (w *World) applyMonsterPoisonTickLocked(mon *Monster, players map[string]st
 		mon.HP = change.HP
 		mon.PoisonHealthTickAt = now
 		result := AttackResult{
-			MonsterID:      mon.ID,
-			MonsterMapID:   mon.MapID,
-			Damage:         damage,
-			MonsterHP:      mon.HP,
-			MonsterMaxHP:   mon.MaxHP,
-			MonsterRaceImg: mon.RaceImg,
-			MonsterWeapon:  mon.MonsterWeapon,
-			MonsterAppr:    mon.Appr,
-			MonsterX:       mon.X,
-			MonsterY:       mon.Y,
-			MonsterDir:     mon.Dir,
-			Character:      storage.Character{},
+			MonsterID: mon.ID, MonsterMapID: mon.MapID, Damage: damage,
+			MonsterHP: mon.HP, MonsterMaxHP: mon.MaxHP, MonsterRaceImg: mon.RaceImg,
+			MonsterWeapon: mon.MonsterWeapon, MonsterAppr: mon.Appr,
+			MonsterX: mon.X, MonsterY: mon.Y, MonsterDir: mon.Dir,
+			Character: storage.Character{},
 		}
 		if change.Dead {
-			w.vacateMonsterLocked(mon)
-			mon.Alive = false
-			mon.TargetCharacterID = ""
-			mon.TargetFocusAt = time.Time{}
-			state := w.spawnStateForLocked(mon.Spawn)
-			if state.activeCount > 0 {
-				state.activeCount--
-			}
-			w.scheduleMonsterRespawnLocked(mon, now)
-			result.Dead = true
-			result.Character = storage.Character{MapID: mon.MapID, X: mon.X, Y: mon.Y}
+			mon.PendingDeath = true
+			mon.DeathHitterID = ""
+			result.DeathDeferred = true
 		}
-		return []AttackResult{result}, change.Dead, nil
+		return []AttackResult{result}, false, nil
 	}
 	return nil, false, nil
 }

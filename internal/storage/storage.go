@@ -37,6 +37,8 @@ type Character struct {
 	Sex                 int                 `json:"sex"`
 	Level               int                 `json:"level"`
 	Experience          int                 `json:"experience"`
+	ExperienceMultiple  int                 `json:"experience_multiple,omitempty"`
+	ExperienceRate      int                 `json:"experience_rate,omitempty"`
 	HomeMap             string              `json:"home_map,omitempty"`
 	HomeX               int                 `json:"home_x,omitempty"`
 	HomeY               int                 `json:"home_y,omitempty"`

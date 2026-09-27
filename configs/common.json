@@ -1,9 +1,23 @@
 {
   "combat": {
-    "hit_impact_delay_ms": 200
+    "die_scatter_bag": true,
+    "die_drop_gold": false,
+    "hit_impact_delay_ms": 200,
+    "kill_human_add_pk_point": 100,
+    "human_level_differ": 10,
+    "high_level_group_fix_exp": true,
+    "poison_tick_interval_ms": 2500,
+    "mine_hit_rate": 4,
+    "mine_rate": 12,
+    "send_ref_msg_range": 12,
+    "pk_murder_message": "你杀了人！",
+    "pk_killed_message": "你被%s杀死了！"
   },
   "progression": {
-    "required_experience_per_level": 20
+    "required_experience_per_level": 20,
+    "level_experience": [100, 200, 300, 400, 600, 900, 1200, 1700, 2500, 6000, 8000, 10000, 15000, 30000, 40000, 50000, 70000, 100000, 120000, 140000, 250000, 300000, 350000, 400000, 500000, 700000, 1000000, 1400000, 1800000, 2000000, 2400000, 2800000, 3200000, 3600000, 4000000, 4800000, 5600000, 8200000, 9000000, 12000000, 16000000, 30000000, 50000000, 80000000, 120000000, 480000000, 1000000000, 3000000000, 3500000000, 4000000000],
+    "experience_multiple": 1,
+    "experience_rate": 100
   },
   "monster": {
     "tick_ms": 100

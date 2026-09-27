@@ -34,7 +34,7 @@ func TestLoadReadsServerJSONFromConfigDirectory(t *testing.T) {
 func TestLoadGameplayReadsTunableSettings(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "common.json"), []byte(`{
-	"combat": {"hit_impact_delay_ms": 175, "hit_interval_ms": 850, "hit_speed_step_ms": 20, "hit_drop_over_speed_ms": 12, "max_hit_messages": 2, "max_spell_messages": 3, "action_interval_ms": 275, "magic_hit_interval_ms": 645, "struck_time_ms": 225, "control_action_interval": false, "control_walk_hit": false, "control_run_long_hit": false, "control_run_hit": false, "control_run_magic": false, "walk_hit_interval_ms": 700, "run_hit_interval_ms": 710, "run_long_hit_interval_ms": 720, "run_magic_interval_ms": 730, "walk_interval_ms": 500, "run_interval_ms": 510, "max_walk_messages": 2, "max_run_messages": 3, "speed_control_mode": 1, "paraly_can_hit": true, "paraly_can_walk": true, "paraly_can_run": true},
+	"combat": {"hit_impact_delay_ms": 175, "hit_interval_ms": 850, "hit_speed_step_ms": 20, "hit_drop_over_speed_ms": 12, "max_hit_messages": 2, "max_spell_messages": 3, "action_interval_ms": 275, "magic_hit_interval_ms": 645, "struck_time_ms": 225, "send_ref_msg_range": 14, "control_action_interval": false, "control_walk_hit": false, "control_run_long_hit": false, "control_run_hit": false, "control_run_magic": false, "walk_hit_interval_ms": 700, "run_hit_interval_ms": 710, "run_long_hit_interval_ms": 720, "run_magic_interval_ms": 730, "walk_interval_ms": 500, "run_interval_ms": 510, "max_walk_messages": 2, "max_run_messages": 3, "speed_control_mode": 1, "paraly_can_hit": true, "paraly_can_walk": true, "paraly_can_run": true},
 	"recovery": {"health_fill_time_ms": 350, "spell_fill_time_ms": 900},
   "progression": {"required_experience_per_level": 30},
 	"monster": {"tick_ms": 900},
@@ -50,6 +50,12 @@ func TestLoadGameplayReadsTunableSettings(t *testing.T) {
 	}
 	if cfg.Combat.HitImpactDelayMS != 175 {
 		t.Fatalf("HitImpactDelayMS = %d, want 175", cfg.Combat.HitImpactDelayMS)
+	}
+	if cfg.Combat.MineHitRate != 4 || cfg.Combat.MineRate != 12 {
+		t.Fatalf("mine rates = %d/%d, want 4/12", cfg.Combat.MineHitRate, cfg.Combat.MineRate)
+	}
+	if cfg.Combat.SendRefMsgRange != 14 {
+		t.Fatalf("SendRefMsgRange = %d, want 14", cfg.Combat.SendRefMsgRange)
 	}
 	if cfg.Combat.StruckTimeMS != 225 {
 		t.Fatalf("StruckTimeMS = %d, want 225", cfg.Combat.StruckTimeMS)
@@ -124,7 +130,7 @@ func TestLoadGameplayRejectsInvalidValues(t *testing.T) {
 }
 
 func TestLoadGameplayRejectsInvalidHitThrottleValues(t *testing.T) {
-	for _, field := range []string{"hit_interval_ms", "hit_speed_step_ms", "hit_drop_over_speed_ms", "max_hit_messages", "max_spell_messages", "action_interval_ms", "magic_hit_interval_ms", "walk_hit_interval_ms", "run_interval_ms", "run_long_hit_interval_ms", "walk_interval_ms", "max_walk_messages", "max_run_messages"} {
+	for _, field := range []string{"hit_interval_ms", "hit_speed_step_ms", "hit_drop_over_speed_ms", "max_hit_messages", "max_spell_messages", "action_interval_ms", "magic_hit_interval_ms", "walk_hit_interval_ms", "run_interval_ms", "run_long_hit_interval_ms", "walk_interval_ms", "max_walk_messages", "max_run_messages", "send_ref_msg_range"} {
 		t.Run(field, func(t *testing.T) {
 			dir := t.TempDir()
 			if err := os.WriteFile(filepath.Join(dir, "common.json"), []byte(fmt.Sprintf(`{

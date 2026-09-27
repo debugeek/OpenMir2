@@ -176,6 +176,41 @@ func TestPoisonDamageTickWaitsPastReferenceInterval(t *testing.T) {
 	if len(hits) != 1 || monster.HP >= 100 {
 		t.Fatalf("monster poison tick did not fire after interval: hits=%d hp=%d", len(hits), monster.HP)
 	}
+	if monster.PendingDeath {
+		t.Fatalf("nonlethal monster poison tick marked pending death")
+	}
+}
+
+func TestPoisonDamageTickUsesConfiguredInterval(t *testing.T) {
+	now := time.Unix(40, 0)
+	w := &World{}
+	w.gameplay.Combat.PoisonTickIntervalMS = 1000
+	character := storage.Character{HP: 100, MaxHP: 100, PoisonHealthLevel: 1, PoisonHealthStartAt: now.Add(-time.Second).UnixNano(), PoisonHealthUntil: now.Add(time.Minute).UnixNano(), PoisonHealthTickAt: now.Add(-time.Second).UnixNano()}
+	updated, changed := w.applyCharacterPoisonTickLocked(character, now)
+	if changed || updated.HP != character.HP {
+		t.Fatalf("configured poison tick fired at exact interval: changed=%t hp=%d", changed, updated.HP)
+	}
+	updated, changed = w.applyCharacterPoisonTickLocked(character, now.Add(time.Nanosecond))
+	if !changed || updated.HP >= character.HP {
+		t.Fatalf("configured poison tick did not fire after interval: changed=%t hp=%d", changed, updated.HP)
+	}
+}
+
+func TestSourceLessMonsterPoisonDeathDefersSettlement(t *testing.T) {
+	now := time.Unix(40, 0)
+	monster := &Monster{
+		ID: "poison-death-monster", Alive: true, HP: 1, MaxHP: 100,
+		PoisonHealthLevel: 1, PoisonHealthStartAt: now.Add(-time.Second), PoisonHealthUntil: now.Add(time.Minute),
+		PoisonHealthTickAt: now.Add(-poisonHealthTickInterval - time.Nanosecond),
+	}
+	w := &World{}
+	hits, dead, err := w.applyMonsterPoisonTickLocked(monster, nil, now)
+	if err != nil {
+		t.Fatalf("monster poison death tick error = %v", err)
+	}
+	if dead || len(hits) != 1 || !monster.PendingDeath || monster.Alive == false {
+		t.Fatalf("source-less poison death = dead:%t hits:%d pending:%t alive:%t, want deferred pending death", dead, len(hits), monster.PendingDeath, monster.Alive)
+	}
 }
 
 func TestMonsterPoisonDamageTickBypassesDefenseAndArmorMultiplier(t *testing.T) {
@@ -842,7 +877,8 @@ func TestImmediateMonsterMagicDamageDoesNotUsePoisonArmorMultiplier(t *testing.T
 
 func TestImmediateMonsterMagicDamageDefersDeathSettlement(t *testing.T) {
 	w, caster := newTestWorldCharacter(t)
-	mon := &Monster{ID: "magic-death-target", MapID: caster.MapID, X: caster.X + 1, Y: caster.Y, HP: 5, MaxHP: 100, Alive: true, Experience: 25}
+	caster.Experience = 10
+	mon := &Monster{ID: "magic-death-target", MapID: caster.MapID, X: caster.X + 1, Y: caster.Y, HP: 5, MaxHP: 100, Alive: true, Experience: 5}
 	w.mu.Lock()
 	w.monsters[mon.ID] = mon
 	w.occupyMonsterLocked(mon)
@@ -861,8 +897,11 @@ func TestImmediateMonsterMagicDamageDefersDeathSettlement(t *testing.T) {
 	if len(tick.MonsterDeaths) != 1 || tick.MonsterDeaths[0].MonsterID != mon.ID {
 		t.Fatalf("Tick() deaths = %+v, want %q", tick.MonsterDeaths, mon.ID)
 	}
-	if len(tick.SpellExperience) != 1 || tick.SpellExperience[0].Experience != mon.Experience {
+	if len(tick.SpellExperience) != 1 || tick.SpellExperience[0].Experience != mon.Experience || tick.SpellExperience[0].CurrentExp != 15 {
 		t.Fatalf("Tick() experience = %+v, want %d", tick.SpellExperience, mon.Experience)
+	}
+	if len(tick.Characters) != 1 || tick.Characters[0].ID != caster.ID || tick.Characters[0].Experience != 15 {
+		t.Fatalf("Tick() characters = %+v, want cumulative experience 15", tick.Characters)
 	}
 }
 

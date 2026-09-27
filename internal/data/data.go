@@ -108,6 +108,7 @@ type StdSkill struct {
 type StdMonster struct {
 	ID                 string `json:"id"`
 	Name               string `json:"name"`
+	Behavior           string `json:"behavior,omitempty"`
 	Race               int    `json:"race"`
 	RaceImg            int    `json:"race_img"`
 	Appr               int    `json:"appr"`
@@ -176,6 +177,8 @@ type StdMap struct {
 	Width            int                `json:"width"`
 	Height           int                `json:"height"`
 	MonsterSpawnRate int                `json:"monster_spawn_rate"`
+	ExperienceRate   int                `json:"experience_rate,omitempty"`
+	Mine             bool               `json:"mine,omitempty"`
 	Blocked          []StdPoint         `json:"-"`
 	BlockedBits      []byte             `json:"blocked_bits,omitempty"`
 	StartPoints      []StdStartPoint    `json:"start_points,omitempty"`

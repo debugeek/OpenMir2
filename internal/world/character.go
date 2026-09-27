@@ -6,6 +6,28 @@ import (
 	"openmir2/internal/storage"
 )
 
+func (w *World) resolvePKDeathLocked(victim, killer *storage.Character) bool {
+	if victim == nil || killer == nil || victim.ID == "" || killer.ID == "" || victim.ID == killer.ID || victim.MapID != killer.MapID {
+		return false
+	}
+	if w.gameplay.Combat.NonPKServer || victim.GuildWarArea || killer.GuildWarArea {
+		return false
+	}
+	if mapData, ok := w.data.Maps[victim.MapID]; ok && mapData.Safe {
+		return false
+	}
+	levelDiffer := w.gameplay.Combat.HumanLevelDiffer
+	if levelDiffer < 0 || killer.Level-victim.Level <= levelDiffer || victim.PKFlag {
+		return false
+	}
+	points := w.gameplay.Combat.KillHumanAddPKPoint
+	if points <= 0 {
+		return false
+	}
+	killer.PKPoint += points
+	return true
+}
+
 func Plain6ClassName(job string) string {
 	switch job {
 	case "0":

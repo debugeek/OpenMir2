@@ -1,6 +1,7 @@
 {
   "id": "D401",
   "name": "废矿入口",
+  "mine": true,
   "width": 200,
   "height": 200,
   "connections": [

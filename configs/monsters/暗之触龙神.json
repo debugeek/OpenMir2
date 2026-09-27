@@ -25,5 +25,6 @@
   "walk_step": 1,
   "walk_wait": 0,
   "attack_interval_ms": 2000,
-  "drops": null
+  "drops": null,
+  "behavior": "centipede_king"
 }

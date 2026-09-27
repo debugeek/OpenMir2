@@ -1,6 +1,7 @@
 {
   "id": "D406",
   "name": "废矿区南部",
+  "mine": true,
   "width": 200,
   "height": 200,
   "connections": [

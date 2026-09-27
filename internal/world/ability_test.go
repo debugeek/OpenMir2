@@ -46,6 +46,22 @@ func TestBaseTaoistLevel1(t *testing.T) {
 	}
 }
 
+func TestSkillTrainingMultiplierUsesTechniqueNecklace(t *testing.T) {
+	w := &World{data: data.StdBundle{Items: map[string]data.StdItem{
+		"technique-necklace": {ID: "technique-necklace", Shape: 120},
+	}}}
+	without := storage.Character{}
+	with := storage.Character{EquippedItems: map[int]storage.UserItem{
+		SlotRingL: {ItemID: "technique-necklace"},
+	}}
+	if got := w.skillTrainingMultiplierLocked(without); got != 1 {
+		t.Fatalf("training multiplier without necklace = %d, want 1", got)
+	}
+	if got := w.skillTrainingMultiplierLocked(with); got != 3 {
+		t.Fatalf("training multiplier with necklace = %d, want 3", got)
+	}
+}
+
 func TestBaseUnknownClassFallsBackToWarrior(t *testing.T) {
 	if got, want := Base("nonsense", 5), Base("warrior", 5); got != want {
 		t.Fatalf("Base(nonsense, 5) = %+v, want fallback to warrior = %+v", got, want)

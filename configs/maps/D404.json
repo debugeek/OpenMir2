@@ -1,6 +1,7 @@
 {
   "id": "D404",
   "name": "矿区B二层",
+  "mine": true,
   "width": 200,
   "height": 200,
   "connections": [

@@ -9,7 +9,6 @@ import (
 const (
 	KindNormal   = "normal"
 	KindMerchant = "merchant"
-	KindQuest    = "quest"
 	KindGuard    = "guard"
 	KindTrainer  = "trainer"
 )
@@ -111,8 +110,6 @@ func NormalizeKind(kind string) string {
 		return KindNormal
 	case KindMerchant, "shop", "trade":
 		return KindMerchant
-	case KindQuest, "questnpc":
-		return KindQuest
 	case KindGuard, "castle_guard":
 		return KindGuard
 	case KindTrainer, "training":

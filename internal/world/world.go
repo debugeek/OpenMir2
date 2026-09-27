@@ -20,6 +20,7 @@ type World struct {
 	monsters                 map[string]*Monster
 	occupied                 map[monsterPosition]string
 	drops                    map[string]GroundDrop
+	mineCounts               map[monsterPosition]int
 	fireFields               map[fireFieldKey]fireField
 	groundEvents             map[int32]SpellGroundEvent
 	spawns                   map[string]*spawnState
@@ -100,6 +101,7 @@ type Monster struct {
 	ID                  string
 	TemplateID          string
 	Name                string
+	Behavior            string
 	Race                int
 	RaceImg             int
 	MonsterWeapon       int
@@ -310,6 +312,7 @@ type AttackResult struct {
 	MonsterDir           int
 	MonsterStatus        int32
 	Dead                 bool
+	DeathDeferred        bool
 	Experience           int
 	CurrentExp           int
 	LevelUp              bool
@@ -326,6 +329,11 @@ type AttackResult struct {
 	MonsterHits          []AttackResult
 	NPCTrainingHits      []NPCTrainingHit
 	Character            storage.Character
+	Durability           []SpellDurability
+	DeletedItems         []storage.UserItem
+	FeatureChanged       bool
+	GroupExperiences     []SpellExperience
+	AddedItems           []storage.UserItem
 }
 
 type AttackSkillExperience struct {
@@ -348,6 +356,8 @@ type TickResult struct {
 	MonsterTraces            []MonsterTickTrace
 	CharacterHits            []CharacterHit
 	CharacterDeaths          []storage.Character
+	CharacterDrops           []GroundDrop
+	PKDeathMessages          []PKDeathMessage
 	CharacterRevivals        []CharacterRevival
 	MonsterHits              []AttackResult
 	NPCTrainingHits          []NPCTrainingHit
@@ -375,6 +385,11 @@ type TickResult struct {
 	SpellExperience          []SpellExperience
 	PoisonNotifications      []PoisonNotification
 	OrderedSpellEvents       []OrderedSpellEvent
+}
+
+type PKDeathMessage struct {
+	Character storage.Character
+	Text      string
 }
 
 type MonsterTraceState struct {
@@ -532,6 +547,7 @@ func New(bundle data.StdBundle, store *storage.Store, gameplayConfig ...config.G
 		monsters:                 map[string]*Monster{},
 		occupied:                 map[monsterPosition]string{},
 		drops:                    map[string]GroundDrop{},
+		mineCounts:               map[monsterPosition]int{},
 		fireFields:               map[fireFieldKey]fireField{},
 		groundEvents:             map[int32]SpellGroundEvent{},
 		spawns:                   map[string]*spawnState{},
@@ -553,6 +569,13 @@ func New(bundle data.StdBundle, store *storage.Store, gameplayConfig ...config.G
 	w.initNPCActors()
 	w.spawnInitial()
 	return w
+}
+
+func (w *World) SendRefMsgRange() int {
+	if w.gameplay.Combat.SendRefMsgRange <= 0 {
+		return 12
+	}
+	return w.gameplay.Combat.SendRefMsgRange
 }
 
 func (w *World) RegisterCharacter(ch storage.Character) storage.Character {
@@ -705,6 +728,9 @@ func normalizeStdBundle(bundle data.StdBundle) data.StdBundle {
 	for id, mon := range bundle.Monsters {
 		if mon.ViewRange <= 0 {
 			mon.ViewRange = 5
+			if mon.Behavior == "centipede_king" {
+				mon.ViewRange = 6
+			}
 		}
 		switch mon.Race {
 		case 95:
@@ -725,8 +751,6 @@ func normalizeStdBundle(bundle data.StdBundle) data.StdBundle {
 			mon.ViewRange = 9
 		case 104:
 			mon.ViewRange = 12
-		case 107:
-			mon.ViewRange = 6
 		case 115:
 			mon.ViewRange = 16
 		case 112:

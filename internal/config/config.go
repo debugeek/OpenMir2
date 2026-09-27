@@ -36,7 +36,18 @@ type RecoverySettings struct {
 }
 
 type CombatSettings struct {
+	DieScatterBag              bool   `json:"die_scatter_bag"`
+	DieDropGold                bool   `json:"die_drop_gold"`
 	HitImpactDelayMS           int    `json:"hit_impact_delay_ms"`
+	KillHumanAddPKPoint        int    `json:"kill_human_add_pk_point"`
+	HumanLevelDiffer           int    `json:"human_level_differ"`
+	HighLevelGroupFixExp       bool   `json:"high_level_group_fix_exp"`
+	PoisonTickIntervalMS       int    `json:"poison_tick_interval_ms"`
+	MineHitRate                int    `json:"mine_hit_rate"`
+	MineRate                   int    `json:"mine_rate"`
+	SendRefMsgRange            int    `json:"send_ref_msg_range"`
+	PKMurderMessage            string `json:"pk_murder_message"`
+	PKKilledMessage            string `json:"pk_killed_message"`
 	HitIntervalMS              int    `json:"hit_interval_ms"`
 	HitSpeedStepMS             int    `json:"hit_speed_step_ms"`
 	HitDropOverSpeedMS         int    `json:"hit_drop_over_speed_ms"`
@@ -81,7 +92,10 @@ type CombatSettings struct {
 }
 
 type ProgressionSettings struct {
-	RequiredExperiencePerLevel int `json:"required_experience_per_level"`
+	RequiredExperiencePerLevel int   `json:"required_experience_per_level"`
+	LevelExperience            []int `json:"level_experience"`
+	ExperienceMultiple         int   `json:"experience_multiple"`
+	ExperienceRate             int   `json:"experience_rate"`
 }
 
 type MonsterSettings struct {
@@ -158,6 +172,15 @@ func LoadGameplay(dir string) (Gameplay, error) {
 	if cfg.Combat.HitImpactDelayMS < 0 {
 		return cfg, fmt.Errorf("combat.hit_impact_delay_ms must be >= 0")
 	}
+	if cfg.Combat.MineHitRate <= 0 {
+		return cfg, fmt.Errorf("combat.mine_hit_rate must be > 0")
+	}
+	if cfg.Combat.MineRate <= 0 {
+		return cfg, fmt.Errorf("combat.mine_rate must be > 0")
+	}
+	if cfg.Combat.SendRefMsgRange <= 0 {
+		return cfg, fmt.Errorf("combat.send_ref_msg_range must be > 0")
+	}
 	if cfg.Combat.HitIntervalMS < 0 {
 		return cfg, fmt.Errorf("combat.hit_interval_ms must be >= 0")
 	}
@@ -230,8 +253,13 @@ func LoadGameplay(dir string) (Gameplay, error) {
 	if cfg.Recovery.RevivalTimeMS <= 0 {
 		return cfg, fmt.Errorf("recovery.revival_time_ms must be > 0")
 	}
-	if cfg.Progression.RequiredExperiencePerLevel <= 0 {
-		return cfg, fmt.Errorf("progression.required_experience_per_level must be > 0")
+	if len(cfg.Progression.LevelExperience) == 0 {
+		return cfg, fmt.Errorf("progression.level_experience must not be empty")
+	}
+	for level, required := range cfg.Progression.LevelExperience {
+		if required <= 0 {
+			return cfg, fmt.Errorf("progression.level_experience[%d] must be > 0", level)
+		}
 	}
 	if cfg.Monster.TickMS <= 0 {
 		return cfg, fmt.Errorf("monster.tick_ms must be > 0")
@@ -278,7 +306,18 @@ func LoadGameplay(dir string) (Gameplay, error) {
 func DefaultGameplay() Gameplay {
 	return Gameplay{
 		Combat: CombatSettings{
+			DieScatterBag:         true,
+			DieDropGold:           false,
 			HitImpactDelayMS:      200,
+			KillHumanAddPKPoint:   100,
+			HumanLevelDiffer:      10,
+			HighLevelGroupFixExp:  true,
+			PoisonTickIntervalMS:  2500,
+			MineHitRate:           4,
+			MineRate:              12,
+			SendRefMsgRange:       12,
+			PKMurderMessage:       "你杀了人！",
+			PKKilledMessage:       "你被%s杀死了！",
 			HitIntervalMS:         900,
 			HitSpeedStepMS:        25,
 			HitDropOverSpeedMS:    10,
@@ -318,6 +357,15 @@ func DefaultGameplay() Gameplay {
 		},
 		Progression: ProgressionSettings{
 			RequiredExperiencePerLevel: 20,
+			ExperienceMultiple:         1,
+			ExperienceRate:             100,
+			LevelExperience: []int{
+				100, 200, 300, 400, 600, 900, 1200, 1700, 2500, 6000,
+				8000, 10000, 15000, 30000, 40000, 50000, 70000, 100000, 120000, 140000,
+				250000, 300000, 350000, 400000, 500000, 700000, 1000000, 1400000, 1800000, 2000000,
+				2400000, 2800000, 3200000, 3600000, 4000000, 4800000, 5600000, 8200000, 9000000, 12000000,
+				16000000, 30000000, 50000000, 80000000, 120000000, 480000000, 1000000000, 3000000000, 3500000000, 4000000000,
+			},
 		},
 		Monster: MonsterSettings{
 			TickMS: 100,

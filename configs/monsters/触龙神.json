@@ -356,5 +356,6 @@
       "min_count": 1,
       "max_count": 1
     }
-  ]
+  ],
+  "behavior": "centipede_king"
 }

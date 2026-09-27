@@ -21,6 +21,11 @@ type AttackSyncer interface {
 	SendSkillExp(uint16, byte, int, time.Duration)
 }
 
+type AttackItemSyncer interface {
+	SendBagAddItem(storage.Character, storage.UserItem)
+	SendWeightChanged(storage.Character)
+}
+
 func ApplyAttackSync(syncer AttackSyncer, result AttackResult, attackIdent uint16) {
 	syncer.UpdateClient(result.Character)
 	for _, hit := range result.CharacterHits {
@@ -45,6 +50,14 @@ func ApplyAttackSync(syncer AttackSyncer, result AttackResult, attackIdent uint1
 		syncer.BroadcastNPCTraining(result.NPCTrainingHits)
 	}
 	syncer.SendActionOK()
+	if itemSyncer, ok := syncer.(AttackItemSyncer); ok {
+		for _, item := range result.AddedItems {
+			itemSyncer.SendBagAddItem(result.Character, item)
+		}
+		if len(result.AddedItems) > 0 {
+			itemSyncer.SendWeightChanged(result.Character)
+		}
+	}
 	for _, hit := range result.CharacterHits {
 		if hit.Damage > 0 && hit.AttackerNameColorChanged {
 			syncer.BroadcastCharacterNameColor(result.Character)
