@@ -12,7 +12,8 @@
     "capabilities": {
       "buy": true,
       "sell": true,
-      "repair": true
+      "repair": true,
+      "special_repair": true
     },
     "stock": [
       { "item_id": "随机传送卷", "count": 10 },

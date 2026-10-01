@@ -1,7 +1,6 @@
 {
   "id": "怒斩",
   "name": "怒斩",
-  "kind": "weapon",
   "weight": 85,
   "stats": {
     "min_attack": 12,
@@ -22,6 +21,5 @@
   "need": 1,
   "need_level": 46,
   "price": 85000,
-  "stock": 5,
-  "color": 251
+  "ani_count": 0
 }

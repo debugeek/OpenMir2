@@ -1,7 +1,6 @@
 {
   "id": "魔法长袍(男)",
   "name": "魔法长袍(男)",
-  "kind": "armor",
   "weight": 12,
   "stats": {
     "min_attack": 0,
@@ -21,6 +20,6 @@
   "dura_max": 20000,
   "need_level": 22,
   "price": 10000,
-  "stock": 20,
-  "color": 251
+  "need": 0,
+  "ani_count": 0
 }

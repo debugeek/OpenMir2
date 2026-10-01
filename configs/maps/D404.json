@@ -27,6 +27,9 @@
       "to_y": 55
     }
   ],
+  "doors": [
+    {"x": 9, "y": 153, "group": 36702357}
+  ],
   "monster_spawns": [
     {
       "monster_id": "僵尸",

@@ -17,8 +17,14 @@ type AttackSyncer interface {
 	BroadcastCharacterStruck(CharacterHit)
 	BroadcastCharacterNameColor(storage.Character)
 	BroadcastHitImpact(AttackResult)
+	SendAttackItemChanges(storage.Character, []SpellDurability, []storage.UserItem)
+	SendWeaponBroken()
 	BroadcastNPCTraining([]NPCTrainingHit)
 	SendSkillExp(uint16, byte, int, time.Duration)
+}
+
+type MiningFeedbackSyncer interface {
+	SendMiningFeedback()
 }
 
 type AttackItemSyncer interface {
@@ -31,9 +37,27 @@ func ApplyAttackSync(syncer AttackSyncer, result AttackResult, attackIdent uint1
 	for _, hit := range result.CharacterHits {
 		syncer.SendCharacterHitChanges(hit)
 	}
-	syncer.BroadcastCharacterHit(result.Character, attackIdent)
+	if len(result.Durability) > 0 || len(result.DeletedItems) > 0 {
+		syncer.SendAttackItemChanges(result.Character, result.Durability, result.DeletedItems)
+	}
+	if result.WeaponBroken {
+		syncer.SendWeaponBroken()
+	}
+	if result.HeavyHitFragment {
+		if mining, ok := syncer.(MiningFeedbackSyncer); ok {
+			mining.SendMiningFeedback()
+		} else {
+			syncer.BroadcastCharacterHit(result.Character, attackIdent)
+		}
+	} else {
+		syncer.BroadcastCharacterHit(result.Character, attackIdent)
+	}
 	for _, hit := range result.CharacterHits {
-		if hit.Damage > 0 {
+		struckDamage := hit.Damage
+		if hit.StruckDamage > 0 {
+			struckDamage = hit.StruckDamage
+		}
+		if struckDamage > 0 {
 			syncer.BroadcastCharacterStruck(hit)
 		}
 	}
@@ -51,11 +75,11 @@ func ApplyAttackSync(syncer AttackSyncer, result AttackResult, attackIdent uint1
 	}
 	syncer.SendActionOK()
 	if itemSyncer, ok := syncer.(AttackItemSyncer); ok {
-		for _, item := range result.AddedItems {
-			itemSyncer.SendBagAddItem(result.Character, item)
-		}
 		if len(result.AddedItems) > 0 {
 			itemSyncer.SendWeightChanged(result.Character)
+			for _, item := range result.AddedItems {
+				itemSyncer.SendBagAddItem(result.Character, item)
+			}
 		}
 	}
 	for _, hit := range result.CharacterHits {

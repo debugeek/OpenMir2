@@ -28,6 +28,10 @@ func (s *recordingAttackSyncer) SendActionOK() {
 	s.calls = append(s.calls, attackSyncCall{kind: "action"})
 }
 
+func (s *recordingAttackSyncer) SendMiningFeedback() {
+	s.calls = append(s.calls, attackSyncCall{kind: "mining"})
+}
+
 func (s *recordingAttackSyncer) SendWinExp(int, int) {
 	s.calls = append(s.calls, attackSyncCall{kind: "exp"})
 }
@@ -69,6 +73,14 @@ func (s *recordingAttackSyncer) BroadcastCharacterNameColor(storage.Character) {
 
 func (s *recordingAttackSyncer) BroadcastHitImpact(AttackResult) {
 	s.calls = append(s.calls, attackSyncCall{kind: "monster-hit"})
+}
+
+func (s *recordingAttackSyncer) SendAttackItemChanges(storage.Character, []SpellDurability, []storage.UserItem) {
+	s.calls = append(s.calls, attackSyncCall{kind: "attack-items"})
+}
+
+func (s *recordingAttackSyncer) SendWeaponBroken() {
+	s.calls = append(s.calls, attackSyncCall{kind: "weapon-broken"})
 }
 
 func (s *recordingAttackSyncer) BroadcastNPCTraining([]NPCTrainingHit) {
@@ -194,5 +206,18 @@ func TestApplyAttackSyncSkipsZeroDamageCharacterImpact(t *testing.T) {
 		if call.kind == "character-struck" {
 			t.Fatal("zero-damage attack emitted character impact")
 		}
+	}
+}
+
+func TestApplyAttackSyncUsesMiningFeedbackInsteadOfAttackBroadcast(t *testing.T) {
+	syncer := &recordingAttackSyncer{}
+	ApplyAttackSync(syncer, AttackResult{HeavyHitFragment: true}, 1)
+	got := make([]string, 0, len(syncer.calls))
+	for _, call := range syncer.calls {
+		got = append(got, call.kind)
+	}
+	want := []string{"update", "mining", "action"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("call order = %v, want %v", got, want)
 	}
 }

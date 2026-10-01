@@ -21,12 +21,17 @@ type Listener struct {
 type Gameplay struct {
 	Combat      CombatSettings      `json:"combat"`
 	Recovery    RecoverySettings    `json:"recovery"`
+	Persistence PersistenceSettings `json:"persistence"`
 	Progression ProgressionSettings `json:"progression"`
 	Monster     MonsterSettings     `json:"monster"`
 	Movement    MovementSettings    `json:"movement"`
 	Item        ItemSettings        `json:"item"`
 	Guild       GuildSettings       `json:"guild"`
 	Castle      CastleSettings      `json:"castle"`
+}
+
+type PersistenceSettings struct {
+	SaveHumanRcdTimeMS int `json:"save_human_rcd_time_ms"`
 }
 
 type RecoverySettings struct {
@@ -40,6 +45,7 @@ type CombatSettings struct {
 	DieDropGold                bool   `json:"die_drop_gold"`
 	HitImpactDelayMS           int    `json:"hit_impact_delay_ms"`
 	KillHumanAddPKPoint        int    `json:"kill_human_add_pk_point"`
+	KillHumanDecLuckPoint      int    `json:"kill_human_dec_luck_point"`
 	HumanLevelDiffer           int    `json:"human_level_differ"`
 	HighLevelGroupFixExp       bool   `json:"high_level_group_fix_exp"`
 	PoisonTickIntervalMS       int    `json:"poison_tick_interval_ms"`
@@ -109,14 +115,28 @@ type MovementSettings struct {
 	DisableHumanRun    bool `json:"disable_human_run"`
 	RunHuman           bool `json:"run_human"`
 	RunMon             bool `json:"run_mon"`
+	RunNPC             bool `json:"run_npc"`
+	RunWarAll          bool `json:"run_war_all"`
 }
 
 type ItemSettings struct {
-	FloorDropMaxStackPerTile int `json:"floor_drop_max_stack_per_tile"`
-	FloorItemCanPickUpMS     int `json:"floor_item_can_pick_up_ms"`
-	MaxBagItem               int `json:"max_bag_item"`
-	UpgradeWeaponPrice       int `json:"upgrade_weapon_price"`
-	UpgradeWeaponGetBackMS   int `json:"upgrade_weapon_get_back_ms"`
+	FloorDropMaxStackPerTile      int `json:"floor_drop_max_stack_per_tile"`
+	FloorItemCanPickUpMS          int `json:"floor_item_can_pick_up_ms"`
+	MaxBagItem                    int `json:"max_bag_item"`
+	MaxGold                       int `json:"max_gold"`
+	UpgradeWeaponPrice            int `json:"upgrade_weapon_price"`
+	UpgradeWeaponGetBackMS        int `json:"upgrade_weapon_get_back_ms"`
+	UpgradeWeaponExpireDays       int `json:"upgrade_weapon_expire_days"`
+	UpgradeWeaponMaxPoint         int `json:"upgrade_weapon_max_point"`
+	UpgradeWeaponDCRate           int `json:"upgrade_weapon_dc_rate"`
+	UpgradeWeaponDCTwoPointRate   int `json:"upgrade_weapon_dc_two_point_rate"`
+	UpgradeWeaponDCThreePointRate int `json:"upgrade_weapon_dc_three_point_rate"`
+	UpgradeWeaponMCRate           int `json:"upgrade_weapon_mc_rate"`
+	UpgradeWeaponMCTwoPointRate   int `json:"upgrade_weapon_mc_two_point_rate"`
+	UpgradeWeaponMCThreePointRate int `json:"upgrade_weapon_mc_three_point_rate"`
+	UpgradeWeaponSCRate           int `json:"upgrade_weapon_sc_rate"`
+	UpgradeWeaponSCTwoPointRate   int `json:"upgrade_weapon_sc_two_point_rate"`
+	UpgradeWeaponSCThreePointRate int `json:"upgrade_weapon_sc_three_point_rate"`
 }
 
 type GuildSettings struct {
@@ -129,6 +149,7 @@ type CastleSettings struct {
 	RepairWallPrice      int `json:"repair_wall_price"`
 	HireGuardPrice       int `json:"hire_guard_price"`
 	HireArcherPrice      int `json:"hire_archer_price"`
+	StartWarDays         int `json:"start_war_days"`
 	SuperRepairPriceRate int `json:"super_repair_price_rate"`
 }
 
@@ -253,6 +274,9 @@ func LoadGameplay(dir string) (Gameplay, error) {
 	if cfg.Recovery.RevivalTimeMS <= 0 {
 		return cfg, fmt.Errorf("recovery.revival_time_ms must be > 0")
 	}
+	if cfg.Persistence.SaveHumanRcdTimeMS <= 0 {
+		return cfg, fmt.Errorf("persistence.save_human_rcd_time_ms must be > 0")
+	}
 	if len(cfg.Progression.LevelExperience) == 0 {
 		return cfg, fmt.Errorf("progression.level_experience must not be empty")
 	}
@@ -273,11 +297,23 @@ func LoadGameplay(dir string) (Gameplay, error) {
 	if cfg.Item.MaxBagItem <= 0 {
 		return cfg, fmt.Errorf("item.max_bag_item must be > 0")
 	}
+	if cfg.Item.MaxGold <= 0 {
+		return cfg, fmt.Errorf("item.max_gold must be > 0")
+	}
 	if cfg.Item.UpgradeWeaponPrice <= 0 {
 		return cfg, fmt.Errorf("item.upgrade_weapon_price must be > 0")
 	}
 	if cfg.Item.UpgradeWeaponGetBackMS <= 0 {
 		return cfg, fmt.Errorf("item.upgrade_weapon_get_back_ms must be > 0")
+	}
+	if cfg.Item.UpgradeWeaponExpireDays <= 0 {
+		return cfg, fmt.Errorf("item.upgrade_weapon_expire_days must be > 0")
+	}
+	if cfg.Item.UpgradeWeaponMaxPoint <= 0 || cfg.Item.UpgradeWeaponDCRate <= 0 || cfg.Item.UpgradeWeaponMCRate <= 0 || cfg.Item.UpgradeWeaponSCRate <= 0 || cfg.Item.UpgradeWeaponDCTwoPointRate <= 0 || cfg.Item.UpgradeWeaponDCThreePointRate <= 0 || cfg.Item.UpgradeWeaponMCTwoPointRate <= 0 || cfg.Item.UpgradeWeaponMCThreePointRate <= 0 || cfg.Item.UpgradeWeaponSCTwoPointRate <= 0 || cfg.Item.UpgradeWeaponSCThreePointRate <= 0 {
+		return cfg, fmt.Errorf("item weapon upgrade rates and limits must be > 0")
+	}
+	if cfg.Combat.KillHumanDecLuckPoint <= 0 {
+		return cfg, fmt.Errorf("combat.kill_human_dec_luck_point must be > 0")
 	}
 	if cfg.Guild.BuildGuildPrice <= 0 {
 		return cfg, fmt.Errorf("guild.build_guild_price must be > 0")
@@ -297,6 +333,9 @@ func LoadGameplay(dir string) (Gameplay, error) {
 	if cfg.Castle.HireArcherPrice <= 0 {
 		return cfg, fmt.Errorf("castle.hire_archer_price must be > 0")
 	}
+	if cfg.Castle.StartWarDays <= 0 {
+		return cfg, fmt.Errorf("castle.start_war_days must be > 0")
+	}
 	if cfg.Castle.SuperRepairPriceRate <= 0 {
 		return cfg, fmt.Errorf("castle.super_repair_price_rate must be > 0")
 	}
@@ -310,6 +349,7 @@ func DefaultGameplay() Gameplay {
 			DieDropGold:           false,
 			HitImpactDelayMS:      200,
 			KillHumanAddPKPoint:   100,
+			KillHumanDecLuckPoint: 500,
 			HumanLevelDiffer:      10,
 			HighLevelGroupFixExp:  true,
 			PoisonTickIntervalMS:  2500,
@@ -355,6 +395,9 @@ func DefaultGameplay() Gameplay {
 			SpellFillTimeMS:  800,
 			RevivalTimeMS:    60 * 1000,
 		},
+		Persistence: PersistenceSettings{
+			SaveHumanRcdTimeMS: 10 * 60 * 1000,
+		},
 		Progression: ProgressionSettings{
 			RequiredExperiencePerLevel: 20,
 			ExperienceMultiple:         1,
@@ -374,13 +417,21 @@ func DefaultGameplay() Gameplay {
 			UserMoveCanDupObj:  false,
 			UserMoveCanOnItem:  true,
 			UserMoveCooldownMS: 10000,
+			RunNPC:             false,
+			RunWarAll:          false,
 		},
 		Item: ItemSettings{
 			FloorDropMaxStackPerTile: 5,
 			FloorItemCanPickUpMS:     2 * 60 * 1000,
 			MaxBagItem:               46,
+			MaxGold:                  10000000,
 			UpgradeWeaponPrice:       10000,
 			UpgradeWeaponGetBackMS:   60 * 60 * 1000,
+			UpgradeWeaponExpireDays:  8,
+			UpgradeWeaponMaxPoint:    20,
+			UpgradeWeaponDCRate:      100, UpgradeWeaponDCTwoPointRate: 30, UpgradeWeaponDCThreePointRate: 200,
+			UpgradeWeaponMCRate: 100, UpgradeWeaponMCTwoPointRate: 30, UpgradeWeaponMCThreePointRate: 200,
+			UpgradeWeaponSCRate: 100, UpgradeWeaponSCTwoPointRate: 30, UpgradeWeaponSCThreePointRate: 200,
 		},
 		Guild: GuildSettings{
 			BuildGuildPrice: 1000000,
@@ -391,6 +442,7 @@ func DefaultGameplay() Gameplay {
 			RepairWallPrice:      500000,
 			HireGuardPrice:       300000,
 			HireArcherPrice:      300000,
+			StartWarDays:         4,
 			SuperRepairPriceRate: 3,
 		},
 	}

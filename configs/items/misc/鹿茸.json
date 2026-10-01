@@ -1,7 +1,6 @@
 {
   "id": "鹿茸",
   "name": "鹿茸",
-  "kind": "consumable",
   "weight": 5,
   "stats": {
     "min_attack": 0,
@@ -19,6 +18,8 @@
   "looks": 6,
   "dura_max": 1,
   "price": 100,
-  "stock": 5,
-  "color": 251
+  "std_mode": 0,
+  "need": 0,
+  "need_level": 0,
+  "ani_count": 0
 }

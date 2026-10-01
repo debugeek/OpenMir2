@@ -1,7 +1,6 @@
 {
   "id": "祈祷头盔",
   "name": "祈祷头盔",
-  "kind": "misc",
   "weight": 2,
   "stats": {
     "min_attack": 0,
@@ -21,6 +20,6 @@
   "dura_max": 5000,
   "need_level": 18,
   "price": 20000,
-  "stock": 5,
-  "color": 251
+  "need": 0,
+  "ani_count": 0
 }

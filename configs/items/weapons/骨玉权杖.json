@@ -1,7 +1,6 @@
 {
   "id": "骨玉权杖",
   "name": "骨玉权杖",
-  "kind": "weapon",
   "weight": 20,
   "stats": {
     "min_attack": 6,
@@ -21,6 +20,6 @@
   "dura_max": 18000,
   "need_level": 35,
   "price": 50000,
-  "stock": 5,
-  "color": 251
+  "need": 0,
+  "ani_count": 0
 }

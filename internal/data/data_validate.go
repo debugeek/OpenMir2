@@ -35,6 +35,14 @@ func (b StdBundle) Validate() error {
 				return fmt.Errorf("map %s has a connection with missing destination map", id)
 			}
 		}
+		for _, door := range mp.Doors {
+			if door.X < 0 || door.X >= mp.Width || door.Y < 0 || door.Y >= mp.Height {
+				return fmt.Errorf("map %q door (%d,%d) is out of bounds", mp.ID, door.X, door.Y)
+			}
+			if door.Group <= 0 {
+				return fmt.Errorf("map %q door (%d,%d) has invalid group %d", mp.ID, door.X, door.Y, door.Group)
+			}
+		}
 	}
 	totalStartPoints := 0
 	for _, mp := range b.Maps {

@@ -1,7 +1,6 @@
 {
   "id": "干肉",
   "name": "干肉",
-  "kind": "consumable",
   "weight": 1,
   "stats": {
     "min_attack": 0,
@@ -19,6 +18,8 @@
   "looks": 5,
   "dura_max": 1,
   "price": 10,
-  "stock": 10000,
-  "color": 251
+  "shape": 0,
+  "need": 0,
+  "need_level": 0,
+  "ani_count": 0
 }

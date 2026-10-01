@@ -1,7 +1,6 @@
 {
   "id": "魔法药(小)包",
   "name": "魔法药(小)包",
-  "kind": "misc",
   "weight": 8,
   "stats": {
     "min_attack": 0,
@@ -19,6 +18,8 @@
   "shape": 103,
   "looks": 395,
   "price": 680,
-  "stock": 5,
-  "color": 251
+  "dura_max": 0,
+  "need": 0,
+  "need_level": 0,
+  "ani_count": 0
 }

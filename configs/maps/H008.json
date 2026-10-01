@@ -40,6 +40,9 @@
       "to_y": 30
     }
   ],
+  "doors": [
+    {"x": 20, "y": 25, "group": 34604037}
+  ],
   "monster_spawns": [
     {
       "monster_id": "祖玛卫士4",

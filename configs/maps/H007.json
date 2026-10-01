@@ -1,6 +1,7 @@
 {
   "id": "H007",
   "name": "幻境七层",
+  "need_hole": true,
   "width": 200,
   "height": 200,
   "connections": [

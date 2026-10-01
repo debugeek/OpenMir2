@@ -86,6 +86,9 @@ func TestNPCLabelSelectionNormalizesSpecialPrefixes(t *testing.T) {
 	if got := w.NPCLabelSelection("@@InPutString3"); got != "@@InPutString3" {
 		t.Fatalf("NPCLabelSelection(@@InPutString3) = %q, want @@InPutString3", got)
 	}
+	if got := w.NPCLabelSelection("@@unknown"); got != "@@unknown" {
+		t.Fatalf("NPCLabelSelection(@@unknown) = %q, want @@unknown", got)
+	}
 	if got := w.NPCLabelSelection("@main"); got != "@main" {
 		t.Fatalf("NPCLabelSelection(@main) = %q, want @main", got)
 	}

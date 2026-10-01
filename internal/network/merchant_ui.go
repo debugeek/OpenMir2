@@ -3,7 +3,6 @@ package network
 import (
 	"bytes"
 	"fmt"
-	"math"
 	"net"
 	"strings"
 
@@ -28,8 +27,13 @@ func (s *Server) sendMerchantMenu(conn net.Conn, merchantID int32, ch storage.Ch
 			s.sendMerchantSellWindow(conn, merchantID)
 			return true
 		}
-	case "@repair", "@s_repair":
+	case "@repair":
 		if entity.Merchant.Capabilities.Repair {
+			s.sendMerchantRepairWindow(conn, merchantID)
+			return true
+		}
+	case "@s_repair":
+		if entity.Merchant.Capabilities.Repair && entity.Merchant.Capabilities.SpecialRepair {
 			s.sendMerchantRepairWindow(conn, merchantID)
 			return true
 		}
@@ -44,7 +48,7 @@ func (s *Server) sendMerchantMenu(conn net.Conn, merchantID int32, ch storage.Ch
 			return true
 		}
 	case "@makedrug":
-		if s.sendMerchantMakeDrugList(conn, merchantID, entity) {
+		if entity.Merchant.Capabilities.MakeDrug && s.sendMerchantMakeDrugList(conn, merchantID, entity) {
 			return true
 		}
 	}
@@ -53,9 +57,6 @@ func (s *Server) sendMerchantMenu(conn net.Conn, merchantID int32, ch storage.Ch
 
 func (s *Server) sendMerchantBuyList(conn net.Conn, merchantID int32, entity npc.Entity) {
 	body, count := merchantGoodsListBody(s.world, s.world.MerchantStock(entity.ID), entity)
-	if count == 0 {
-		return
-	}
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendGoodsList, Recog: merchantID, Param: uint16(count)}, EncodeString(body))
 }
 
@@ -78,22 +79,14 @@ func merchantDetailGoodsListBody(w *world.World, stocks []storage.UserItem, item
 	if page < 0 {
 		page = 0
 	}
-	if page >= len(matches) {
+	if len(matches)-1 < page {
 		page = len(matches) - 10
 		if page < 0 {
 			page = 0
 		}
 	}
-	end := len(matches) - page
-	if end > len(matches) {
-		end = len(matches)
-	}
-	start := end - 10
-	if start < 0 {
-		start = 0
-	}
 	count := 0
-	for i := end - 1; i >= start; i-- {
+	for i := len(matches) - 1; i >= 0; i-- {
 		entry := matches[i]
 		item, ok := w.Item(entry.ItemID)
 		if !ok {
@@ -101,15 +94,14 @@ func merchantDetailGoodsListBody(w *world.World, stocks []storage.UserItem, item
 		}
 		base := merchantUserItemPrice(item, entry)
 		price := merchantPriceValue(base, rate)
-		if price <= 0 {
-			continue
-		}
 		display := world.UpgradeClientItemForDisplay(item, entry, false)
-		dura, _ := bagItemDurability(display, entry)
 		display.Price = price
-		body.Write(EncodeBuffer(itemBodyForBag(ch, display, entry.Desc, entry.MakeIndex, dura, uint16(price))))
+		body.Write(EncodeBuffer(itemBodyForBag(ch, display, entry.Desc, entry.MakeIndex, entry.Dura, uint16(price))))
 		body.WriteByte('/')
 		count++
+		if count >= 10 {
+			break
+		}
 	}
 	return body.Bytes(), count, page
 }
@@ -123,7 +115,7 @@ func (s *Server) sendMerchantRepairWindow(conn net.Conn, merchantID int32) {
 }
 
 func (s *Server) sendMerchantStorageWindow(conn net.Conn, merchantID int32, ch storage.Character) {
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendUserStorageItem, Param: uint16(merchantID)}, nil)
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendUserStorageItem, Recog: merchantID}, nil)
 }
 
 func (s *Server) sendMerchantGetBackList(conn net.Conn, merchantID int32, ch storage.Character) {
@@ -136,7 +128,7 @@ func (s *Server) sendMerchantMakeDrugList(conn net.Conn, merchantID int32, entit
 	if count == 0 {
 		return false
 	}
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendUserMakeDrugItemList, Param: uint16(merchantID), Series: uint16(count)}, EncodeString(body))
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendUserMakeDrugItemList, Recog: merchantID}, EncodeString(body))
 	return true
 }
 
@@ -157,6 +149,7 @@ func merchantMakeDrugListBody(w *world.World, stocks []storage.UserItem) (string
 func merchantGoodsListBody(w *world.World, stocks []storage.UserItem, entity npc.Entity) (string, int) {
 	type summary struct {
 		item  data.StdItem
+		entry storage.UserItem
 		count int
 	}
 	var b strings.Builder
@@ -171,6 +164,7 @@ func merchantGoodsListBody(w *world.World, stocks []storage.UserItem, entity npc
 		if !ok {
 			order = append(order, stock.ItemID)
 			sum.item = item
+			sum.entry = stock
 		}
 		sum.count++
 		summaries[stock.ItemID] = sum
@@ -178,10 +172,7 @@ func merchantGoodsListBody(w *world.World, stocks []storage.UserItem, entity npc
 	count := 0
 	for _, itemID := range order {
 		sum := summaries[itemID]
-		price := merchantPrice(sum.item, entity.Merchant.PriceRate)
-		if price <= 0 {
-			continue
-		}
+		price := merchantPriceValue(sum.item.Price, entity.Merchant.PriceRate)
 		subMenu := 1
 		if sum.item.StdMode <= 4 || sum.item.StdMode == 31 || sum.item.StdMode == 42 {
 			subMenu = 0
@@ -194,7 +185,6 @@ func merchantGoodsListBody(w *world.World, stocks []storage.UserItem, entity npc
 
 func storageItemListBody(w *world.World, ch storage.Character) ([]byte, int) {
 	var body bytes.Buffer
-	count := 0
 	for _, entry := range ch.StorageItems {
 		item, ok := w.Item(entry.ItemID)
 		if !ok {
@@ -204,14 +194,10 @@ func storageItemListBody(w *world.World, ch storage.Character) ([]byte, int) {
 		dura, duraMax := bagItemDurability(display, entry)
 		body.Write(EncodeBuffer(itemBodyForBag(ch, display, entry.Desc, entry.MakeIndex, dura, duraMax)))
 		body.WriteByte('/')
-		count++
 	}
-	return body.Bytes(), count
+	return body.Bytes(), len(ch.StorageItems)
 }
 
-func merchantPrice(item data.StdItem, rate int) int {
-	if rate <= 0 {
-		rate = 100
-	}
-	return int(math.Round(float64(item.Price) * float64(rate) / 100))
+func merchantPrice(item data.StdItem, entry storage.UserItem, rate int) int {
+	return merchantPriceValue(merchantUserItemPrice(item, entry), rate)
 }

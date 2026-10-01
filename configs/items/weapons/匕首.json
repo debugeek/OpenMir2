@@ -1,7 +1,6 @@
 {
   "id": "匕首",
   "name": "匕首",
-  "kind": "weapon",
   "weight": 5,
   "stats": {
     "min_attack": 4,
@@ -21,6 +20,6 @@
   "dura_max": 10000,
   "need_level": 1,
   "price": 500,
-  "stock": 100,
-  "color": 251
+  "need": 0,
+  "ani_count": 0
 }

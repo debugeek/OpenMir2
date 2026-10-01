@@ -54,6 +54,7 @@ func TestMovementWalkPacketStateTrace(t *testing.T) {
 	ack := readFrame(t, actorClient)
 	assertActionAck(t, ack)
 	trace = append(trace, movementTraceEntry{Kind: "packet.action_ok"})
+	s.runClientActionTick()
 	frame := readFrame(t, observerClient)
 	command, body, err := decodeMessageLikeClient(frame)
 	if err != nil {

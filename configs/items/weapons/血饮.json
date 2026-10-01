@@ -1,7 +1,6 @@
 {
   "id": "血饮",
   "name": "血饮",
-  "kind": "weapon",
   "weight": 12,
   "stats": {
     "min_attack": 3,
@@ -22,6 +21,5 @@
   "need": 2,
   "need_level": 27,
   "price": 40000,
-  "stock": 5,
-  "color": 251
+  "ani_count": 0
 }

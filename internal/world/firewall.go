@@ -92,7 +92,7 @@ func (w *World) castFireWallWithEventsLocked(ch storage.Character, skill data.St
 	createdEvents := make([]SpellGroundEvent, 0, 5)
 	for _, cell := range w.fireWallCellsLocked(ch.MapID, targetX, targetY) {
 		key := cell
-		if _, ok := w.fireFields[key]; ok || w.groundEventAtLocked(cell) {
+		if _, ok := w.fireFields[key]; ok || w.fireGroundEventAtLocked(cell) {
 			continue
 		}
 		w.nextFireFieldID++
@@ -113,15 +113,15 @@ func (w *World) castFireWallWithEventsLocked(ch storage.Character, skill data.St
 			ID: eventID, MapID: cell.MapID, X: cell.X, Y: cell.Y,
 			Type: 5, Duration: duration, StartAt: now,
 		}
-		w.groundEvents[eventID] = event
+		w.addGroundEventLocked(event)
 		createdEvents = append(createdEvents, event)
 	}
 	return 1, createdEvents
 }
 
-func (w *World) groundEventAtLocked(cell fireFieldKey) bool {
+func (w *World) fireGroundEventAtLocked(cell fireFieldKey) bool {
 	for _, event := range w.groundEvents {
-		if event.MapID == cell.MapID && event.X == cell.X && event.Y == cell.Y {
+		if event.Type == 5 && event.MapID == cell.MapID && event.X == cell.X && event.Y == cell.Y {
 			return true
 		}
 	}

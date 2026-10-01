@@ -1,7 +1,6 @@
 {
   "id": "天魔神甲",
   "name": "天魔神甲",
-  "kind": "armor",
   "weight": 62,
   "stats": {
     "min_attack": 1,
@@ -21,6 +20,6 @@
   "dura_max": 35000,
   "need_level": 40,
   "price": 35000,
-  "stock": 5,
-  "color": 251
+  "need": 0,
+  "ani_count": 0
 }

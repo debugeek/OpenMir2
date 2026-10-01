@@ -1,7 +1,6 @@
 {
   "id": "红宝石戒指",
   "name": "红宝石戒指",
-  "kind": "misc",
   "weight": 1,
   "stats": {
     "min_attack": 0,
@@ -21,6 +20,6 @@
   "need": 2,
   "need_level": 17,
   "price": 15000,
-  "stock": 5,
-  "color": 251
+  "shape": 0,
+  "ani_count": 0
 }

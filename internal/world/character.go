@@ -25,6 +25,9 @@ func (w *World) resolvePKDeathLocked(victim, killer *storage.Character) bool {
 		return false
 	}
 	killer.PKPoint += points
+	if w.gameplay.Combat.KillHumanDecLuckPoint > 0 {
+		addBodyLuck(killer, -float64(w.gameplay.Combat.KillHumanDecLuckPoint))
+	}
 	return true
 }
 
@@ -124,6 +127,9 @@ func (w *World) NormalizeCharacterState(ch storage.Character) (storage.Character
 	if w.normalizeBagItemMakeIndexesLocked(&ch) {
 		changed = true
 	}
+	if w.normalizeStorageItemMakeIndexesLocked(&ch) {
+		changed = true
+	}
 	if w.normalizeEquippedItemsLocked(&ch) {
 		changed = true
 	}
@@ -207,7 +213,7 @@ func (w *World) CharacterNameColorFor(observer, target storage.Character) uint16
 	if target.GuildID != "" && observer.GuildID == target.GuildID {
 		return 0xB4
 	}
-	if observer.GuildWarArea && target.GuildWarArea && observer.GuildAllianceID != "" && observer.GuildAllianceID == target.GuildAllianceID {
+	if observer.GuildWarArea && target.GuildWarArea && charactersShareAlliance(observer, target) {
 		return 0xB4
 	}
 	if observer.GuildWarArea && target.GuildWarArea && observer.FreePKArea && target.FreePKArea {
@@ -217,6 +223,32 @@ func (w *World) CharacterNameColorFor(observer, target storage.Character) uint16
 		return 0x45
 	}
 	return color
+}
+
+func charactersShareAlliance(a, b storage.Character) bool {
+	aAlliances := append([]string(nil), a.GuildAllianceIDs...)
+	if a.GuildAllianceID != "" && !containsAllianceID(aAlliances, a.GuildAllianceID) {
+		aAlliances = append(aAlliances, a.GuildAllianceID)
+	}
+	bAlliances := append([]string(nil), b.GuildAllianceIDs...)
+	if b.GuildAllianceID != "" && !containsAllianceID(bAlliances, b.GuildAllianceID) {
+		bAlliances = append(bAlliances, b.GuildAllianceID)
+	}
+	for _, alliance := range aAlliances {
+		if containsAllianceID(bAlliances, alliance) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsAllianceID(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func (w *World) CharacterAreaState(ch storage.Character) int32 {
@@ -282,5 +314,27 @@ func (w *World) CharacterHitSpeed(ch storage.Character) int32 {
 }
 
 func (w *World) CharacterFeatureEx(ch storage.Character) int32 {
-	return 0
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.normalizeEquippedItemsLocked(&ch)
+
+	dressEffect := 0
+	if item, ok := w.equippedItemLocked(ch, SlotRightHand); ok {
+		if standard, ok := w.data.Items[item.ItemID]; ok {
+			if standard.Shape >= 1 && standard.Shape <= 50 {
+				dressEffect = standard.Shape
+			}
+		}
+	}
+	if item, ok := w.equippedItemLocked(ch, SlotDress); ok {
+		if standard, ok := w.data.Items[item.ItemID]; ok {
+			if item.Desc[5] > 0 {
+				dressEffect = int(item.Desc[5])
+			}
+			if standard.AniCount > 0 {
+				dressEffect = standard.AniCount
+			}
+		}
+	}
+	return int32(uint16(dressEffect) << 8)
 }

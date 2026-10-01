@@ -193,7 +193,7 @@ func TestConversationFallsBackToMainAlias(t *testing.T) {
 	}
 }
 
-func TestConversationFallsBackToFirstLabelWhenMainMissing(t *testing.T) {
+func TestConversationLeavesMissingMainLabelUnresolved(t *testing.T) {
 	lib := Library{
 		Entities: map[string]Entity{
 			"teleporter": {
@@ -225,11 +225,11 @@ func TestConversationFallsBackToFirstLabelWhenMainMissing(t *testing.T) {
 	if !ok {
 		t.Fatal("Conversation() returned ok=false")
 	}
-	if conversation.Label != "@传送员" {
-		t.Fatalf("Conversation() label = %q, want @传送员", conversation.Label)
+	if conversation.Label != "@main" {
+		t.Fatalf("Conversation() label = %q, want @main", conversation.Label)
 	}
-	if conversation.Text != "欢迎光临" {
-		t.Fatalf("Conversation() text = %q, want 欢迎光临", conversation.Text)
+	if conversation.Text != "" {
+		t.Fatalf("Conversation() text = %q, want empty", conversation.Text)
 	}
 }
 

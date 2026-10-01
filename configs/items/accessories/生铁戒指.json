@@ -1,7 +1,6 @@
 {
   "id": "生铁戒指",
   "name": "生铁戒指",
-  "kind": "misc",
   "weight": 1,
   "stats": {
     "min_attack": 0,
@@ -21,6 +20,6 @@
   "need": 2,
   "need_level": 9,
   "price": 3000,
-  "stock": 50,
-  "color": 251
+  "shape": 0,
+  "ani_count": 0
 }

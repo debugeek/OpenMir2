@@ -19,6 +19,9 @@
       "to_y": 99
     }
   ],
+  "doors": [
+    {"x": 84, "y": 25, "group": 56709145}
+  ],
   "monster_spawns": [
     {
       "monster_id": "石墓尸王",

@@ -19,6 +19,9 @@
       "to_y": 16
     }
   ],
+  "doors": [
+    {"x": 36, "y": 81, "group": 33591377}
+  ],
   "monster_spawns": [],
   "blocked_bits": "///////////////////////////////////////////////////////////////////////////////////////////P///P/z////////9//P9//P/x////////A///A/8P/P//////H+D/H/h/gP//////fwD+/8D/APj/z////weA/wf+Dwb+//z//z848D/4/9jg/8f///+BA/+B/wcL/j/w//8PfMAP/D8g4P8B//9/4D98wP8HwP8H8P//A//HA/7/AP5/APr/H/h/CPj/D/j/AwD/f4D/B4D//4H/HwDw/wf4fwD4/x/4/wAA/D+A/w/A//+B/w8AgP/D//8H/P8/+P8BAPgf/P//wP//w/8fAAB+4f//D/j/H/z/BwDgAf7//wH//wH/fwAAHvD//x/w/w/w/w8AQMD///8B/D8A/P8HYAD8//8/wP8HgP9/AAfA////A/z/MPj/D/gA/v//P8D/Dwb+/8E/4P///8H//0Hw/x/+A/7//w++/x+A///zf8D//z/w//8B/P///x/4//8A//8/8P////+D//8P+P//A/////8/4P9/4P//P/j/////B/z/A/7//4H/////f8D/H+D//w/4/////wfw/wD//z+A//////8A/x/w//8B//////8P8P8B//8H+P//////AP8/4P9/4P//////h///D/z/A/7/////P/j//8H/H+D//////8D//x/w/wD//////wf+//8D/j/w/////z/w//8/4P8H//////+B////A/h/4P////8f/v//f4D/B/z/////4P///wf4f8D/////C////3+A/w/w////D/D///+D//8D/v///wD///8f/P8/4P///wfw//9/4P//B/j//z/4////gf///4P///+B////H/j//3/4//8P/P///8D///8H/f9/wP///wf8////gP//Af7//x/A////D/j/H/j///8B/P///wH+/4D///8P/P///x/w/wf4//9/4P////+B/z/A////A/////8P/P8D/P//D/D///9/8P8/wP///4D/////B///B/j//wf+////H/j//wf//z/g////f4D////w//8B/v///wf4//8P/P8P8P///z+A////gf//AP////8B////H/j/D/D///8P+P///wP+/wH+//9/4P/////h///A////B/7///8//v8P/P//P+D/////Q///Af///wL/////f+D/P+D//wfw/////w/+/wP+/z8A//////+A/3+A//8B4P////8f8P9/+P8HAPz/////Af//j/9/gMD/////H8D//9D/Awjg/////w/4/w/4HvgP/v////8A/v+A48D/gf////8f4P8fAAD+H/j/////H/z/DwDg/wH//////8P//wAA/h+A/////z/w/x8A4P8D/P////8H/v+P8///g/////9/4P//ff//f+D/////D/j//////wf8/////+H//////3/g/////x/+//////8H/v/////z////////4P////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////8="
 }

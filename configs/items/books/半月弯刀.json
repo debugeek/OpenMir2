@@ -1,7 +1,6 @@
 {
   "id": "半月弯刀",
   "name": "半月弯刀",
-  "kind": "book",
   "weight": 1,
   "stats": {
     "min_attack": 0,
@@ -19,6 +18,8 @@
   "dura_max": 28,
   "need_level": 1,
   "price": 8000,
-  "stock": 5,
-  "color": 251
+  "shape": 0,
+  "looks": 0,
+  "need": 0,
+  "ani_count": 0
 }

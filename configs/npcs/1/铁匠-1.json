@@ -10,7 +10,8 @@
   "merchant": {
     "price_rate": 100,
     "capabilities": {
-      "repair": true
+      "repair": true,
+      "special_repair": true
     }
   },
   "labels": {

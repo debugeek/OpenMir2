@@ -1,7 +1,6 @@
 {
   "id": "半月",
   "name": "半月",
-  "kind": "weapon",
   "weight": 16,
   "stats": {
     "min_attack": 5,
@@ -21,6 +20,6 @@
   "dura_max": 14000,
   "need_level": 15,
   "price": 4000,
-  "stock": 50,
-  "color": 251
+  "need": 0,
+  "ani_count": 0
 }

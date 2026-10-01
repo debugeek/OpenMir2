@@ -1,3 +1,25 @@
 {
-  "kind": "accessory"
+  "id": "狂风项链",
+  "name": "狂风项链",
+  "weight": 1,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 1,
+    "defense": 2,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 21,
+  "looks": 228,
+  "dura_max": 8000,
+  "need_level": 19,
+  "price": 40000,
+  "shape": 0,
+  "need": 0,
+  "ani_count": 0
 }

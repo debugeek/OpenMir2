@@ -1,7 +1,6 @@
 {
   "id": "凤凰明珠",
   "name": "凤凰明珠",
-  "kind": "misc",
   "weight": 1,
   "stats": {
     "min_attack": 0,
@@ -20,6 +19,7 @@
   "dura_max": 7000,
   "need_level": 17,
   "price": 2000,
-  "stock": 5,
-  "color": 251
+  "shape": 0,
+  "need": 0,
+  "ani_count": 0
 }

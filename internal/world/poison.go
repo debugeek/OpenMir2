@@ -171,8 +171,8 @@ func (w *World) applyMonsterPoisonTickLocked(mon *Monster, players map[string]st
 			mon.PoisonHealthTickAt = now
 			return []AttackResult{result}, result.Dead, nil
 		}
-		change := core.ApplyHPDelta(mon.HP, mon.MaxHP, -damage)
 		w.decayMonsterMeatQualityLocked(mon, 1)
+		change := core.ApplyHPDelta(mon.HP, mon.MaxHP, -damage)
 		mon.HP = change.HP
 		mon.PoisonHealthTickAt = now
 		result := AttackResult{
@@ -184,10 +184,10 @@ func (w *World) applyMonsterPoisonTickLocked(mon *Monster, players map[string]st
 		}
 		if change.Dead {
 			mon.PendingDeath = true
-			mon.DeathHitterID = ""
+			mon.DeathHitterID = mon.PoisonSourceID
 			result.DeathDeferred = true
 		}
-		return []AttackResult{result}, false, nil
+		return []AttackResult{result}, change.Dead, nil
 	}
 	return nil, false, nil
 }

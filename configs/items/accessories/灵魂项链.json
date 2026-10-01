@@ -1,7 +1,6 @@
 {
   "id": "灵魂项链",
   "name": "灵魂项链",
-  "kind": "misc",
   "weight": 1,
   "stats": {
     "min_attack": 0,
@@ -21,6 +20,6 @@
   "need": 3,
   "need_level": 23,
   "price": 25000,
-  "stock": 5,
-  "color": 251
+  "shape": 0,
+  "ani_count": 0
 }

@@ -1,7 +1,6 @@
 {
   "id": "金创药(中)包",
   "name": "金创药(中)包",
-  "kind": "misc",
   "weight": 14,
   "stats": {
     "min_attack": 0,
@@ -19,6 +18,8 @@
   "shape": 104,
   "looks": 401,
   "price": 1520,
-  "stock": 5,
-  "color": 251
+  "dura_max": 0,
+  "need": 0,
+  "need_level": 0,
+  "ani_count": 0
 }

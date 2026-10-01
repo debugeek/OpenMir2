@@ -227,6 +227,7 @@ func (w *World) castChargeDirectionLocked(result *SkillCastResult, ch storage.Ch
 			if !ok || occupant == ch.ID {
 				break
 			}
+			selfDamagePower = 0
 			if state.Level >= 3 {
 				pushX := ch.X + dirOffsets[dir][0]*2
 				pushY := ch.Y + dirOffsets[dir][1]*2
@@ -264,7 +265,6 @@ func (w *World) castChargeDirectionLocked(result *SkillCastResult, ch storage.Ch
 					kung = true
 					break
 				}
-				selfDamagePower = 0
 				lastCharacter = target
 				lastMonster = nil
 				next, pushes, moved, err := w.pushCharacterAwayLocked(ch, target, 1, mp, occupied)
@@ -290,7 +290,6 @@ func (w *World) castChargeDirectionLocked(result *SkillCastResult, ch storage.Ch
 					kung = true
 					break
 				}
-				selfDamagePower = 0
 				lastCharacter = storage.Character{}
 				lastMonster = mon
 				action, actions, moved := w.pushMonsterAwayLocked(ch, mon, 1, mp, occupied)
@@ -315,7 +314,6 @@ func (w *World) castChargeDirectionLocked(result *SkillCastResult, ch storage.Ch
 				entity.Dir = (dir + 4) % len(dirOffsets)
 				w.data.NPCs.Entities[entity.ID] = entity
 				occupied[monsterPosition{MapID: entity.MapID, X: entity.X, Y: entity.Y}] = entity.ID
-				selfDamagePower = 0
 				lastCharacter = storage.Character{}
 				lastMonster = nil
 				lastTrainer = entity
@@ -410,15 +408,17 @@ func (w *World) castChargeDirectionLocked(result *SkillCastResult, ch storage.Ch
 		result.OrderedEvents = append(result.OrderedEvents, SpellEvent{Kind: SpellEventRush, Rush: rush})
 	}
 	if selfDamagePower > 0 {
-		damage := w.rand.Intn(selfDamagePower*10) + (selfDamagePower+1)*3
+		damage := w.rand.Intn(remainingPower*10) + (remainingPower+1)*3
 		damage = w.characterPhysicalDamageAfterDefenseLocked(&ch, damage)
+		magicShield := w.characterHasMagicShieldLocked(ch)
 		ch, damage, durability, deletedItems, featureChanged := w.applyCharacterStruckLocked(ch, damage)
-		change := core.ApplyVitalDelta(ch, -damage, 0)
+		hpDamage := w.applyCharacterMagicShieldStateLocked(&ch, damage, magicShield)
+		change := core.ApplyVitalDelta(ch, -hpDamage, 0)
 		ch = change.Character
 		if change.Dead {
 			w.deferCharacterDeathLocked(ch)
 		}
-		if damage > 0 {
+		if hpDamage > 0 {
 			ch.HealthTick = 0
 			ch.SpellTick = 0
 			result.CharacterHits = append(result.CharacterHits, CharacterHit{Character: ch, Damage: damage, Durability: durability, DeletedItems: deletedItems, FeatureChanged: featureChanged, Dead: change.Dead, DeathDeferred: change.Dead})
@@ -436,16 +436,18 @@ func (w *World) chargeCharacterWithDamageLocked(caster storage.Character, target
 	canMarkCasterPK := w.isProperCharacterTargetLocked(caster, target)
 	attackerNameColorChanged := false
 	damage = w.characterPhysicalDamageAfterDefenseLocked(&target, damage)
+	magicShield := w.characterHasMagicShieldLocked(target)
 	var durability []SpellDurability
 	var deletedItems []storage.UserItem
 	var featureChanged bool
 	target, damage, durability, deletedItems, featureChanged = w.applyCharacterStruckLocked(target, damage)
-	change := core.ApplyVitalDelta(target, -damage, 0)
+	hpDamage := w.applyCharacterMagicShieldStateLocked(&target, damage, magicShield)
+	change := core.ApplyVitalDelta(target, -hpDamage, 0)
 	target = change.Character
 	if change.Dead {
 		w.deferCharacterDeathLocked(target)
 	}
-	if damage > 0 {
+	if hpDamage > 0 {
 		target.HealthTick = 0
 		target.SpellTick = 0
 		if canMarkCasterPK {

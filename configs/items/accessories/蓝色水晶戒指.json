@@ -1,7 +1,6 @@
 {
   "id": "蓝色水晶戒指",
   "name": "蓝色水晶戒指",
-  "kind": "misc",
   "weight": 1,
   "stats": {
     "min_attack": 1,
@@ -20,6 +19,7 @@
   "dura_max": 5000,
   "need_level": 16,
   "price": 1500,
-  "stock": 50,
-  "color": 251
+  "shape": 0,
+  "need": 0,
+  "ani_count": 0
 }

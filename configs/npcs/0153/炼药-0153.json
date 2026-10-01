@@ -11,7 +11,8 @@
     "price_rate": 100,
     "capabilities": {
       "buy": true,
-      "sell": true
+      "sell": true,
+      "make_drug": true
     }
   },
   "labels": {

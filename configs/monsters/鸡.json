@@ -21,25 +21,5 @@
   "walk_speed_ms": 500,
   "walk_step": 1,
   "walk_wait": 0,
-  "attack_interval_ms": 3000,
-  "drops": [
-    {
-      "item_id": "鸡肉",
-      "chance": "1/1",
-      "min_count": 1,
-      "max_count": 1
-    },
-    {
-      "item_id": "鸡肉",
-      "chance": "1/4",
-      "min_count": 1,
-      "max_count": 1
-    },
-    {
-      "item_id": "鸡肉",
-      "chance": "1/16",
-      "min_count": 1,
-      "max_count": 1
-    }
-  ]
+  "attack_interval_ms": 3000
 }

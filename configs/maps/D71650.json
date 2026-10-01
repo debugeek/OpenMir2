@@ -12,6 +12,9 @@
       "to_y": 17
     }
   ],
+  "doors": [
+    {"x": 13, "y": 37, "group": 72364053}
+  ],
   "monster_spawns": [],
   "blocked_bits": "/////////////////////////////////////////////////////////////////////3/z//////+A//////8B/P////8D4P////8HgP////8fAP7///9fAMD///8/AAD+//9/AADw////AADA////AwAA////C8AB4P//B8AfAP//D4D/APj/HwD/B+D/fwD8H4D//wHwfwDw/wTA/wEQ/xEA/wcA/AMAzB8A+D8AkD8A8P8BAP8A4P8PAPgAwP9/AAAAwP//AwAAAP//HwAAAP7//wAAAPz//wcAAPz//x8AAPj//38BAPD///8PAOD///9/AMD/////B4H/////P4D//////wH//////w/+///////8////////////////////////////////////////////Dw=="
 }

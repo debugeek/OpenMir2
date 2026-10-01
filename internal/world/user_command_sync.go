@@ -5,7 +5,6 @@ import "openmir2/internal/storage"
 type UserCommandSyncer interface {
 	TeleportSyncer
 	SendBagAddItem(storage.Character, storage.UserItem)
-	SendWeightChanged(storage.Character)
 }
 
 func ApplyUserCommandSync(syncer UserCommandSyncer, result UserCommandResult) {
@@ -25,8 +24,5 @@ func ApplyUserCommandSync(syncer UserCommandSyncer, result UserCommandResult) {
 	}
 	for _, added := range result.AddedItems {
 		syncer.SendBagAddItem(result.Character, added)
-	}
-	if len(result.AddedItems) > 0 {
-		syncer.SendWeightChanged(result.Character)
 	}
 }

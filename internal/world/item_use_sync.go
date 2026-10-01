@@ -6,11 +6,11 @@ type ItemUseSyncer interface {
 	TeleportSyncer
 	SendDelItems([]storage.UserItem)
 	SendBagAddItem(storage.Character, storage.UserItem)
+	SendSkillAdded(storage.Character, storage.SkillState)
 	SendAbilityOnly(storage.Character)
 	SendWinExp(int, int)
 	SendLevelUp(storage.Character)
 	SendHealthSpellChanged(storage.Character)
-	SendEquippedItems(storage.Character)
 	SendWeightChanged(storage.Character)
 }
 
@@ -21,11 +21,17 @@ func ApplyItemUseSync(syncer ItemUseSyncer, result ItemUseResult) {
 	if result.Teleport != nil {
 		ApplyTeleportSync(syncer, *result.Teleport)
 	}
-	if len(result.RemovedItems) > 0 {
+	if len(result.RemovedItems) > 0 && !result.SuppressRemovedSync {
 		syncer.SendDelItems(result.RemovedItems)
 	}
-	for _, added := range result.AddedItems {
-		syncer.SendBagAddItem(result.Character, added)
+	if len(result.AddedItems) > 0 {
+		for _, added := range result.AddedItems {
+			syncer.SendBagAddItem(result.Character, added)
+		}
+		syncer.SendWeightChanged(result.Character)
+	}
+	for _, skill := range result.AddedSkills {
+		syncer.SendSkillAdded(result.Character, skill)
 	}
 	if result.AbilityChanged {
 		syncer.SendAbilityOnly(result.Character)
@@ -39,6 +45,7 @@ func ApplyItemUseSync(syncer ItemUseSyncer, result ItemUseResult) {
 	} else if result.HealthChanged {
 		syncer.SendHealthSpellChanged(result.Character)
 	}
-	syncer.SendEquippedItems(result.Character)
-	syncer.SendWeightChanged(result.Character)
+	if len(result.AddedItems) == 0 {
+		syncer.SendWeightChanged(result.Character)
+	}
 }

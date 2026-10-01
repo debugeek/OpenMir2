@@ -18,32 +18,40 @@ func (w *World) DropItemCountByBagIndex(ch storage.Character, bagIndex int, item
 		}
 	}
 	idx := w.findBagItemSlotLocked(ch, itemID, int32(bagIndex))
-	if idx < 0 && bagIndex > 0 {
-		idx = w.findBagItemSlotLocked(ch, itemID, 0)
-	}
 	if idx < 0 {
 		return ch, GroundDrop{}, fmt.Errorf("item %s not in bag", itemID)
 	}
 	entry := ch.BagItems[idx]
+	if _, ok := w.data.Items[entry.ItemID]; !ok {
+		return ch, GroundDrop{}, fmt.Errorf("item %s is unknown", entry.ItemID)
+	}
 	w.clearBagItemLocked(&ch, idx)
-	w.pruneStaleEquippedItemsLocked(&ch)
+	if item, ok := w.data.Items[entry.ItemID]; ok && item.StdMode == 40 {
+		entry.Dura -= 2000
+		if entry.Dura < 0 {
+			entry.Dura = 0
+		}
+	}
 	drop := GroundDrop{
-		ID:        fmt.Sprintf("drop-%d", w.nextID),
-		MapID:     ch.MapID,
-		ItemID:    entry.ItemID,
-		Count:     1,
-		MakeIndex: entry.MakeIndex,
-		Dura:      entry.Dura,
-		DuraMax:   entry.DuraMax,
-		OwnerID:   ch.ID,
-		PickupAt:  time.Now().Add(time.Duration(w.gameplay.Item.FloorItemCanPickUpMS) * time.Millisecond),
-		Desc:      entry.Desc,
+		ID:           fmt.Sprintf("drop-%d", w.nextID),
+		MapID:        ch.MapID,
+		ItemID:       entry.ItemID,
+		Count:        1,
+		MakeIndex:    entry.MakeIndex,
+		Dura:         entry.Dura,
+		DuraMax:      entry.DuraMax,
+		OwnerID:      ch.ID,
+		OwnerGroupID: ch.GroupOwnerID,
+		PickupAt:     time.Now().Add(time.Duration(w.gameplay.Item.FloorItemCanPickUpMS) * time.Millisecond),
+		Desc:         entry.Desc,
 	}
 	w.nextID++
 	placed := w.placeDropsLocked(ch.MapID, ch.X, ch.Y, 3, []GroundDrop{drop}, blockers...)
 	if len(placed) == 0 {
+		ch.BagItems = append(ch.BagItems[:idx], append([]storage.UserItem{entry}, ch.BagItems[idx:]...)...)
 		return ch, GroundDrop{}, fmt.Errorf("no available drop position")
 	}
+	w.pruneStaleEquippedItemsLocked(&ch)
 	return ch, placed[0], w.store.SaveCharacter(ch)
 }
 
@@ -82,6 +90,28 @@ func (w *World) placeDropsLocked(mapID string, x, y, searchRadius int, drops []G
 		}
 		drop := pending[0]
 		pending = pending[1:]
+		if drop.ItemID == "金币" {
+			merged := false
+			for id, existing := range w.drops {
+				if existing.MapID != drop.MapID || existing.X != cell.X || existing.Y != cell.Y || existing.ItemID != "金币" {
+					continue
+				}
+				if existing.Count+drop.Count > 2000 {
+					continue
+				}
+				existing.Count += drop.Count
+				w.drops[id] = existing
+				placed = append(placed, existing)
+				merged = true
+				break
+			}
+			if merged {
+				continue
+			}
+		}
+		if drop.CreatedAt.IsZero() {
+			drop.CreatedAt = time.Now()
+		}
 		drop.X = cell.X
 		drop.Y = cell.Y
 		w.drops[drop.ID] = drop

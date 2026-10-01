@@ -17,11 +17,24 @@ func (w *World) experienceGroupMembersLocked(killer storage.Character, players m
 		return nil
 	}
 	members := make([]storage.Character, 0, len(players))
+	if owner, ok := players[killer.GroupOwnerID]; ok && len(owner.GroupMembers) > 0 {
+		for _, memberID := range owner.GroupMembers {
+			member, ok := players[memberID]
+			if !ok || member.HP <= 0 || member.MapID != killer.MapID || member.GroupOwnerID != killer.GroupOwnerID {
+				continue
+			}
+			if absInt(member.X-killer.X) > 12 || absInt(member.X-killer.X) > 12 {
+				continue
+			}
+			members = append(members, member)
+		}
+		return members
+	}
 	for _, member := range players {
 		if member.HP <= 0 || member.MapID != killer.MapID || member.GroupOwnerID != killer.GroupOwnerID {
 			continue
 		}
-		if absInt(member.X-killer.X) > 12 || absInt(member.Y-killer.Y) > 12 {
+		if absInt(member.X-killer.X) > 12 || absInt(member.X-killer.X) > 12 {
 			continue
 		}
 		members = append(members, member)
@@ -29,7 +42,7 @@ func (w *World) experienceGroupMembersLocked(killer storage.Character, players m
 	return members
 }
 
-func (w *World) settleCharacterDeathLocked(ch *storage.Character) []GroundDrop {
+func (w *World) settleCharacterDeathLocked(ch *storage.Character, now time.Time) []GroundDrop {
 	if ch == nil {
 		return nil
 	}
@@ -45,7 +58,7 @@ func (w *World) settleCharacterDeathLocked(ch *storage.Character) []GroundDrop {
 				ItemID:    entry.ItemID,
 				Count:     1,
 				MakeIndex: entry.MakeIndex,
-				PickupAt:  time.Now().Add(time.Duration(w.gameplay.Item.FloorItemCanPickUpMS) * time.Millisecond),
+				PickupAt:  now.Add(time.Duration(w.gameplay.Item.FloorItemCanPickUpMS) * time.Millisecond),
 				Dura:      entry.Dura,
 				DuraMax:   entry.DuraMax,
 				Desc:      entry.Desc,
@@ -55,9 +68,14 @@ func (w *World) settleCharacterDeathLocked(ch *storage.Character) []GroundDrop {
 		ch.BagItems = nil
 	}
 	if w.gameplay.Combat.DieDropGold && ch.Gold > 0 {
-		drops = append(drops, GroundDrop{ID: fmt.Sprintf("drop-%d", w.nextID), MapID: ch.MapID, ItemID: "金币", Count: ch.Gold, PickupAt: time.Now().Add(time.Duration(w.gameplay.Item.FloorItemCanPickUpMS) * time.Millisecond)})
+		drops = append(drops, GroundDrop{ID: fmt.Sprintf("drop-%d", w.nextID), MapID: ch.MapID, ItemID: "金币", Count: ch.Gold, PickupAt: now.Add(time.Duration(w.gameplay.Item.FloorItemCanPickUpMS) * time.Millisecond)})
 		w.nextID++
 		ch.Gold = 0
+	}
+	if !ch.GuildWarArea {
+		if mapData, ok := w.data.Maps[ch.MapID]; !ok || !mapData.Safe {
+			addBodyLuck(ch, -float64(ch.Level*5))
+		}
 	}
 	ch.GroupOwnerID = ""
 	return w.placeDropsLocked(ch.MapID, ch.X, ch.Y, 3, drops)
@@ -70,112 +88,7 @@ func absInt(value int) int {
 	return value
 }
 
-func (w *World) Tick(players []PlayerSnapshot, now time.Time) (TickResult, error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	previousActionNow := w.actionNow
-	w.actionNow = now
-	defer func() { w.actionNow = previousActionNow }()
-	w.respawnLocked(now)
-	result := TickResult{}
-	remainingSpawns := w.pendingMonsterSpawns[:0]
-	for _, pending := range w.pendingMonsterSpawns {
-		if now.Before(pending.DueAt) {
-			remainingSpawns = append(remainingSpawns, pending)
-			continue
-		}
-		parent := w.monsters[pending.ParentID]
-		before := make(map[string]struct{}, len(w.monsters))
-		for id := range w.monsters {
-			before[id] = struct{}{}
-		}
-		if parent == nil || !parent.Alive || !w.spawnChildMonsterLocked(parent, pending.ChildName, now) {
-			continue
-		}
-		for _, child := range w.monsters {
-			if child.ParentID == parent.ID && child.Alive && child.ID != parent.ID {
-				if _, exists := before[child.ID]; exists {
-					continue
-				}
-				result.SpawnedMonsters = append(result.SpawnedMonsters, *child)
-			}
-		}
-	}
-	w.pendingMonsterSpawns = remainingSpawns
-	for id, event := range w.groundEvents {
-		if now.After(event.StartAt.Add(event.Duration)) {
-			delete(w.groundEvents, id)
-			result.GroundEventHides = append(result.GroundEventHides, id)
-			result.GroundEventHideDetails = append(result.GroundEventHideDetails, event)
-			continue
-		}
-		result.GroundEvents = append(result.GroundEvents, event)
-	}
-	sort.Slice(result.GroundEvents, func(i, j int) bool {
-		left, right := result.GroundEvents[i], result.GroundEvents[j]
-		if left.MapID != right.MapID {
-			return left.MapID < right.MapID
-		}
-		if left.X != right.X {
-			return left.X < right.X
-		}
-		return left.Y < right.Y
-	})
-	updated := map[string]storage.Character{}
-	playersByID := map[string]storage.Character{}
-	for _, player := range players {
-		ch := player.Character
-		if ch.ID == "" {
-			continue
-		}
-		playersByID[ch.ID] = ch
-	}
-	remainingAttacks := w.pendingMonsterAttacks[:0]
-	for _, pending := range w.pendingMonsterAttacks {
-		if now.Before(pending.DueAt) {
-			remainingAttacks = append(remainingAttacks, pending)
-			continue
-		}
-		mon := w.monsters[pending.MonsterID]
-		if mon == nil || !mon.Alive {
-			continue
-		}
-		for _, targetID := range pending.TargetIDs {
-			target, ok := playersByID[targetID]
-			if !ok || !w.monsterCanTargetCharacterLocked(mon, target) {
-				continue
-			}
-			oldMagic := mon.UseMagic
-			mon.UseMagic = true
-			updatedTarget, hit, err := w.monsterAttackCharacterWithDamageLocked(mon, target, pending.Damage)
-			mon.UseMagic = oldMagic
-			if err != nil {
-				return TickResult{}, err
-			}
-			playersByID[targetID] = updatedTarget
-			updated[targetID] = updatedTarget
-			if pending.ImpactDelay > 0 {
-				hit.ImpactDelay = pending.ImpactDelay
-				hit.Magic = true
-			}
-			if hit.Damage > 0 {
-				result.CharacterHits = append(result.CharacterHits, hit)
-			}
-		}
-	}
-	w.pendingMonsterAttacks = remainingAttacks
-	if err := w.applyPendingSpellTicksLocked(&result, playersByID, updated, now); err != nil {
-		return TickResult{}, err
-	}
-	for id, entity := range w.data.NPCs.Entities {
-		if !npc.IsTrainer(entity) {
-			continue
-		}
-		if summary, ok := w.flushNPCTrainingLocked(id, now); ok {
-			result.NPCTrainingHits = append(result.NPCTrainingHits, summary)
-			result.OrderedSpellEvents = append(result.OrderedSpellEvents, OrderedSpellEvent{Kind: OrderedSpellEventNPCTraining, NPCTrainingHit: summary})
-		}
-	}
+func (w *World) settlePendingCharacterDeathsLocked(players []PlayerSnapshot, playersByID, updated map[string]storage.Character, result *TickResult, now time.Time) error {
 	for _, player := range players {
 		ch, ok := playersByID[player.Character.ID]
 		if !ok {
@@ -213,7 +126,7 @@ func (w *World) Tick(players []PlayerSnapshot, now time.Time) (TickResult, error
 			}
 			if !blockedRevival {
 				if revival, revived, err := w.reviveCharacterLocked(&ch, now); err != nil {
-					return TickResult{}, err
+					return err
 				} else if revived {
 					playersByID[ch.ID] = ch
 					updated[ch.ID] = ch
@@ -223,7 +136,14 @@ func (w *World) Tick(players []PlayerSnapshot, now time.Time) (TickResult, error
 				}
 			}
 			w.finalizedCharacterDeaths[ch.ID] = struct{}{}
-			result.CharacterDrops = append(result.CharacterDrops, w.settleCharacterDeathLocked(&ch)...)
+			groupEvent, err := w.settleDeadCharacterGroupLocked(&ch, playersByID)
+			if err != nil {
+				return err
+			}
+			if len(groupEvent.Updated) > 0 || len(groupEvent.Cancel) > 0 || groupEvent.MemberListOwnerID != "" {
+				result.GroupSyncEvents = append(result.GroupSyncEvents, groupEvent)
+			}
+			result.CharacterDrops = append(result.CharacterDrops, w.settleCharacterDeathLocked(&ch, now)...)
 			if killer, ok := playersByID[ch.LastHitterID]; ok && w.resolvePKDeathLocked(&ch, &killer) {
 				playersByID[killer.ID] = killer
 				updated[killer.ID] = killer
@@ -235,7 +155,7 @@ func (w *World) Tick(players []PlayerSnapshot, now time.Time) (TickResult, error
 			playersByID[ch.ID] = ch
 			updated[ch.ID] = ch
 			if err := w.store.SaveCharacter(ch); err != nil {
-				return TickResult{}, err
+				return err
 			}
 			result.CharacterDeaths = append(result.CharacterDeaths, ch)
 		}
@@ -244,6 +164,232 @@ func (w *World) Tick(players []PlayerSnapshot, now time.Time) (TickResult, error
 		if _, ok := playersByID[id]; !ok {
 			delete(w.pendingCharacterDeaths, id)
 		}
+	}
+	return nil
+}
+
+func (w *World) Tick(players []PlayerSnapshot, now time.Time) (TickResult, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	previousActionNow := w.actionNow
+	w.actionNow = now
+	defer func() { w.actionNow = previousActionNow }()
+	w.respawnLocked(now)
+	result := TickResult{}
+	w.replenishMonsterSpawnLocked(now, &result)
+	w.cleanupDeadMonstersLocked(now)
+	w.cleanupCastleDefenseSlotsLocked()
+	remainingSpawns := w.pendingMonsterSpawns[:0]
+	for _, pending := range w.pendingMonsterSpawns {
+		if now.Before(pending.DueAt) {
+			remainingSpawns = append(remainingSpawns, pending)
+			continue
+		}
+		parent := w.monsters[pending.ParentID]
+		before := make(map[string]struct{}, len(w.monsters))
+		for id := range w.monsters {
+			before[id] = struct{}{}
+		}
+		if parent == nil || !parent.Alive || !w.spawnChildMonsterLocked(parent, pending.ChildName, now) {
+			continue
+		}
+		for _, child := range w.monsters {
+			if child.ParentID == parent.ID && child.Alive && child.ID != parent.ID {
+				if _, exists := before[child.ID]; exists {
+					continue
+				}
+				result.SpawnedMonsters = append(result.SpawnedMonsters, *child)
+			}
+		}
+	}
+	w.pendingMonsterSpawns = remainingSpawns
+	for id, event := range w.groundEvents {
+		if now.After(event.StartAt.Add(event.Duration)) {
+			delete(w.groundEvents, id)
+			event.ClosedAt = now
+			if w.closedGroundEvents == nil {
+				w.closedGroundEvents = make(map[int32]SpellGroundEvent)
+			}
+			w.closedGroundEvents[id] = event
+			result.GroundEventHides = append(result.GroundEventHides, id)
+			result.GroundEventHideDetails = append(result.GroundEventHideDetails, event)
+			continue
+		}
+		result.GroundEvents = append(result.GroundEvents, event)
+	}
+	for id, event := range w.closedGroundEvents {
+		if !event.ClosedAt.IsZero() && !now.Before(event.ClosedAt.Add(5*time.Minute)) {
+			delete(w.closedGroundEvents, id)
+		}
+	}
+	sort.SliceStable(result.GroundEventHideDetails, func(i, j int) bool {
+		left, right := result.GroundEventHideDetails[i], result.GroundEventHideDetails[j]
+		if left.MapID != right.MapID {
+			return left.MapID < right.MapID
+		}
+		if left.X != right.X {
+			return left.X < right.X
+		}
+		if left.Y != right.Y {
+			return left.Y < right.Y
+		}
+		return left.ID < right.ID
+	})
+	result.GroundEventHides = result.GroundEventHides[:0]
+	for _, event := range result.GroundEventHideDetails {
+		result.GroundEventHides = append(result.GroundEventHides, event.ID)
+	}
+	sort.Slice(result.GroundEvents, func(i, j int) bool {
+		left, right := result.GroundEvents[i], result.GroundEvents[j]
+		if left.MapID != right.MapID {
+			return left.MapID < right.MapID
+		}
+		if left.X != right.X {
+			return left.X < right.X
+		}
+		return left.Y < right.Y
+	})
+	updated := map[string]storage.Character{}
+	playersByID := map[string]storage.Character{}
+	for _, player := range players {
+		ch := player.Character
+		if ch.ID == "" {
+			continue
+		}
+		playersByID[ch.ID] = ch
+	}
+	remainingAttacks := w.pendingMonsterAttacks[:0]
+	for _, pending := range w.pendingMonsterAttacks {
+		if now.Before(pending.DueAt) {
+			remainingAttacks = append(remainingAttacks, pending)
+			continue
+		}
+		mon := w.monsters[pending.MonsterID]
+		if mon == nil || !mon.Alive {
+			continue
+		}
+		if len(pending.Targets) > 0 {
+			for _, pendingTarget := range pending.Targets {
+				if pendingTarget.Monster {
+					target := w.monsters[pendingTarget.ID]
+					if target == nil || !target.Alive || target.MapID != mon.MapID || target.MasterID == "" {
+						continue
+					}
+					caster := storage.Character{ID: mon.ID, MapID: mon.MapID, X: mon.X, Y: mon.Y}
+					damage := w.monsterMagicDamageAfterDefenseLocked(target, pendingTarget.Damage)
+					if damage <= 0 {
+						continue
+					}
+					w.monsterMagicStruckLocked(target, now)
+					hit, err := w.applyMonsterMagicDamageLocked(caster, target, damage, false)
+					if err != nil {
+						return TickResult{}, err
+					}
+					if hit.Damage > 0 {
+						result.MonsterHits = append(result.MonsterHits, hit)
+					}
+					continue
+				}
+				target, ok := playersByID[pendingTarget.ID]
+				if !ok || !w.monsterCanTargetCharacterLocked(mon, target) {
+					continue
+				}
+				if pendingTarget.PhysicalDamage > 0 || pendingTarget.MagicDamage > 0 {
+					physical := w.characterPhysicalDamageAfterDefenseLocked(&target, pendingTarget.PhysicalDamage)
+					magical := w.characterMagicDamageAfterDefenseLocked(target, pendingTarget.MagicDamage, now)
+					magical = applyCharacterMagicBubbleLocked(&target, magical, now)
+					magical = w.applyCharacterMagicShieldLocked(&target, magical)
+					if physical+magical <= 0 {
+						continue
+					}
+					updatedTarget, hit, err := w.attackCharacterDirectDamageLocked(storage.Character{ID: mon.ID}, target, physical+magical)
+					if err != nil {
+						return TickResult{}, err
+					}
+					playersByID[pendingTarget.ID] = updatedTarget
+					updated[pendingTarget.ID] = updatedTarget
+					hit.ImpactDelay = pending.ImpactDelay
+					if hit.Damage > 0 {
+						result.CharacterHits = append(result.CharacterHits, hit)
+					}
+					continue
+				}
+				oldMagic := mon.UseMagic
+				mon.UseMagic = true
+				updatedTarget, hit, err := w.monsterAttackCharacterWithDamageLocked(mon, target, pendingTarget.Damage)
+				mon.UseMagic = oldMagic
+				if err != nil {
+					return TickResult{}, err
+				}
+				playersByID[pendingTarget.ID] = updatedTarget
+				updated[pendingTarget.ID] = updatedTarget
+				if pending.ImpactDelay > 0 {
+					hit.ImpactDelay = pending.ImpactDelay
+					hit.Magic = true
+				}
+				if hit.Damage > 0 {
+					result.CharacterHits = append(result.CharacterHits, hit)
+				}
+			}
+			continue
+		}
+		for _, targetID := range pending.TargetIDs {
+			target, ok := playersByID[targetID]
+			if !ok || !w.monsterCanTargetCharacterLocked(mon, target) {
+				continue
+			}
+			oldMagic := mon.UseMagic
+			mon.UseMagic = true
+			updatedTarget, hit, err := w.monsterAttackCharacterWithDamageLocked(mon, target, pending.Damage)
+			mon.UseMagic = oldMagic
+			if err != nil {
+				return TickResult{}, err
+			}
+			playersByID[targetID] = updatedTarget
+			updated[targetID] = updatedTarget
+			if pending.ImpactDelay > 0 {
+				hit.ImpactDelay = pending.ImpactDelay
+				hit.Magic = true
+			}
+			if hit.Damage > 0 {
+				result.CharacterHits = append(result.CharacterHits, hit)
+			}
+		}
+		for _, pendingTarget := range pending.MonsterTargets {
+			target := w.monsters[pendingTarget.ID]
+			if target == nil || !target.Alive || target.MapID != mon.MapID || target.ID == mon.ID || target.MasterID == "" {
+				continue
+			}
+			caster := storage.Character{ID: mon.ID, MapID: mon.MapID, X: mon.X, Y: mon.Y}
+			damage := w.monsterMagicDamageAfterDefenseLocked(target, pendingTarget.Damage)
+			if damage <= 0 {
+				continue
+			}
+			w.monsterMagicStruckLocked(target, now)
+			hit, err := w.applyMonsterMagicDamageLocked(caster, target, damage, false)
+			if err != nil {
+				return TickResult{}, err
+			}
+			if hit.Damage > 0 {
+				result.MonsterHits = append(result.MonsterHits, hit)
+			}
+		}
+	}
+	w.pendingMonsterAttacks = remainingAttacks
+	if err := w.applyPendingSpellTicksLocked(&result, playersByID, updated, now); err != nil {
+		return TickResult{}, err
+	}
+	for id, entity := range w.data.NPCs.Entities {
+		if !npc.IsTrainer(entity) {
+			continue
+		}
+		if summary, ok := w.flushNPCTrainingLocked(id, now); ok {
+			result.NPCTrainingHits = append(result.NPCTrainingHits, summary)
+			result.OrderedSpellEvents = append(result.OrderedSpellEvents, OrderedSpellEvent{Kind: OrderedSpellEventNPCTraining, NPCTrainingHit: summary})
+		}
+	}
+	if err := w.settlePendingCharacterDeathsLocked(players, playersByID, updated, &result, now); err != nil {
+		return TickResult{}, err
 	}
 	for _, player := range players {
 		ch, ok := playersByID[player.Character.ID]
@@ -378,7 +524,10 @@ func (w *World) Tick(players []PlayerSnapshot, now time.Time) (TickResult, error
 			if killerID == "" {
 				killerID = mon.LastHitterID
 			}
-			killer, killerOK := w.monsterExperienceOwnerLocked(killerID, playersByID)
+			if killerID == "" && mon.PoisonSourceID != "" {
+				killerID = mon.DeathHitterID
+			}
+			killer, killerOK := w.monsterExperienceOwnerLocked(killerID, playersByID, now)
 			if !killerOK {
 				killer = storage.Character{}
 			}
@@ -437,18 +586,6 @@ func (w *World) Tick(players []PlayerSnapshot, now time.Time) (TickResult, error
 		if w.applyMonsterProtectionTickLocked(mon, now) {
 			result.StatusRefreshMonsters = append(result.StatusRefreshMonsters, *mon)
 		}
-		previousStatus := MonsterStatus(*mon, now)
-		poisonHits, killed, err := w.applyMonsterPoisonTickLocked(mon, playersByID, now)
-		if err != nil {
-			return TickResult{}, err
-		}
-		if MonsterStatus(*mon, now) != previousStatus {
-			result.StatusRefreshMonsters = append(result.StatusRefreshMonsters, *mon)
-		}
-		result.MonsterHits = append(result.MonsterHits, poisonHits...)
-		if killed {
-			continue
-		}
 		if controlled {
 			continue
 		}
@@ -484,6 +621,21 @@ func (w *World) Tick(players []PlayerSnapshot, now time.Time) (TickResult, error
 				MonsterStatus: MonsterStatus(*mon, now), Dead: true,
 			})
 		}
+		if !mon.Alive {
+			continue
+		}
+		previousStatus := MonsterStatus(*mon, now)
+		poisonHits, killed, err := w.applyMonsterPoisonTickLocked(mon, playersByID, now)
+		if err != nil {
+			return TickResult{}, err
+		}
+		if MonsterStatus(*mon, now) != previousStatus {
+			result.StatusRefreshMonsters = append(result.StatusRefreshMonsters, *mon)
+		}
+		result.MonsterHits = append(result.MonsterHits, poisonHits...)
+		if killed {
+			continue
+		}
 	}
 	updatedIDs := make([]string, 0, len(updated))
 	for id := range updated {
@@ -506,7 +658,7 @@ func (w *World) monsterAttackerAliveLocked(id string, players map[string]storage
 	return false
 }
 
-func (w *World) monsterExperienceOwnerLocked(attackerID string, players map[string]storage.Character) (storage.Character, bool) {
+func (w *World) monsterExperienceOwnerLocked(attackerID string, players map[string]storage.Character, now time.Time) (storage.Character, bool) {
 	if attacker, ok := players[attackerID]; ok {
 		return attacker, true
 	}
@@ -518,7 +670,7 @@ func (w *World) monsterExperienceOwnerLocked(attackerID string, players map[stri
 	if !ok || owner.HP <= 0 {
 		return storage.Character{}, false
 	}
-	if !attacker.MasterExpiresAt.IsZero() && time.Now().After(attacker.MasterExpiresAt) {
+	if !attacker.MasterExpiresAt.IsZero() && now.After(attacker.MasterExpiresAt) {
 		return storage.Character{}, false
 	}
 	return owner, true
@@ -579,6 +731,11 @@ func (w *World) applyCharacterNaturalSpellTickLocked(ch *storage.Character, now 
 		}
 	} else if ch.SpellTick >= spellFillMS {
 		ch.SpellTick = 0
+	}
+	if ch.HealthTick < -healthFillMS && ch.HP > 1 {
+		ch.HP--
+		ch.HealthTick += healthFillMS
+		changed = true
 	}
 	return changed
 }
@@ -1000,8 +1157,11 @@ func (w *World) applyPendingSpellTicksLocked(result *TickResult, players, update
 			continue
 		}
 		if pending.SingleMagicStrike {
-			w.monsterMagicStruckLocked(mon, now)
 			damage := w.monsterMagicDamageAfterDefenseLocked(mon, pending.Damage)
+			if damage <= 0 {
+				continue
+			}
+			w.monsterMagicStruckLocked(mon, now)
 			hit, err := w.applyMonsterMagicDamageLocked(caster, mon, damage, false)
 			if err != nil {
 				return err
@@ -1036,6 +1196,9 @@ func (w *World) applyPendingSpellTicksLocked(result *TickResult, players, update
 		}
 		w.monsterMagicStruckLocked(mon, now)
 		damage = w.monsterMagicDamageAfterDefenseLocked(mon, damage)
+		if mon.Undead > 0 && damage > 0 {
+			damage += w.combatStatsLocked(caster).Undead
+		}
 		hit, err := w.applyMonsterMagicDamageLocked(caster, mon, damage, false)
 		if err != nil {
 			return err
@@ -1156,7 +1319,6 @@ func (w *World) tickMonsterLocked(mon *Monster, players map[string]storage.Chara
 	if mon.MasterID != "" {
 		return w.tickSummonedMonsterLocked(mon, players, now)
 	}
-	w.clearInvalidMonsterTargetLocked(mon, players, now)
 	actions := []MonsterAction{}
 	if mon.RunAwayMode && !mon.RunAwayUntil.IsZero() {
 		if now.After(mon.RunAwayUntil) {
@@ -1176,49 +1338,76 @@ func (w *World) tickMonsterLocked(mon *Monster, players map[string]storage.Chara
 		actions = append(actions, w.monsterActionLocked(mon, MonsterActionReveal))
 	}
 	if w.monsterIsBeeQueenLocked(mon) {
-		return w.finishMonsterTickLocked(mon, players, now, actions, w.tickBeeQueenLocked)
+		return w.tickInclusiveCustomAndInheritedLocked(mon, players, now, actions, w.tickBeeQueenLocked)
 	}
 	if w.monsterIsExplosionSpiderLocked(mon) {
-		return w.finishMonsterTickLocked(mon, players, now, actions, w.tickExplosionSpiderLocked)
+		return w.tickImmediateCustomAndInheritedLocked(mon, players, now, actions, w.tickExplosionSpiderLocked)
 	}
 	if w.monsterIsStoneLocked(mon) {
-		return w.finishMonsterTickLocked(mon, players, now, actions, w.tickStoneMonsterLocked)
+		resultActions, hits, chars, err := w.tickInclusiveCustomLocked(mon, players, now, actions, w.tickStoneMonsterLocked)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if !mon.StoneMode {
+			inheritedActions, inheritedHits, inheritedChars, err := w.finishMonsterTickLocked(mon, players, now, resultActions, w.tickNormalMonsterLocked)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			return inheritedActions, append(hits, inheritedHits...), append(chars, inheritedChars...), nil
+		}
+		return resultActions, hits, chars, nil
 	}
 	if w.monsterIsDualAxeLocked(mon) {
-		return w.finishMonsterTickLocked(mon, players, now, actions, w.tickDualAxeMonsterLocked)
+		return w.tickAlwaysInheritedCustomLocked(mon, players, now, actions, w.tickDualAxeMonsterLocked)
 	}
 	if w.monsterIsThornDarkLocked(mon) {
-		return w.finishMonsterTickLocked(mon, players, now, actions, w.tickDualAxeMonsterLocked)
+		return w.tickAlwaysInheritedCustomLocked(mon, players, now, actions, w.tickDualAxeMonsterLocked)
 	}
 	if w.monsterIsSpiderHouseLocked(mon) {
-		return w.finishMonsterTickLocked(mon, players, now, actions, w.tickSpiderHouseLocked)
+		return w.tickInclusiveCustomAndInheritedLocked(mon, players, now, actions, w.tickSpiderHouseLocked)
 	}
 	if w.monsterIsBigHeartLocked(mon) {
-		return w.finishMonsterTickLocked(mon, players, now, actions, w.tickBigHeartLocked)
+		return w.tickBigHeartAndInheritedLocked(mon, players, now, actions)
 	}
 	if w.monsterIsElectronicScorpionLocked(mon) {
-		return w.finishMonsterTickLocked(mon, players, now, actions, w.tickElectronicScorpionLocked)
+		return w.tickAlwaysInheritedCustomLocked(mon, players, now, actions, w.tickElectronicScorpionLocked)
+	}
+	if w.monsterIsCowKingLocked(mon) {
+		return w.tickCowKingMonsterLocked(mon, players, now, actions)
 	}
 	if w.monsterIsMagicCowLocked(mon) {
-		return w.finishMonsterTickLocked(mon, players, now, actions, w.tickMagicCowMonsterLocked)
+		return w.tickAlwaysInheritedCustomLocked(mon, players, now, actions, w.tickMagicCowMonsterLocked)
 	}
 	if w.monsterIsDigOutZombieLocked(mon) {
-		return w.finishMonsterTickLocked(mon, players, now, actions, w.tickDigOutZombieLocked)
+		return w.tickDigOutAndInheritedLocked(mon, players, now, actions)
+	}
+	if mon.Race == 94 {
+		return w.tickAlwaysInheritedCustomLocked(mon, players, now, actions, w.tickLightingZombieLocked)
 	}
 	if w.monsterIsGasAttackLocked(mon) {
-		return w.finishMonsterTickLocked(mon, players, now, actions, w.tickGasAttackMonsterLocked)
+		return w.tickAlwaysInheritedCustomLocked(mon, players, now, actions, w.tickGasAttackMonsterLocked)
 	}
 	if w.monsterIsSpitSpiderLocked(mon) {
-		return w.finishMonsterTickLocked(mon, players, now, actions, w.tickSpitSpiderLocked)
+		return w.tickAlwaysInheritedCustomLocked(mon, players, now, actions, w.tickSpitSpiderLocked)
 	}
 	if w.monsterIsArcherLocked(mon) {
-		return w.finishMonsterTickLocked(mon, players, now, actions, w.tickArcherMonsterLocked)
+		resultActions, hits, chars, err := w.tickArcherMonsterLocked(mon, players, now)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if w.thinkMonsterLocked(mon, players, now) {
+			resultActions = append(resultActions, w.monsterActionLocked(mon, MonsterActionWalk))
+		}
+		return resultActions, hits, chars, nil
 	}
 	if w.monsterIsStickLocked(mon) {
-		return w.finishMonsterTickLocked(mon, players, now, actions, w.tickStickMonsterLocked)
+		return w.tickStickAndInheritedLocked(mon, players, now, actions)
 	}
 	if w.monsterIsCentipedeLocked(mon) {
-		return w.finishMonsterTickLocked(mon, players, now, actions, w.tickCentipedeMonsterLocked)
+		return w.tickCentipedeAndInheritedLocked(mon, players, now, actions)
+	}
+	if mon.FixedHideMode || mon.StoneMode {
+		return actions, nil, nil, nil
 	}
 	if w.monsterIsAnimalLocked(mon) {
 		return w.finishMonsterTickLocked(mon, players, now, actions, w.tickAnimalMonsterLocked)
@@ -1229,39 +1418,236 @@ func (w *World) tickMonsterLocked(mon *Monster, players map[string]storage.Chara
 	return w.finishMonsterTickLocked(mon, players, now, actions, w.tickNormalMonsterLocked)
 }
 
+func (w *World) tickAlwaysInheritedCustomLocked(mon *Monster, players map[string]storage.Character, now time.Time, prefix []MonsterAction, custom func(*Monster, map[string]storage.Character, time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error)) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
+	actions, hits, chars, err := custom(mon, players, now)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	combined := append(prefix, actions...)
+	if mon.PendingDeath {
+		return combined, hits, chars, nil
+	}
+	inheritedActions, inheritedHits, inheritedChars, err := w.finishMonsterTickLocked(mon, players, now, combined, w.tickNormalMonsterLocked)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return inheritedActions, append(hits, inheritedHits...), append(chars, inheritedChars...), nil
+}
+
+func (w *World) tickBigHeartAndInheritedLocked(mon *Monster, players map[string]storage.Character, now time.Time, prefix []MonsterAction) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
+	actions, hits, chars, err := w.tickBigHeartLocked(mon, players, now)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	combined := append(prefix, actions...)
+	if mon.PendingDeath {
+		return combined, hits, chars, nil
+	}
+	inheritedActions, inheritedHits, inheritedChars, err := w.finishMonsterTickLocked(mon, players, now, combined, w.tickNormalMonsterLocked)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return inheritedActions, append(hits, inheritedHits...), append(chars, inheritedChars...), nil
+}
+
+func (w *World) tickStickAndInheritedLocked(mon *Monster, players map[string]storage.Character, now time.Time, prefix []MonsterAction) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
+	if !w.monsterWalkReadyLocked(mon, now) {
+		return prefix, nil, nil, nil
+	}
+	actions, hits, chars, err := w.tickStickMonsterLocked(mon, players, now)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	combined := append(prefix, actions...)
+	if mon.FixedHideMode {
+		return combined, hits, chars, nil
+	}
+	inheritedActions, inheritedHits, inheritedChars, err := w.finishMonsterTickLocked(mon, players, now, combined, w.tickNormalMonsterLocked)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return inheritedActions, append(hits, inheritedHits...), append(chars, inheritedChars...), nil
+}
+
+func (w *World) tickCentipedeAndInheritedLocked(mon *Monster, players map[string]storage.Character, now time.Time, prefix []MonsterAction) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
+	if !w.monsterWalkReadyLocked(mon, now) {
+		return prefix, nil, nil, nil
+	}
+	actions, hits, chars, err := w.tickCentipedeMonsterLocked(mon, players, now)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	combined := append(prefix, actions...)
+	if mon.FixedHideMode {
+		return combined, hits, chars, nil
+	}
+	inheritedActions, inheritedHits, inheritedChars, err := w.finishMonsterTickLocked(mon, players, now, combined, w.tickNormalMonsterLocked)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return inheritedActions, append(hits, inheritedHits...), append(chars, inheritedChars...), nil
+}
+
+func (w *World) tickDigOutAndInheritedLocked(mon *Monster, players map[string]storage.Character, now time.Time, prefix []MonsterAction) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
+	if !w.monsterWalkReadyLocked(mon, now) {
+		return prefix, nil, nil, nil
+	}
+	actions, hits, chars, err := w.tickDigOutZombieLocked(mon, players, now)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	combined := append(prefix, actions...)
+	if mon.FixedHideMode {
+		return combined, hits, chars, nil
+	}
+	inheritedActions, inheritedHits, inheritedChars, err := w.finishMonsterTickLocked(mon, players, now, combined, w.tickNormalMonsterLocked)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return inheritedActions, append(hits, inheritedHits...), append(chars, inheritedChars...), nil
+}
+
+func (w *World) tickLightingZombieLocked(mon *Monster, players map[string]storage.Character, now time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
+	if mon.LastTargetSearchAt.IsZero() {
+		mon.LastTargetSearchAt = now
+	}
+	if now.Sub(mon.LastTargetSearchAt) <= 8*time.Second {
+		return nil, nil, nil, nil
+	}
+	if mon.TargetCharacterID == "" {
+		mon.LastTargetSearchAt = now
+		w.searchMonsterTargetLocked(mon, players, now)
+	}
+	if mon.TargetCharacterID == "" {
+		return nil, nil, nil, nil
+	}
+	target, ok := players[mon.TargetCharacterID]
+	if !ok || !w.monsterCanKeepCharacterTargetLocked(mon, target) {
+		mon.TargetCharacterID = ""
+		mon.TargetX, mon.TargetY = -1, -1
+		mon.TargetFocusAt = time.Time{}
+		return nil, nil, nil, nil
+	}
+	if abs(mon.X-target.X) > 5 || abs(mon.Y-target.Y) > 5 {
+		return nil, nil, nil, nil
+	}
+	if abs(mon.X-target.X) <= 2 && abs(mon.Y-target.Y) <= 2 && w.rand.Intn(3) != 0 {
+		return nil, nil, nil, nil
+	}
+	if abs(mon.X-target.X) <= 4 && abs(mon.Y-target.Y) <= 4 && mon.Dir >= 0 && mon.Dir < len(dirOffsets) {
+		mon.TargetX = mon.X - dirOffsets[mon.Dir][0]
+		mon.TargetY = mon.Y - dirOffsets[mon.Dir][1]
+	}
+	if now.Sub(mon.LastAttackAt) <= time.Duration(w.monsterAttackIntervalMSLocked(mon))*time.Millisecond {
+		return nil, nil, nil, nil
+	}
+	mon.LastAttackAt = now
+	mon.TargetFocusAt = now
+	mon.HolySeizeUntil = time.Time{}
+	mon.Dir = direction(mon.X, mon.Y, target.X, target.Y)
+	action := w.monsterActionLocked(mon, MonsterActionLighting)
+	action.TargetActor = CharacterActorID(target)
+	action.TargetX = target.X
+	action.TargetY = target.Y
+	power := mon.MinAttack
+	if mon.MaxAttack > mon.MinAttack {
+		power += w.rand.Intn(mon.MaxAttack - mon.MinAttack + 1)
+	}
+	mapData, ok := w.data.Maps[mon.MapID]
+	if !ok {
+		return nil, nil, nil, nil
+	}
+	targetIDs := make([]string, 0)
+	monsterTargets := make([]pendingMonsterTarget, 0)
+	orderedTargets := make([]pendingMonsterTarget, 0)
+	seen := map[string]struct{}{}
+	playerList := make([]storage.Character, 0, len(players))
+	for _, candidate := range players {
+		playerList = append(playerList, candidate)
+	}
+	endX, endY, endValid := spellLineNextPosition(mapData, mon.X, mon.Y, mon.Dir, 9)
+	if !endValid {
+		endX, endY = mon.X, mon.Y
+	}
+	x, y := mon.X, mon.Y
+	for step := 1; step <= 13; step++ {
+		lineDir := mon.Dir
+		if step > 1 {
+			lineDir = direction(x, y, endX, endY)
+		}
+		nextX, nextY, valid := spellLineNextPosition(mapData, x, y, lineDir, 1)
+		if !valid {
+			break
+		}
+		x, y = nextX, nextY
+		areaTarget := w.movingObjectAtPointLocked(playerList, mon.MapID, x, y)
+		if areaTarget.Character != nil {
+			candidate := *areaTarget.Character
+			if w.monsterCanTargetCharacterLocked(mon, candidate) {
+				if _, exists := seen[candidate.ID]; !exists && w.characterMagicHitAllowedLocked(candidate) {
+					seen[candidate.ID] = struct{}{}
+					targetIDs = append(targetIDs, candidate.ID)
+					orderedTargets = append(orderedTargets, pendingMonsterTarget{ID: candidate.ID, Damage: power, Order: candidate.ObjectOrder})
+					power = referenceRound(float64(power) * 1.5)
+				}
+			}
+		} else if areaTarget.Monster != nil {
+			candidate := areaTarget.Monster
+			if candidate.ID != mon.ID && candidate.MasterID != "" && w.monsterMagicHitAllowedLocked(candidate) {
+				if _, exists := seen[candidate.ID]; !exists {
+					seen[candidate.ID] = struct{}{}
+					monsterTargets = append(monsterTargets, pendingMonsterTarget{ID: candidate.ID, Damage: power})
+					orderedTargets = append(orderedTargets, pendingMonsterTarget{ID: candidate.ID, Damage: power, Monster: true, Order: candidate.ObjectOrder})
+					power = referenceRound(float64(power) * 1.5)
+				}
+			}
+		}
+		if x == endX && y == endY {
+			break
+		}
+	}
+	if len(targetIDs) > 0 || len(monsterTargets) > 0 {
+		w.pendingMonsterAttacks = append(w.pendingMonsterAttacks, pendingMonsterAttack{DueAt: now.Add(600 * time.Millisecond), MonsterID: mon.ID, Targets: orderedTargets, TargetIDs: targetIDs, MonsterTargets: monsterTargets, Damage: power, ImpactDelay: 600 * time.Millisecond})
+	}
+	return []MonsterAction{action}, nil, nil, nil
+}
+
 func (w *World) monsterInitialSearchDelayMSLocked(mon *Monster) int {
-	if mon.Race == 93 || mon.Race == 104 || (mon.Race == 87 && mon.TemplateID == "掷斧骷髅") {
+	if mon.Race == 93 || mon.Race == 104 {
 		return 3000
 	}
 	base, span := 3000, 2000
 	switch mon.Race {
-	case 81, 82, 83, 84, 86, 88, 89, 90, 91, 94, 97, 101, 102, 105, 106, 118, 119, 200:
+	case 53, 81, 82, 83, 84, 86, 88, 89, 90, 91, 92, 94, 97, 101, 102, 105, 106, 118, 119, 200:
 		base, span = 1500, 1500
-	case 95, 96, 103, 116, 117:
+	case 85, 95, 96, 100, 103, 116, 117:
 		base, span = 2500, 1500
 	}
 	return base + w.monsterTraceIntn("search.initial_delay", span)
 }
 
 func (w *World) tickDigOutZombieLocked(mon *Monster, players map[string]storage.Character, now time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
-	if !mon.Hidden {
-		return w.tickNormalMonsterLocked(mon, players, now)
+	if !mon.FixedHideMode {
+		return nil, nil, nil, nil
 	}
 	for _, target := range players {
 		if !w.monsterCanTargetCharacterLocked(mon, target) || abs(mon.X-target.X) > 3 || abs(mon.Y-target.Y) > 3 {
 			continue
 		}
+		eventID := w.nextGroundEventIDLocked()
+		w.addGroundEventLocked(SpellGroundEvent{ID: eventID, MapID: mon.MapID, X: mon.X, Y: mon.Y, Type: 1, Duration: 5 * time.Minute, StartAt: now})
 		mon.Hidden = false
 		mon.FixedHideMode = false
-		mon.TargetCharacterID = target.ID
-		mon.TargetFocusAt = now
-		mon.Dir = direction(mon.X, mon.Y, target.X, target.Y)
+		mon.LastWalkAt = now.Add(time.Second)
 		return []MonsterAction{w.monsterActionLocked(mon, MonsterActionReveal)}, nil, nil, nil
 	}
 	return nil, nil, nil, nil
 }
 
 func (w *World) finishMonsterTickLocked(mon *Monster, players map[string]storage.Character, now time.Time, prefix []MonsterAction, tick func(*Monster, map[string]storage.Character, time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error)) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
+	if w.thinkMonsterLocked(mon, players, now) {
+		return append(prefix, w.monsterActionLocked(mon, MonsterActionWalk)), nil, nil, nil
+	}
 	if !w.monsterWalkReadyLocked(mon, now) {
 		return prefix, nil, nil, nil
 	}
@@ -1278,8 +1664,90 @@ func (w *World) finishMonsterTickLocked(mon *Monster, players map[string]storage
 	return combined, hits, chars, nil
 }
 
+func (w *World) tickInclusiveCustomAndInheritedLocked(mon *Monster, players map[string]storage.Character, now time.Time, prefix []MonsterAction, custom func(*Monster, map[string]storage.Character, time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error)) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
+	if mon.LastWalkAt.IsZero() || now.Before(mon.LastWalkAt) {
+		mon.LastWalkAt = now.Add(-time.Duration(w.monsterWalkSpeedMSLocked(mon)) * time.Millisecond)
+	}
+	if now.Sub(mon.LastWalkAt) < time.Duration(w.monsterWalkSpeedMSLocked(mon))*time.Millisecond {
+		return prefix, nil, nil, nil
+	}
+	mon.LastWalkAt = now
+	actions, _, _, err := custom(mon, players, now)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return w.finishMonsterTickLocked(mon, players, now, append(prefix, actions...), w.tickNormalMonsterLocked)
+}
+
+func (w *World) tickCustomAndInheritedLocked(mon *Monster, players map[string]storage.Character, now time.Time, prefix []MonsterAction, custom func(*Monster, map[string]storage.Character, time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error)) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
+	actions, hits, chars, err := w.finishMonsterTickLocked(mon, players, now, prefix, custom)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if len(actions) > 0 {
+		switch actions[len(actions)-1].Kind {
+		case MonsterActionHit, MonsterActionFlyAxe, MonsterActionLighting:
+			return actions, hits, chars, nil
+		}
+	}
+	inheritedActions, inheritedHits, inheritedChars, err := w.finishMonsterTickLocked(mon, players, now, actions, w.tickNormalMonsterLocked)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return inheritedActions, append(hits, inheritedHits...), append(chars, inheritedChars...), nil
+}
+
+func (w *World) tickInclusiveCustomLocked(mon *Monster, players map[string]storage.Character, now time.Time, prefix []MonsterAction, custom func(*Monster, map[string]storage.Character, time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error)) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
+	if mon.LastWalkAt.IsZero() || now.Before(mon.LastWalkAt) {
+		mon.LastWalkAt = now.Add(-time.Duration(w.monsterWalkSpeedMSLocked(mon)) * time.Millisecond)
+	}
+	if now.Sub(mon.LastWalkAt) < time.Duration(w.monsterWalkSpeedMSLocked(mon))*time.Millisecond {
+		return prefix, nil, nil, nil
+	}
+	mon.LastWalkAt = now
+	actions, hits, chars, err := custom(mon, players, now)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if len(prefix) == 0 {
+		return actions, hits, chars, nil
+	}
+	return append(prefix, actions...), hits, chars, nil
+}
+
+func (w *World) tickImmediateCustomAndInheritedLocked(mon *Monster, players map[string]storage.Character, now time.Time, prefix []MonsterAction, custom func(*Monster, map[string]storage.Character, time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error)) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
+	actions, hits, chars, err := custom(mon, players, now)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if len(actions) > 0 {
+		return append(prefix, actions...), hits, chars, nil
+	}
+	actions = prefix
+	if mon.PendingDeath {
+		return actions, hits, chars, nil
+	}
+	inheritedActions, inheritedHits, inheritedChars, err := w.finishMonsterTickLocked(mon, players, now, actions, w.tickNormalMonsterLocked)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if len(hits) == 0 && len(chars) == 0 {
+		return inheritedActions, inheritedHits, inheritedChars, nil
+	}
+	return inheritedActions, append(hits, inheritedHits...), append(chars, inheritedChars...), nil
+}
+
 func (w *World) tickNormalMonsterLocked(mon *Monster, players map[string]storage.Character, now time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
-	if mon.TargetCharacterID == "" && !now.Before(mon.NextSearchAt) {
+	if w.monsterUsesReferencePeriodicSearchLocked(mon) {
+		if mon.LastTargetSearchAt.IsZero() {
+			mon.LastTargetSearchAt = now
+		} else if now.Sub(mon.LastTargetSearchAt) > 8*time.Second || (mon.TargetCharacterID == "" && now.Sub(mon.LastTargetSearchAt) > time.Second) {
+			mon.LastTargetSearchAt = now
+			w.searchMonsterTargetLocked(mon, players, now)
+		}
+	}
+	periodicSearch := w.monsterUsesReferencePeriodicSearchLocked(mon)
+	if mon.TargetCharacterID == "" && ((periodicSearch && now.After(mon.NextSearchAt)) || (!periodicSearch && !now.Before(mon.NextSearchAt))) {
 		w.searchMonsterTargetLocked(mon, players, now)
 	}
 	if mon.TargetCharacterID == "" {
@@ -1296,6 +1764,15 @@ func (w *World) tickNormalMonsterLocked(mon *Monster, players map[string]storage
 func (w *World) tickMonsterTargetLocked(mon *Monster, players map[string]storage.Character, now time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
 	if mon.TargetCharacterID != "" {
 		target, ok := players[mon.TargetCharacterID]
+		if ok && target.MapID != mon.MapID && (w.monsterIsDualAxeLocked(mon) || w.monsterIsThornDarkLocked(mon)) {
+			if now.Sub(mon.LastAttackAt) <= time.Duration(w.monsterAttackIntervalMSLocked(mon))*time.Millisecond {
+				return nil, nil, nil, nil
+			}
+			mon.TargetCharacterID = ""
+			mon.TargetX, mon.TargetY = -1, -1
+			mon.TargetFocusAt = time.Time{}
+			return nil, nil, nil, nil
+		}
 		if !ok || !w.monsterCanKeepCharacterTargetLocked(mon, target) {
 			mon.TargetCharacterID = ""
 			mon.TargetX, mon.TargetY = -1, -1
@@ -1303,14 +1780,15 @@ func (w *World) tickMonsterTargetLocked(mon *Monster, players map[string]storage
 			mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchNoTargetMSLocked(mon)) * time.Millisecond)
 			return nil, nil, nil, nil
 		}
-		dir := direction(mon.X, mon.Y, target.X, target.Y)
-		if abs(mon.X-target.X) <= 1 && abs(mon.Y-target.Y) <= 1 {
-			if now.Sub(mon.LastAttackAt) < time.Duration(w.monsterAttackIntervalMSLocked(mon))*time.Millisecond {
+		dir := walkDirection(mon.X, mon.Y, target.X, target.Y)
+		if (mon.X != target.X || mon.Y != target.Y) && abs(mon.X-target.X) <= 1 && abs(mon.Y-target.Y) <= 1 {
+			if now.Sub(mon.LastAttackAt) <= time.Duration(w.monsterAttackIntervalMSLocked(mon))*time.Millisecond {
 				return nil, nil, nil, nil
 			}
 			mon.Dir = dir
 			mon.LastAttackAt = now
 			mon.TargetFocusAt = now
+			mon.HolySeizeUntil = time.Time{}
 			updated, hit, err := w.monsterAttackCharacterLocked(mon, target)
 			if err != nil {
 				return nil, nil, nil, err
@@ -1320,6 +1798,7 @@ func (w *World) tickMonsterTargetLocked(mon *Monster, players map[string]storage
 			}
 			return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHit)}, []CharacterHit{hit}, []storage.Character{updated}, nil
 		}
+		mon.TargetX, mon.TargetY = target.X, target.Y
 		if !w.moveMonsterTowardLocked(mon, target, dir, players) {
 			return nil, nil, nil, nil
 		}
@@ -1330,14 +1809,16 @@ func (w *World) tickMonsterTargetLocked(mon *Monster, players map[string]storage
 }
 
 func (w *World) tickBeeQueenLocked(mon *Monster, players map[string]storage.Character, now time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
-	if mon.TargetCharacterID == "" && !now.Before(mon.NextSearchAt) {
-		if target, ok := w.findClosestMonsterTargetLocked(mon, players, w.monsterViewRangeLocked(mon)); ok {
-			mon.TargetCharacterID = target.ID
-			mon.TargetFocusAt = now
-			mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchHasTargetMSLocked(mon)) * time.Millisecond)
-		} else {
-			mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchNoTargetMSLocked(mon)) * time.Millisecond)
-		}
+	if now.Sub(mon.LastAttackAt) < time.Duration(w.monsterAttackIntervalMSLocked(mon))*time.Millisecond {
+		return nil, nil, nil, nil
+	}
+	mon.LastAttackAt = now
+	if target, ok := w.findClosestMonsterTargetLocked(mon, players, w.monsterViewRangeLocked(mon)); ok {
+		mon.TargetCharacterID = target.ID
+		mon.TargetFocusAt = now
+		mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchHasTargetMSLocked(mon)) * time.Millisecond)
+	} else if mon.TargetCharacterID == "" {
+		mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchNoTargetMSLocked(mon)) * time.Millisecond)
 	}
 	if mon.TargetCharacterID == "" {
 		return nil, nil, nil, nil
@@ -1348,69 +1829,63 @@ func (w *World) tickBeeQueenLocked(mon *Monster, players map[string]storage.Char
 		mon.TargetX, mon.TargetY = -1, -1
 		mon.TargetFocusAt = time.Time{}
 		mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchNoTargetMSLocked(mon)) * time.Millisecond)
+		if action, ok := w.wanderMonsterLocked(mon, players); ok {
+			return []MonsterAction{action}, nil, nil, nil
+		}
 		return nil, nil, nil, nil
 	}
-	if w.countMonsterChildrenLocked(mon.ID) >= 15 {
+	if w.countMonsterGenerationEntriesLocked(mon.ID) >= 15 {
 		return nil, nil, nil, nil
 	}
-	if now.Sub(mon.LastAttackAt) < time.Duration(w.monsterAttackIntervalMSLocked(mon))*time.Millisecond {
-		return nil, nil, nil, nil
-	}
-	mon.LastAttackAt = now
 	mon.TargetFocusAt = now
 	childName := "蜜蜂"
-	for _, pending := range w.pendingMonsterSpawns {
-		if pending.ParentID == mon.ID && pending.ChildName == childName {
-			return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHit)}, nil, nil, nil
-		}
-	}
 	w.pendingMonsterSpawns = append(w.pendingMonsterSpawns, pendingMonsterSpawn{DueAt: now.Add(500 * time.Millisecond), ParentID: mon.ID, ChildName: childName})
 	return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHit)}, nil, nil, nil
 }
 
 func (w *World) tickCentipedeMonsterLocked(mon *Monster, players map[string]storage.Character, now time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
-	if mon.Hidden {
-		if !mon.TargetFocusAt.IsZero() && now.Sub(mon.TargetFocusAt) <= 10*time.Second {
+	if mon.FixedHideMode {
+		if !mon.CentipedeHideAt.IsZero() && now.Sub(mon.CentipedeHideAt) <= 10*time.Second {
 			return nil, nil, nil, nil
 		}
-		if target, ok := w.findClosestMonsterTargetStrictLocked(mon, players, w.monsterCentipedeComeOutRangeLocked(mon)); ok {
+		if _, ok := w.findClosestMonsterTargetStrictLocked(mon, players, w.monsterCentipedeComeOutRangeLocked(mon)); ok {
 			mon.Hidden = false
 			mon.FixedHideMode = false
-			mon.StoneMode = false
-			mon.TargetCharacterID = target.ID
+			mon.HP = mon.MaxHP
 			mon.TargetFocusAt = now
-			mon.Dir = direction(mon.X, mon.Y, target.X, target.Y)
-			mon.LastAttackAt = now
+			mon.CentipedeHideAt = now
+			mon.CentipedeAttackAt = now.Add(3 * time.Second)
 			return []MonsterAction{w.monsterActionLocked(mon, MonsterActionReveal)}, nil, nil, nil
 		}
 		return nil, nil, nil, nil
 	}
 	if mon.TargetCharacterID == "" {
-		if now.Sub(mon.TargetFocusAt) <= 10*time.Second {
+		if now.Before(mon.CentipedeAttackAt) {
 			return nil, nil, nil, nil
 		}
-		target, ok := w.findClosestMonsterTargetLocked(mon, players, w.monsterCentipedeAttackRangeLocked(mon))
+		_, ok := w.findClosestMonsterTargetLocked(mon, players, w.monsterCentipedeAttackRangeLocked(mon))
 		if !ok {
+			if now.Sub(mon.CentipedeHideAt) <= 10*time.Second {
+				return nil, nil, nil, nil
+			}
 			mon.Hidden = true
 			mon.FixedHideMode = true
-			mon.StoneMode = true
 			mon.TargetX = -1
 			mon.TargetY = -1
 			mon.TargetFocusAt = now
+			mon.CentipedeAttackAt = time.Time{}
 			return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHide)}, nil, nil, nil
 		}
-		mon.TargetCharacterID = target.ID
-		mon.TargetFocusAt = now
 	}
 	if _, ok := w.findClosestMonsterTargetLocked(mon, players, w.monsterCentipedeAttackRangeLocked(mon)); !ok {
 		mon.TargetCharacterID = ""
-		if now.Sub(mon.TargetFocusAt) > 10*time.Second {
+		if now.Sub(mon.CentipedeHideAt) > 10*time.Second {
 			mon.Hidden = true
 			mon.FixedHideMode = true
-			mon.StoneMode = true
 			mon.TargetX = -1
 			mon.TargetY = -1
-			mon.TargetFocusAt = now
+			mon.CentipedeHideAt = now
+			mon.CentipedeAttackAt = time.Time{}
 			return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHide)}, nil, nil, nil
 		}
 		return nil, nil, nil, nil
@@ -1419,18 +1894,27 @@ func (w *World) tickCentipedeMonsterLocked(mon *Monster, players map[string]stor
 	if attackInterval < 3*time.Second {
 		attackInterval = 3 * time.Second
 	}
-	if now.Sub(mon.LastAttackAt) < attackInterval {
+	if now.Sub(mon.LastAttackAt) <= attackInterval {
 		return nil, nil, nil, nil
 	}
 	mon.LastAttackAt = now
-	mon.TargetFocusAt = now
+	mon.CentipedeAttackAt = now.Add(3 * time.Second)
 	targetIDs := make([]string, 0)
 	for _, candidate := range players {
 		if !w.monsterCanTargetCharacterLocked(mon, candidate) || abs(mon.X-candidate.X) >= w.monsterViewRangeLocked(mon) || abs(mon.Y-candidate.Y) >= w.monsterViewRangeLocked(mon) {
 			continue
 		}
+		mon.TargetFocusAt = now
 		targetIDs = append(targetIDs, candidate.ID)
 	}
+	sort.SliceStable(targetIDs, func(i, j int) bool {
+		left := players[targetIDs[i]]
+		right := players[targetIDs[j]]
+		if left.ObjectOrder != 0 && right.ObjectOrder != 0 && left.ObjectOrder != right.ObjectOrder {
+			return left.ObjectOrder < right.ObjectOrder
+		}
+		return targetIDs[i] < targetIDs[j]
+	})
 	if len(targetIDs) > 0 {
 		power := mon.MinAttack
 		if mon.MaxAttack > mon.MinAttack {
@@ -1441,7 +1925,7 @@ func (w *World) tickCentipedeMonsterLocked(mon *Monster, players map[string]stor
 			if w.rand.Intn(4) != 0 {
 				continue
 			}
-			pending := pendingSpell{DueAt: now.Add(600 * time.Millisecond), TargetCharacterID: targetID, PoisonNotification: true}
+			pending := pendingSpell{DueAt: now, TargetCharacterID: targetID, PoisonNotification: true}
 			if w.rand.Intn(3) != 0 {
 				pending.PoisonHealth = true
 				pending.PoisonHealthLevel = 3
@@ -1457,16 +1941,32 @@ func (w *World) tickCentipedeMonsterLocked(mon *Monster, players map[string]stor
 }
 
 func (w *World) tickDualAxeMonsterLocked(mon *Monster, players map[string]storage.Character, now time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
-	if mon.TargetCharacterID == "" && now.Sub(mon.TargetFocusAt) >= 5*time.Second {
+	if mon.LastTargetSearchAt.IsZero() {
+		mon.LastTargetSearchAt = now
+	}
+	if now.Sub(mon.LastTargetSearchAt) >= 5*time.Second {
+		mon.LastTargetSearchAt = now
 		if target, ok := w.findClosestMonsterTargetLocked(mon, players, mon.ViewRange); ok {
 			mon.TargetCharacterID = target.ID
 			mon.TargetFocusAt = now
 		}
 	}
 	if mon.TargetCharacterID == "" {
+		if action, ok := w.wanderMonsterLocked(mon, players); ok {
+			return []MonsterAction{action}, nil, nil, nil
+		}
 		return nil, nil, nil, nil
 	}
 	target, ok := players[mon.TargetCharacterID]
+	if ok && target.MapID != mon.MapID {
+		if now.Sub(mon.LastAttackAt) <= time.Duration(w.monsterAttackIntervalMSLocked(mon))*time.Millisecond {
+			return nil, nil, nil, nil
+		}
+		mon.TargetCharacterID = ""
+		mon.TargetX, mon.TargetY = -1, -1
+		mon.TargetFocusAt = time.Time{}
+		return nil, nil, nil, nil
+	}
 	if !ok || !w.monsterCanKeepCharacterTargetLocked(mon, target) {
 		mon.TargetCharacterID = ""
 		mon.TargetX = -1
@@ -1475,18 +1975,32 @@ func (w *World) tickDualAxeMonsterLocked(mon *Monster, players map[string]storag
 		mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchNoTargetMSLocked(mon)) * time.Millisecond)
 		return nil, nil, nil, nil
 	}
+	if abs(mon.X-target.X) <= 4 && abs(mon.Y-target.Y) <= 4 {
+		if (abs(mon.X-target.X) > 2 || abs(mon.Y-target.Y) > 2) || w.rand.Intn(5) == 0 {
+			if mon.Dir >= 0 && mon.Dir < len(dirOffsets) {
+				mon.TargetX = mon.X - dirOffsets[mon.Dir][0]
+				mon.TargetY = mon.Y - dirOffsets[mon.Dir][1]
+			}
+		}
+	}
 	if abs(mon.X-target.X) <= 7 && abs(mon.Y-target.Y) <= 7 {
-		if now.Sub(mon.LastAttackAt) >= time.Duration(w.monsterAttackIntervalMSLocked(mon))*time.Millisecond {
+		if now.Sub(mon.LastAttackAt) > time.Duration(w.monsterAttackIntervalMSLocked(mon))*time.Millisecond {
 			mon.LastAttackAt = now
 			mon.TargetFocusAt = now
 			if mon.AttackMax == 0 {
 				mon.AttackMax = 2
+				if mon.Race == 93 {
+					mon.AttackMax = 3
+				}
+				if mon.Race == 104 {
+					mon.AttackMax = 6
+				}
 			}
 			if mon.AttackCount < mon.AttackMax-1 {
 				mon.AttackCount++
 				mon.Dir = direction(mon.X, mon.Y, target.X, target.Y)
 				if !w.monsterCanFlyLocked(mon, target) {
-					return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHit)}, nil, nil, nil
+					return nil, nil, nil, nil
 				}
 				updated, hit, err := w.monsterAttackCharacterLocked(mon, target)
 				if err != nil {
@@ -1494,10 +2008,14 @@ func (w *World) tickDualAxeMonsterLocked(mon *Monster, players map[string]storag
 				}
 				distance := maxInt(abs(mon.X-target.X), abs(mon.Y-target.Y))
 				hit.ImpactDelay = time.Duration(distance*50+600) * time.Millisecond
+				action := w.monsterActionLocked(mon, MonsterActionFlyAxe)
+				action.TargetActor = CharacterActorID(target)
+				action.TargetX = target.X
+				action.TargetY = target.Y
 				if hit.Damage <= 0 {
-					return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHit)}, nil, nil, nil
+					return []MonsterAction{action}, nil, nil, nil
 				}
-				return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHit)}, []CharacterHit{hit}, []storage.Character{updated}, nil
+				return []MonsterAction{action}, []CharacterHit{hit}, []storage.Character{updated}, nil
 			}
 			if w.rand.Intn(5) == 0 {
 				mon.AttackCount = 0
@@ -1534,7 +2052,16 @@ func (w *World) monsterCanFlyLocked(mon *Monster, target storage.Character) bool
 }
 
 func (w *World) tickSpitSpiderLocked(mon *Monster, players map[string]storage.Character, now time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
-	if mon.TargetCharacterID == "" && !now.Before(mon.NextSearchAt) {
+	if w.monsterUsesReferencePeriodicSearchLocked(mon) {
+		if mon.LastTargetSearchAt.IsZero() {
+			mon.LastTargetSearchAt = now
+		} else if now.Sub(mon.LastTargetSearchAt) > 8*time.Second || (mon.TargetCharacterID == "" && now.Sub(mon.LastTargetSearchAt) > time.Second) {
+			mon.LastTargetSearchAt = now
+			w.searchMonsterTargetLocked(mon, players, now)
+		}
+	}
+	periodicSearch := w.monsterUsesReferencePeriodicSearchLocked(mon)
+	if mon.TargetCharacterID == "" && ((periodicSearch && now.After(mon.NextSearchAt)) || (!periodicSearch && !now.Before(mon.NextSearchAt))) {
 		w.searchMonsterTargetLocked(mon, players, now)
 	}
 	if mon.TargetCharacterID == "" {
@@ -1549,42 +2076,64 @@ func (w *World) tickSpitSpiderLocked(mon *Monster, players map[string]storage.Ch
 		return nil, nil, nil, nil
 	}
 	if abs(mon.X-target.X) <= 2 && abs(mon.Y-target.Y) <= 2 {
+		if !w.monsterSpitTargetInDirectionLocked(mon, target, direction(mon.X, mon.Y, target.X, target.Y)) {
+			mon.TargetX, mon.TargetY = target.X, target.Y
+			return nil, nil, nil, nil
+		}
 		if now.Sub(mon.LastAttackAt) < time.Duration(w.monsterAttackIntervalMSLocked(mon))*time.Millisecond {
 			return nil, nil, nil, nil
 		}
 		mon.LastAttackAt = now
 		mon.TargetFocusAt = now
 		mon.Dir = direction(mon.X, mon.Y, target.X, target.Y)
+		mon.HolySeizeUntil = time.Time{}
 		power := mon.MinAttack
 		if mon.MaxAttack > mon.MinAttack {
 			power += w.rand.Intn(mon.MaxAttack - mon.MinAttack + 1)
 		}
 		if power < 1 {
-			return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHit)}, nil, nil, nil
+			return nil, nil, nil, nil
 		}
 		hits := []CharacterHit{}
 		updated := []storage.Character{}
 		oldMagic := mon.UseMagic
 		mon.UseMagic = true
-		for id, candidate := range players {
-			if !w.monsterSpitTargetInDirectionLocked(mon, candidate, mon.Dir) || w.rand.Intn(w.characterSpeedPointLocked(candidate)) >= w.monsterHitPointLocked(mon) {
+		playerList := make([]storage.Character, 0, len(players))
+		for _, candidate := range players {
+			playerList = append(playerList, candidate)
+		}
+		spitOffsets := [8][][2]int{
+			{{0, -2}, {0, -1}}, {{2, -2}, {1, -1}}, {{1, 0}, {2, 0}}, {{1, 1}, {2, 2}},
+			{{0, 1}, {0, 2}}, {{-1, 1}, {-2, 2}}, {{-1, 0}, {-2, 0}}, {{-1, -1}, {-2, -2}},
+		}
+		for _, offset := range spitOffsets[mon.Dir] {
+			areaTarget := w.movingObjectAtPointLocked(playerList, mon.MapID, mon.X+offset[0], mon.Y+offset[1])
+			if areaTarget.Character == nil {
 				continue
+			}
+			candidate := *areaTarget.Character
+			if w.rand.Intn(w.characterSpeedPointLocked(candidate)) >= w.monsterHitPointLocked(mon) {
+				continue
+			}
+			if power <= 0 {
+				break
 			}
 			changed, hit, err := w.monsterAttackCharacterWithDamageLocked(mon, candidate, power)
 			if err != nil {
 				mon.UseMagic = oldMagic
 				return nil, nil, nil, err
 			}
+			power = hit.Damage
 			hit.Magic = true
 			hit.ImpactDelay = 300 * time.Millisecond
-			if (mon.Race == 82 || mon.Race == 119) && w.rand.Intn(maxInt(candidate.AntiPoison, 0)+20) == 0 && changed.HP > 0 {
+			if (mon.Race == 82 || mon.Race == 118 || mon.Race == 119) && w.rand.Intn(maxInt(mon.AntiPoison, 0)+20) == 0 && hit.Damage > 0 {
 				w.pendingSpells = append(w.pendingSpells, pendingSpell{
 					DueAt: now, TargetCharacterID: changed.ID, PoisonHealthLevel: 1,
 					PoisonHealth: true, PoisonNotification: true, PoisonPoint: 1,
 					PoisonDuration: 30 * time.Second,
 				})
 			}
-			if changed.ID == id {
+			if changed.ID == candidate.ID {
 				updated = append(updated, changed)
 				hits = append(hits, hit)
 			}
@@ -1592,7 +2141,7 @@ func (w *World) tickSpitSpiderLocked(mon *Monster, players map[string]storage.Ch
 		mon.UseMagic = oldMagic
 		return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHit)}, hits, updated, nil
 	}
-	return w.tickNormalMonsterLocked(mon, players, now)
+	return nil, nil, nil, nil
 }
 
 func (w *World) monsterSpitTargetInDirectionLocked(mon *Monster, ch storage.Character, dir int) bool {
@@ -1619,10 +2168,22 @@ func (w *World) monsterSpitTargetInDirectionLocked(mon *Monster, ch storage.Char
 }
 
 func (w *World) tickGasAttackMonsterLocked(mon *Monster, players map[string]storage.Character, now time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
-	if mon.TargetCharacterID == "" && !now.Before(mon.NextSearchAt) {
-		w.searchMonsterTargetLocked(mon, players, now)
+	if mon.LastTargetSearchAt.IsZero() {
+		mon.LastTargetSearchAt = now
+	}
+	searchInterval := 8 * time.Second
+	if mon.TargetCharacterID == "" {
+		searchInterval = time.Second
+	}
+	searchReady := now.Sub(mon.LastTargetSearchAt) > searchInterval
+	if searchReady {
+		mon.LastTargetSearchAt = now
+		w.searchMonsterTargetIgnoringHideLocked(mon, players, now)
 	}
 	if mon.TargetCharacterID == "" {
+		if action, ok := w.wanderMonsterLocked(mon, players); ok {
+			return []MonsterAction{action}, nil, nil, nil
+		}
 		return nil, nil, nil, nil
 	}
 	target, ok := players[mon.TargetCharacterID]
@@ -1631,23 +2192,46 @@ func (w *World) tickGasAttackMonsterLocked(mon *Monster, players map[string]stor
 		mon.TargetX, mon.TargetY = -1, -1
 		mon.TargetFocusAt = time.Time{}
 		mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchNoTargetMSLocked(mon)) * time.Millisecond)
+		if action, ok := w.wanderMonsterLocked(mon, players); ok {
+			return []MonsterAction{action}, nil, nil, nil
+		}
 		return nil, nil, nil, nil
 	}
-	if abs(mon.X-target.X) > 2 || abs(mon.Y-target.Y) > 2 {
+	if abs(mon.X-target.X) > 1 || abs(mon.Y-target.Y) > 1 {
 		mon.TargetX, mon.TargetY = target.X, target.Y
 		dir := direction(mon.X, mon.Y, target.X, target.Y)
 		if !w.moveMonsterTowardLocked(mon, target, dir, players) {
 			return nil, nil, nil, nil
 		}
-		mon.LastWalkAt = now
 		return []MonsterAction{w.monsterActionLocked(mon, MonsterActionWalk)}, nil, nil, nil
 	}
-	if now.Sub(mon.LastAttackAt) < time.Duration(w.monsterAttackIntervalMSLocked(mon))*time.Millisecond {
+	if now.Sub(mon.LastAttackAt) <= time.Duration(w.monsterAttackIntervalMSLocked(mon))*time.Millisecond {
 		return nil, nil, nil, nil
 	}
 	mon.LastAttackAt = now
 	mon.TargetFocusAt = now
 	mon.Dir = direction(mon.X, mon.Y, target.X, target.Y)
+	mon.HolySeizeUntil = time.Time{}
+	mapData, mapOK := w.data.Maps[mon.MapID]
+	if !mapOK {
+		return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHit)}, nil, nil, nil
+	}
+	frontX, frontY, frontOK := spellLineNextPosition(mapData, mon.X, mon.Y, mon.Dir, 1)
+	front := storage.Character{}
+	if frontOK {
+		playerList := make([]storage.Character, 0, len(players))
+		for _, candidate := range players {
+			playerList = append(playerList, candidate)
+		}
+		frontObject := w.movingObjectAtPointLocked(playerList, mon.MapID, frontX, frontY)
+		if frontObject.Character != nil {
+			front = *frontObject.Character
+		}
+	}
+	if front.ID == "" || !w.monsterCanTargetCharacterLocked(mon, front) {
+		return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHit)}, nil, nil, nil
+	}
+	target = front
 	if w.characterSpeedPointLocked(target) > 0 && w.rand.Intn(w.characterSpeedPointLocked(target)) >= w.monsterHitPointLocked(mon) {
 		return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHit)}, nil, nil, nil
 	}
@@ -1659,6 +2243,10 @@ func (w *World) tickGasAttackMonsterLocked(mon *Monster, players map[string]stor
 	if hit.Damage <= 0 {
 		return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHit)}, nil, nil, nil
 	}
+	hiddenTarget := target.TransparentHideMode != nil && *target.TransparentHideMode
+	if mon.Race == 105 && hiddenTarget && w.rand.Intn(3) == 0 {
+		setCharacterTransparentLocked(&updated, now.Add(time.Second))
+	}
 	if hit.Damage > 0 && w.rand.Intn(maxInt(target.AntiPoison, 0)+20) == 0 {
 		w.pendingSpells = append(w.pendingSpells, pendingSpell{
 			DueAt: now, CasterID: mon.ID, TargetCharacterID: target.ID,
@@ -1669,14 +2257,27 @@ func (w *World) tickGasAttackMonsterLocked(mon *Monster, players map[string]stor
 }
 
 func (w *World) tickMagicCowMonsterLocked(mon *Monster, players map[string]storage.Character, now time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
-	if action, moved := w.runMagicCowPeriodicMoveLocked(mon, players, now); moved && action.Kind != 0 {
-		return []MonsterAction{action}, nil, nil, nil
+	if w.monsterIsCowKingLocked(mon) {
+		if action, moved := w.runMagicCowPeriodicMoveLocked(mon, players, now); moved {
+			w.updateMagicCowPhaseLocked(mon, now)
+			if action.Kind != 0 {
+				return []MonsterAction{action}, nil, nil, nil
+			}
+		}
 	}
-	w.updateMagicCowPhaseLocked(mon, now)
+	if mon.LastTargetSearchAt.IsZero() {
+		mon.LastTargetSearchAt = now
+	} else if now.Sub(mon.LastTargetSearchAt) > 8*time.Second || (mon.TargetCharacterID == "" && now.Sub(mon.LastTargetSearchAt) > time.Second) {
+		mon.LastTargetSearchAt = now
+		w.searchMonsterTargetLocked(mon, players, now)
+	}
 	if mon.TargetCharacterID == "" && !now.Before(mon.NextSearchAt) {
 		w.searchMonsterTargetLocked(mon, players, now)
 	}
 	if mon.TargetCharacterID == "" {
+		if action, ok := w.wanderMonsterLocked(mon, players); ok {
+			return []MonsterAction{action}, nil, nil, nil
+		}
 		return nil, nil, nil, nil
 	}
 	target, ok := players[mon.TargetCharacterID]
@@ -1685,6 +2286,9 @@ func (w *World) tickMagicCowMonsterLocked(mon *Monster, players map[string]stora
 		mon.TargetX, mon.TargetY = -1, -1
 		mon.TargetFocusAt = time.Time{}
 		mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchNoTargetMSLocked(mon)) * time.Millisecond)
+		if action, ok := w.wanderMonsterLocked(mon, players); ok {
+			return []MonsterAction{action}, nil, nil, nil
+		}
 		return nil, nil, nil, nil
 	}
 	if abs(mon.X-target.X) > 1 || abs(mon.Y-target.Y) > 1 {
@@ -1696,13 +2300,37 @@ func (w *World) tickMagicCowMonsterLocked(mon *Monster, players map[string]stora
 		mon.LastWalkAt = now
 		return []MonsterAction{w.monsterActionLocked(mon, MonsterActionWalk)}, nil, nil, nil
 	}
-	if now.Sub(mon.LastAttackAt) < time.Duration(w.monsterAttackIntervalMSLocked(mon))*time.Millisecond {
+	if now.Sub(mon.LastAttackAt) <= time.Duration(w.monsterAttackIntervalMSLocked(mon))*time.Millisecond {
 		return nil, nil, nil, nil
 	}
 	mon.LastAttackAt = now
 	mon.TargetFocusAt = now
 	mon.Dir = direction(mon.X, mon.Y, target.X, target.Y)
-	updated, hit, err := w.monsterMixedAttackCharacterLocked(mon, target)
+	mon.HolySeizeUntil = time.Time{}
+	if !w.monsterIsCowKingLocked(mon) {
+		mapData, mapOK := w.data.Maps[mon.MapID]
+		if !mapOK {
+			return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHit)}, nil, nil, nil
+		}
+		frontX, frontY, frontOK := spellLineNextPosition(mapData, mon.X, mon.Y, mon.Dir, 1)
+		if !frontOK {
+			return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHit)}, nil, nil, nil
+		}
+		playerList := make([]storage.Character, 0, len(players))
+		for _, candidate := range players {
+			playerList = append(playerList, candidate)
+		}
+		frontObject := w.movingObjectAtPointLocked(playerList, mon.MapID, frontX, frontY)
+		if frontObject.Character == nil || !w.monsterCanTargetCharacterLocked(mon, *frontObject.Character) {
+			return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHit)}, nil, nil, nil
+		}
+		target = *frontObject.Character
+	}
+	attack := w.monsterMagicAttackCharacterLocked
+	if w.monsterIsCowKingLocked(mon) {
+		attack = w.monsterMixedAttackCharacterLocked
+	}
+	updated, hit, err := attack(mon, target)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -1711,10 +2339,36 @@ func (w *World) tickMagicCowMonsterLocked(mon *Monster, players map[string]stora
 	hit.AttackerAppr = mon.Appr
 	hit.AttackerX, hit.AttackerY = mon.X, mon.Y
 	hit.ImpactDelay = 300 * time.Millisecond
+	if w.monsterIsCowKingLocked(mon) {
+		hit.ImpactDelay = 200 * time.Millisecond
+	}
 	if hit.Damage <= 0 {
 		return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHit)}, nil, nil, nil
 	}
 	return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHit)}, []CharacterHit{hit}, []storage.Character{updated}, nil
+}
+
+func (w *World) tickCowKingMonsterLocked(mon *Monster, players map[string]storage.Character, now time.Time, prefix []MonsterAction) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
+	periodic := !mon.CowKingMoveAt.IsZero() && now.Sub(mon.CowKingMoveAt) > 30*time.Second
+	if action, moved := w.runMagicCowPeriodicMoveLocked(mon, players, now); moved {
+		if action.Kind != 0 {
+			return append(prefix, action), nil, nil, nil
+		}
+	} else if periodic {
+		w.updateMagicCowPhaseLocked(mon, now)
+	}
+	customActions, hits, chars, err := w.finishMonsterTickLocked(mon, players, now, prefix, w.tickMagicCowMonsterLocked)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if mon.PendingDeath {
+		return customActions, hits, chars, nil
+	}
+	inheritedActions, inheritedHits, inheritedChars, err := w.finishMonsterTickLocked(mon, players, now, customActions, w.tickNormalMonsterLocked)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return inheritedActions, append(hits, inheritedHits...), append(chars, inheritedChars...), nil
 }
 
 func (w *World) runMagicCowPeriodicMoveLocked(mon *Monster, players map[string]storage.Character, now time.Time) (MonsterAction, bool) {
@@ -1722,27 +2376,28 @@ func (w *World) runMagicCowPeriodicMoveLocked(mon *Monster, players map[string]s
 		mon.CowKingMoveAt = now
 		return MonsterAction{}, false
 	}
-	if !mon.CowKingMoveAt.IsZero() && now.Sub(mon.CowKingMoveAt) < 30*time.Second {
+	if !mon.CowKingMoveAt.IsZero() && now.Sub(mon.CowKingMoveAt) <= 30*time.Second {
 		return MonsterAction{}, false
 	}
 	mon.CowKingMoveAt = now
-	if mon.TargetCharacterID != "" {
-		if target, ok := players[mon.TargetCharacterID]; ok && w.magicCowBlockedAroundLocked(target) >= 5 {
-			off := dirOffsets[target.Dir%len(dirOffsets)]
-			x, y := target.X-off[0], target.Y-off[1]
-			mp, exists := w.data.Maps[mon.MapID]
-			if exists && mp.Walkable(x, y) && !w.monsterAtLocked(mon.MapID, x, y, mon.ID) && !w.playerAtLocked(players, mon.MapID, x, y) {
-				oldX, oldY := mon.X, mon.Y
-				mon.Dir = direction(oldX, oldY, x, y)
-				w.moveMonsterLocked(mon, x, y)
-				action := w.monsterActionLocked(mon, MonsterActionSpaceMove)
-				action.PreviousMapID, action.PreviousX, action.PreviousY = mon.MapID, oldX, oldY
-				return action, true
-			}
-		}
+	if mon.TargetCharacterID == "" {
+		return MonsterAction{}, false
 	}
-	mp, ok := w.data.Maps[mon.MapID]
-	if !ok || mp.Width < 4 || mp.Height < 4 {
+	target, ok := players[mon.TargetCharacterID]
+	if !ok || w.magicCowBlockedAroundLocked(target, players) < 5 {
+		return MonsterAction{}, false
+	}
+	off := dirOffsets[target.Dir%len(dirOffsets)]
+	x, y := target.X-off[0], target.Y-off[1]
+	mp, exists := w.data.Maps[mon.MapID]
+	if exists && mp.Walkable(x, y) && !w.movingObjectAtLocked(players, mon.MapID, x, y, mon.ID) {
+		oldX, oldY := mon.X, mon.Y
+		w.moveMonsterLocked(mon, x, y)
+		action := w.monsterActionLocked(mon, MonsterActionSpaceMove)
+		action.PreviousMapID, action.PreviousX, action.PreviousY = mon.MapID, oldX, oldY
+		return action, true
+	}
+	if !exists || mp.Width < 4 || mp.Height < 4 {
 		return MonsterAction{}, true
 	}
 	edge := 50
@@ -1755,21 +2410,19 @@ func (w *World) runMagicCowPeriodicMoveLocked(mon *Monster, players map[string]s
 	if mp.Width <= edge+1 || mp.Height <= edge+1 {
 		return MonsterAction{}, true
 	}
-	for attempt := 0; attempt < 32; attempt++ {
-		x := edge + w.rand.Intn(mp.Width-edge-1)
-		y := edge + w.rand.Intn(mp.Height-edge-1)
-		if mp.Walkable(x, y) && !w.monsterAtLocked(mon.MapID, x, y, mon.ID) && !w.playerAtLocked(players, mon.MapID, x, y) {
-			oldX, oldY := mon.X, mon.Y
-			w.moveMonsterLocked(mon, x, y)
-			action := w.monsterActionLocked(mon, MonsterActionSpaceMove)
-			action.PreviousMapID, action.PreviousX, action.PreviousY = mon.MapID, oldX, oldY
-			return action, true
-		}
+	x = edge + w.rand.Intn(mp.Width-edge-1)
+	y = edge + w.rand.Intn(mp.Height-edge-1)
+	if mp.Walkable(x, y) && !w.movingObjectAtLocked(players, mon.MapID, x, y, mon.ID) {
+		oldX, oldY := mon.X, mon.Y
+		w.moveMonsterLocked(mon, x, y)
+		action := w.monsterActionLocked(mon, MonsterActionSpaceMove)
+		action.PreviousMapID, action.PreviousX, action.PreviousY = mon.MapID, oldX, oldY
+		return action, true
 	}
 	return MonsterAction{}, true
 }
 
-func (w *World) magicCowBlockedAroundLocked(ch storage.Character) int {
+func (w *World) magicCowBlockedAroundLocked(ch storage.Character, players map[string]storage.Character) int {
 	mp, ok := w.data.Maps[ch.MapID]
 	if !ok {
 		return 9
@@ -1777,7 +2430,7 @@ func (w *World) magicCowBlockedAroundLocked(ch storage.Character) int {
 	blocked := 0
 	for dx := -1; dx <= 1; dx++ {
 		for dy := -1; dy <= 1; dy++ {
-			if (dx != 0 || dy != 0) && !mp.Walkable(ch.X+dx, ch.Y+dy) {
+			if (dx != 0 || dy != 0) && (!mp.Walkable(ch.X+dx, ch.Y+dy) || w.movingObjectAtLocked(players, ch.MapID, ch.X+dx, ch.Y+dy, "")) {
 				blocked++
 			}
 		}
@@ -1825,36 +2478,37 @@ func (w *World) updateMagicCowPhaseLocked(mon *Monster, now time.Time) {
 }
 
 func (w *World) tickArcherMonsterLocked(mon *Monster, players map[string]storage.Character, now time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
-	if mon.TargetCharacterID == "" && !now.Before(mon.NextSearchAt) {
-		if target, ok := w.findClosestMonsterTargetLocked(mon, players, w.monsterViewRangeLocked(mon)); ok {
+	if w.monsterWalkReadyInclusiveLocked(mon, now) {
+		mon.LastWalkAt = now
+		target, found := w.findClosestMonsterTargetLocked(mon, players, w.monsterViewRangeLocked(mon))
+		if found {
 			mon.TargetCharacterID = target.ID
 			mon.TargetFocusAt = now
-			mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchHasTargetMSLocked(mon)) * time.Millisecond)
 		} else {
-			mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchNoTargetMSLocked(mon)) * time.Millisecond)
-			return nil, nil, nil, nil
+			mon.TargetCharacterID = ""
+			mon.TargetX, mon.TargetY = -1, -1
+			mon.TargetFocusAt = time.Time{}
 		}
 	}
 	if mon.TargetCharacterID == "" {
-		return nil, nil, nil, nil
-	}
-	target, ok := players[mon.TargetCharacterID]
-	if !ok || !w.monsterCanKeepCharacterTargetLocked(mon, target) || abs(target.X-mon.X) > w.monsterViewRangeLocked(mon) || abs(target.Y-mon.Y) > w.monsterViewRangeLocked(mon) {
-		mon.TargetCharacterID = ""
-		mon.TargetX, mon.TargetY = -1, -1
-		mon.TargetFocusAt = time.Time{}
-		mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchNoTargetMSLocked(mon)) * time.Millisecond)
 		if mon.GuardDirection >= 0 && mon.Dir != mon.GuardDirection {
 			mon.Dir = mon.GuardDirection
 			return []MonsterAction{w.monsterActionLocked(mon, MonsterActionTurn)}, nil, nil, nil
 		}
 		return nil, nil, nil, nil
 	}
+	target, ok := players[mon.TargetCharacterID]
+	if !ok || !w.monsterCanKeepCharacterTargetLocked(mon, target) {
+		mon.TargetCharacterID = ""
+		mon.TargetX, mon.TargetY = -1, -1
+		mon.TargetFocusAt = time.Time{}
+		return nil, nil, nil, nil
+	}
 	if now.Sub(mon.LastAttackAt) < time.Duration(w.monsterAttackIntervalMSLocked(mon))*time.Millisecond {
 		return nil, nil, nil, nil
 	}
-	mon.Dir = direction(mon.X, mon.Y, target.X, target.Y)
 	mon.LastAttackAt = now
+	mon.Dir = direction(mon.X, mon.Y, target.X, target.Y)
 	mon.TargetFocusAt = now
 	updated, hit, err := w.monsterAttackCharacterLocked(mon, target)
 	if err != nil {
@@ -1868,27 +2522,43 @@ func (w *World) tickArcherMonsterLocked(mon *Monster, players map[string]storage
 			mon.ExpHitterAt = time.Time{}
 		}
 	}
-	return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHit)}, []CharacterHit{hit}, []storage.Character{updated}, nil
+	actionKind := MonsterActionHit
+	if mon.Race == 112 {
+		actionKind = MonsterActionFlyAxe
+	}
+	action := w.monsterActionLocked(mon, actionKind)
+	if actionKind == MonsterActionFlyAxe {
+		action.TargetActor = CharacterActorID(target)
+		action.TargetX = target.X
+		action.TargetY = target.Y
+	}
+	if actionKind == MonsterActionFlyAxe && hit.Damage <= 0 {
+		return []MonsterAction{action}, nil, nil, nil
+	}
+	return []MonsterAction{action}, []CharacterHit{hit}, []storage.Character{updated}, nil
 }
 
 func (w *World) tickStickMonsterLocked(mon *Monster, players map[string]storage.Character, now time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
-	if mon.Hidden {
-		if target, ok := w.findClosestMonsterTargetStrictLocked(mon, players, w.monsterStickComeOutRangeLocked(mon)); ok {
+	if mon.FixedHideMode {
+		if _, ok := w.findClosestMonsterTargetStrictLocked(mon, players, w.monsterStickComeOutRangeLocked(mon)); ok {
 			mon.Hidden = false
 			mon.FixedHideMode = false
-			mon.StoneMode = false
-			mon.Dir = direction(mon.X, mon.Y, target.X, target.Y)
 			mon.NextSearchAt = now
 			return []MonsterAction{w.monsterActionLocked(mon, MonsterActionReveal)}, nil, nil, nil
 		}
 		return nil, nil, nil, nil
+	}
+	if mon.TargetCharacterID != "" && now.Sub(mon.LastAttackAt) > time.Duration(w.monsterAttackIntervalMSLocked(mon))*time.Millisecond {
+		if target, ok := w.findClosestMonsterTargetLocked(mon, players, w.monsterViewRangeLocked(mon)); ok {
+			mon.TargetCharacterID = target.ID
+			mon.TargetFocusAt = now
+		}
 	}
 	if mon.TargetCharacterID == "" && !now.Before(mon.NextSearchAt) {
 		target, ok := w.findClosestMonsterTargetLocked(mon, players, w.monsterViewRangeLocked(mon))
 		if !ok {
 			mon.Hidden = true
 			mon.FixedHideMode = true
-			mon.StoneMode = true
 			mon.TargetX = -1
 			mon.TargetY = -1
 			mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchNoTargetMSLocked(mon)) * time.Millisecond)
@@ -1907,7 +2577,6 @@ func (w *World) tickStickMonsterLocked(mon *Monster, players map[string]storage.
 		mon.TargetFocusAt = time.Time{}
 		mon.Hidden = true
 		mon.FixedHideMode = true
-		mon.StoneMode = true
 		mon.TargetX = -1
 		mon.TargetY = -1
 		mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchNoTargetMSLocked(mon)) * time.Millisecond)
@@ -1917,7 +2586,6 @@ func (w *World) tickStickMonsterLocked(mon *Monster, players map[string]storage.
 	if abs(mon.X-target.X) > attackRange || abs(mon.Y-target.Y) > attackRange {
 		mon.Hidden = true
 		mon.FixedHideMode = true
-		mon.StoneMode = true
 		mon.TargetX = -1
 		mon.TargetY = -1
 		mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchNoTargetMSLocked(mon)) * time.Millisecond)
@@ -1930,15 +2598,25 @@ func (w *World) tickStickMonsterLocked(mon *Monster, players map[string]storage.
 		mon.Dir = direction(mon.X, mon.Y, target.X, target.Y)
 		mon.LastAttackAt = now
 		mon.TargetFocusAt = now
+		mon.HolySeizeUntil = time.Time{}
 		updated, hit, err := w.monsterAttackCharacterLocked(mon, target)
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		if hit.Damage <= 0 {
-			return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHit)}, nil, nil, nil
+		actionKind := MonsterActionHit
+		if mon.UseMagic {
+			actionKind = MonsterActionLighting
 		}
-		return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHit)}, []CharacterHit{hit}, []storage.Character{updated}, nil
+		action := w.monsterActionLocked(mon, actionKind)
+		action.TargetActor = CharacterActorID(target)
+		action.TargetX = target.X
+		action.TargetY = target.Y
+		if hit.Damage <= 0 {
+			return []MonsterAction{action}, nil, nil, nil
+		}
+		return []MonsterAction{action}, []CharacterHit{hit}, []storage.Character{updated}, nil
 	}
+	mon.TargetX, mon.TargetY = target.X, target.Y
 	return nil, nil, nil, nil
 }
 
@@ -1947,10 +2625,33 @@ func (w *World) tickStoneMonsterLocked(mon *Monster, players map[string]storage.
 		if target, ok := w.findClosestMonsterTargetLocked(mon, players, w.monsterViewRangeLocked(mon)); ok {
 			if abs(mon.X-target.X) <= 2 && abs(mon.Y-target.Y) <= 2 {
 				mon.StoneMode = false
-				mon.TargetCharacterID = target.ID
-				mon.TargetFocusAt = now
-				mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchHasTargetMSLocked(mon)) * time.Millisecond)
-				return []MonsterAction{w.monsterActionLocked(mon, MonsterActionReveal)}, nil, nil, nil
+				if mon.Race == 102 {
+					eventID := w.nextGroundEventIDLocked()
+					w.addGroundEventLocked(SpellGroundEvent{ID: eventID, MapID: mon.MapID, X: mon.X, Y: mon.Y, Type: 6, Duration: 5 * time.Minute, StartAt: now})
+				}
+				actions := []MonsterAction{w.monsterActionLocked(mon, MonsterActionReveal)}
+				if mon.Race == 101 {
+					nearby := make([]*Monster, 0)
+					for _, other := range w.monsters {
+						if other == mon || !other.Alive || other.Race != 101 || !other.StoneMode || other.MapID != mon.MapID {
+							continue
+						}
+						if abs(other.X-mon.X) <= 7 && abs(other.Y-mon.Y) <= 7 {
+							other.StoneMode = false
+							nearby = append(nearby, other)
+						}
+					}
+					sort.SliceStable(nearby, func(i, j int) bool {
+						if nearby[i].ObjectOrder != nearby[j].ObjectOrder {
+							return nearby[i].ObjectOrder < nearby[j].ObjectOrder
+						}
+						return nearby[i].ID < nearby[j].ID
+					})
+					for _, other := range nearby {
+						actions = append(actions, w.monsterActionLocked(other, MonsterActionReveal))
+					}
+				}
+				return actions, nil, nil, nil
 			}
 		}
 		return nil, nil, nil, nil
@@ -1958,19 +2659,27 @@ func (w *World) tickStoneMonsterLocked(mon *Monster, players map[string]storage.
 	if mon.TargetCharacterID == "" && !now.Before(mon.NextSearchAt) {
 		target, ok := w.findClosestMonsterTargetLocked(mon, players, w.monsterViewRangeLocked(mon))
 		if !ok {
+			w.maybeCallStoneKingSlavesLocked(mon, now)
 			mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchNoTargetMSLocked(mon)) * time.Millisecond)
 			return nil, nil, nil, nil
 		}
 		mon.TargetCharacterID = target.ID
 		mon.TargetFocusAt = now
 		mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchHasTargetMSLocked(mon)) * time.Millisecond)
+		w.maybeCallStoneKingSlavesLocked(mon, now)
+	}
+	if (mon.Race == 101 || mon.Race == 102) && mon.TargetCharacterID != "" && !now.Before(mon.NextSearchAt) {
+		mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchHasTargetMSLocked(mon)) * time.Millisecond)
+		w.searchMonsterTargetLocked(mon, players, now)
+		w.maybeCallStoneKingSlavesLocked(mon, now)
 	}
 	if mon.TargetCharacterID != "" {
 		target, ok := players[mon.TargetCharacterID]
-		if ok && w.monsterCanKeepCharacterTargetLocked(mon, target) && abs(mon.X-target.X) <= 1 && abs(mon.Y-target.Y) <= 1 && now.Sub(mon.LastAttackAt) >= time.Duration(w.monsterAttackIntervalMSLocked(mon))*time.Millisecond {
+		if ok && w.monsterCanKeepCharacterTargetLocked(mon, target) && abs(mon.X-target.X) <= 1 && abs(mon.Y-target.Y) <= 1 && now.Sub(mon.LastAttackAt) > time.Duration(w.monsterAttackIntervalMSLocked(mon))*time.Millisecond {
 			mon.Dir = direction(mon.X, mon.Y, target.X, target.Y)
 			mon.LastAttackAt = now
 			mon.TargetFocusAt = now
+			mon.HolySeizeUntil = time.Time{}
 			attack := w.monsterAttackCharacterLocked
 			if mon.Race == 102 {
 				attack = w.monsterMagicAttackCharacterLocked
@@ -1979,10 +2688,53 @@ func (w *World) tickStoneMonsterLocked(mon *Monster, players map[string]storage.
 			if err != nil {
 				return nil, nil, nil, err
 			}
+			if hit.Damage <= 0 {
+				return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHit)}, nil, nil, nil
+			}
 			return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHit)}, []CharacterHit{hit}, []storage.Character{updated}, nil
 		}
 	}
 	return w.tickNormalMonsterLocked(mon, players, now)
+}
+
+func (w *World) maybeCallStoneKingSlavesLocked(mon *Monster, now time.Time) {
+	if mon.Race != 102 {
+		return
+	}
+	if mon.HP == mon.MaxHP {
+		mon.StoneDangerLevel = 5
+		return
+	}
+	if mon.StoneDangerLevel > 0 && mon.StoneDangerLevel*mon.MaxHP > mon.HP*5 {
+		mon.StoneDangerLevel--
+		w.callStoneKingSlavesLocked(mon, now)
+	}
+}
+
+func (w *World) callStoneKingSlavesLocked(mon *Monster, now time.Time) {
+	const maxSlaves = 30
+	names := []string{"祖玛卫士", "祖玛雕像", "祖玛弓箭手", "楔蛾"}
+	count := w.monsterTraceIntn("stone_king.slave_count", 6) + 6
+	if remaining := maxSlaves - w.countMonsterGenerationEntriesLocked(mon.ID); count > remaining {
+		count = remaining
+	}
+	if count <= 0 || mon.Dir < 0 || mon.Dir >= len(dirOffsets) {
+		return
+	}
+	off := dirOffsets[mon.Dir]
+	x, y := mon.X+off[0], mon.Y+off[1]
+	for i := 0; i < count; i++ {
+		tpl, ok := w.monsterTemplateByIDLocked(names[w.monsterTraceIntn("stone_king.slave_kind", len(names))])
+		if !ok {
+			continue
+		}
+		child := w.createSpawnMonsterLocked(data.StdSpawn{MapID: mon.MapID, MonsterID: tpl.ID, X: x, Y: y, Count: 1}, tpl, x, y)
+		if child == nil {
+			continue
+		}
+		child.ParentID = mon.ID
+		child.TargetFocusAt = now
+	}
 }
 
 func (w *World) tickPassiveMonsterLocked(mon *Monster, players map[string]storage.Character, now time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
@@ -1998,7 +2750,7 @@ func (w *World) tickPassiveMonsterLocked(mon *Monster, players map[string]storag
 }
 
 func (w *World) tickAnimalMonsterLocked(mon *Monster, players map[string]storage.Character, now time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
-	if mon.FleeOnSight || mon.Race == 51 || mon.Race == 52 {
+	if mon.FleeOnSight {
 		return w.tickFleeAnimalMonsterLocked(mon, players, now)
 	}
 	return w.tickPassiveMonsterLocked(mon, players, now)
@@ -2053,7 +2805,7 @@ func (w *World) tickFleeAnimalMonsterLocked(mon *Monster, players map[string]sto
 	return w.tickPassiveMonsterLocked(mon, players, now)
 }
 
-func (w *World) explosionSpiderLocked(mon *Monster, players map[string]storage.Character) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
+func (w *World) explosionSpiderLocked(mon *Monster, players map[string]storage.Character, now time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
 	mon.HP = core.ApplyHPDelta(mon.HP, mon.MaxHP, -mon.HP).HP
 	mon.PendingDeath = true
 	mon.DeathHitterID = mon.ExpHitterID
@@ -2064,6 +2816,10 @@ func (w *World) explosionSpiderLocked(mon *Monster, players map[string]storage.C
 	var updated []storage.Character
 	var nearest storage.Character
 	best := 999999
+	power := mon.MinAttack
+	if mon.MaxAttack > mon.MinAttack {
+		power += w.rand.Intn(mon.MaxAttack - mon.MinAttack + 1)
+	}
 	for _, ch := range players {
 		if !w.monsterCanTargetCharacterLocked(mon, ch) {
 			continue
@@ -2073,90 +2829,44 @@ func (w *World) explosionSpiderLocked(mon *Monster, players map[string]storage.C
 				best = dist
 				nearest = ch
 			}
-			dmg := mon.MinAttack
-			if mon.MaxAttack > mon.MinAttack {
-				dmg += w.rand.Intn(mon.MaxAttack - mon.MinAttack + 1)
+			changed, hit, err := w.monsterMixedAttackCharacterWithPowerLocked(mon, ch, power)
+			if err != nil {
+				return nil, nil, nil, err
 			}
-			if dmg < 1 {
-				dmg = 1
+			if hit.Damage > 0 {
+				hit.ImpactDelay = 700 * time.Millisecond
+				hits = append(hits, hit)
+				updated = append(updated, changed)
 			}
-			physicalDamage := w.characterPhysicalDamageAfterDefenseLocked(&ch, dmg/2)
-			magicDamage := w.characterMagicDamageAfterDefenseLocked(ch, dmg/2, time.Now())
-			magicDamage = applyCharacterMagicBubbleLocked(&ch, magicDamage, time.Now())
-			magicDamage = w.applyCharacterMagicShieldLocked(&ch, magicDamage)
-			damage := physicalDamage + magicDamage
-			if damage <= 0 {
-				continue
-			}
-			if characterPoisonArmorActive(ch, time.Now()) {
-				damage = referenceRound(float64(damage) * poisonDamageMultiplier(true))
-			}
-			change := core.ApplyVitalDelta(ch, -damage, 0)
-			ch = change.Character
-			if damage > 0 {
-				ch.PerHealth--
-				ch.PerSpell--
-				ch.SpellTick = 0
-				ch.HealthTick = 0
-				ch.LastHitterID = mon.ID
-				ch.LastHitterAt = time.Now().UnixNano()
-			}
-			if change.Dead {
-				w.deferCharacterDeathLocked(ch)
-			}
-			hit := CharacterHit{
-				Character:       ch,
-				Damage:          damage,
-				AttackerID:      mon.ID,
-				AttackerRaceImg: mon.RaceImg,
-				AttackerAppr:    mon.Appr,
-				AttackerX:       mon.X,
-				AttackerY:       mon.Y,
-				ImpactDelay:     700 * time.Millisecond,
-				Dead:            change.Dead,
-				DeathDeferred:   change.Dead,
-			}
-			hits = append(hits, hit)
-			updated = append(updated, ch)
 		}
 	}
 	if nearest.ID != "" {
 		mon.Dir = direction(mon.X, mon.Y, nearest.X, nearest.Y)
 	}
-	return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHit)}, hits, updated, nil
+	return nil, hits, updated, nil
 }
 
 func (w *World) tickBigHeartLocked(mon *Monster, players map[string]storage.Character, now time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
-	if now.Sub(mon.LastAttackAt) < time.Duration(w.monsterAttackIntervalMSLocked(mon))*time.Millisecond {
+	if now.Sub(mon.LastAttackAt) <= time.Duration(w.monsterAttackIntervalMSLocked(mon))*time.Millisecond {
 		return nil, nil, nil, nil
 	}
-	var nearest storage.Character
-	best := 999999
+	visible := false
 	for _, ch := range players {
-		if !w.monsterCanTargetCharacterLocked(mon, ch) {
+		if ch.MapID != mon.MapID {
 			continue
 		}
 		if abs(ch.X-mon.X) <= mon.ViewRange && abs(ch.Y-mon.Y) <= mon.ViewRange {
-			dist := abs(ch.X-mon.X) + abs(ch.Y-mon.Y)
-			if dist < best || dist == best && monsterTargetOrderPreferred(ch, nearest) {
-				best = dist
-				nearest = ch
-			}
+			visible = true
 		}
 	}
-	if nearest.ID == "" {
+	if !visible {
 		return nil, nil, nil, nil
 	}
 	mon.LastAttackAt = now
-	mon.TargetFocusAt = now
-	mon.Dir = direction(mon.X, mon.Y, nearest.X, nearest.Y)
 	actions := []MonsterAction{w.monsterActionLocked(mon, MonsterActionHit)}
 	power := mon.MinAttack
 	if mon.MaxAttack > mon.MinAttack {
 		power += w.rand.Intn(mon.MaxAttack - mon.MinAttack + 1)
-	}
-	if power < 1 {
-		power = 1
 	}
 	targetIDs := make([]string, 0)
 	for _, ch := range players {
@@ -2167,6 +2877,14 @@ func (w *World) tickBigHeartLocked(mon *Monster, players map[string]storage.Char
 			targetIDs = append(targetIDs, ch.ID)
 		}
 	}
+	sort.SliceStable(targetIDs, func(i, j int) bool {
+		left := players[targetIDs[i]]
+		right := players[targetIDs[j]]
+		if left.ObjectOrder != 0 && right.ObjectOrder != 0 && left.ObjectOrder != right.ObjectOrder {
+			return left.ObjectOrder < right.ObjectOrder
+		}
+		return targetIDs[i] < targetIDs[j]
+	})
 	if len(targetIDs) > 0 {
 		w.pendingMonsterAttacks = append(w.pendingMonsterAttacks, pendingMonsterAttack{DueAt: now.Add(200 * time.Millisecond), MonsterID: mon.ID, TargetIDs: targetIDs, Damage: power})
 	}
@@ -2174,7 +2892,12 @@ func (w *World) tickBigHeartLocked(mon *Monster, players map[string]storage.Char
 }
 
 func (w *World) tickElectronicScorpionLocked(mon *Monster, players map[string]storage.Character, now time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
-	if mon.TargetCharacterID == "" && now.Sub(mon.TargetFocusAt) >= 1*time.Second {
+	mon.UseMagic = mon.HP < mon.MaxHP/2
+	if mon.LastTargetSearchAt.IsZero() {
+		mon.LastTargetSearchAt = now
+	}
+	if mon.TargetCharacterID == "" && now.Sub(mon.LastTargetSearchAt) > 1*time.Second {
+		mon.LastTargetSearchAt = now
 		w.searchMonsterTargetLocked(mon, players, now)
 	}
 	if mon.TargetCharacterID == "" {
@@ -2185,39 +2908,43 @@ func (w *World) tickElectronicScorpionLocked(mon *Monster, players map[string]st
 		mon.TargetCharacterID = ""
 		mon.TargetX, mon.TargetY = -1, -1
 		mon.TargetFocusAt = time.Time{}
+		if mon.Race == 200 {
+			mon.TargetFocusAt = now
+			mon.LastTargetSearchAt = now
+		}
 		mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchNoTargetMSLocked(mon)) * time.Millisecond)
 		return nil, nil, nil, nil
 	}
-	mon.UseMagic = mon.HP < mon.MaxHP/2
 	nx := abs(mon.X - target.X)
 	ny := abs(mon.Y - target.Y)
 	if nx <= 2 && ny <= 2 {
 		if !mon.UseMagic && nx != 2 && ny != 2 {
 			return nil, nil, nil, nil
 		}
-		if now.Sub(mon.LastAttackAt) < time.Duration(w.monsterAttackIntervalMSLocked(mon))*time.Millisecond {
+		if now.Sub(mon.LastAttackAt) <= time.Duration(w.monsterAttackIntervalMSLocked(mon))*time.Millisecond {
 			return nil, nil, nil, nil
 		}
 		mon.LastAttackAt = now
 		mon.TargetFocusAt = now
 		mon.Dir = direction(mon.X, mon.Y, target.X, target.Y)
-		attack := w.monsterAttackCharacterLocked
-		if mon.UseMagic {
-			attack = w.monsterMagicAttackCharacterLocked
-		}
-		updated, hit, err := attack(mon, target)
+		updated, hit, err := w.monsterMagicAttackCharacterLocked(mon, target)
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		if mon.UseMagic && hit.Damage > 0 && mon.MP&0xFF > 0 {
+		hit.ImpactDelay = 200 * time.Millisecond
+		if hit.Damage > 0 && mon.MP&0xFF > 0 {
 			mon.HP = minInt(mon.MaxHP, mon.HP+hit.Damage/(mon.MP&0xFF))
 		}
+		action := w.monsterActionLocked(mon, MonsterActionLighting)
+		action.TargetActor = CharacterActorID(target)
+		action.TargetX = target.X
+		action.TargetY = target.Y
 		if hit.Damage <= 0 {
-			return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHit)}, nil, nil, nil
+			return []MonsterAction{action}, nil, nil, nil
 		}
-		return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHit)}, []CharacterHit{hit}, []storage.Character{updated}, nil
+		return []MonsterAction{action}, []CharacterHit{hit}, []storage.Character{updated}, nil
 	}
-	return w.tickNormalMonsterLocked(mon, players, now)
+	return w.tickMonsterTargetLocked(mon, players, now)
 }
 
 func (w *World) tickExplosionSpiderLocked(mon *Monster, players map[string]storage.Character, now time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
@@ -2226,37 +2953,24 @@ func (w *World) tickExplosionSpiderLocked(mon *Monster, players map[string]stora
 	}
 	if now.Sub(mon.ExplosionStartAt) > 60*time.Second {
 		mon.ExplosionStartAt = now
-		return w.explosionSpiderLocked(mon, players)
+		return w.explosionSpiderLocked(mon, players, now)
 	}
-	if mon.TargetCharacterID == "" && !now.Before(mon.NextSearchAt) {
-		w.searchMonsterTargetLocked(mon, players, now)
-	}
-	if mon.TargetCharacterID == "" {
-		return nil, nil, nil, nil
-	}
-	target, ok := players[mon.TargetCharacterID]
-	if !ok || !w.monsterCanKeepCharacterTargetLocked(mon, target) {
-		mon.TargetCharacterID = ""
-		mon.TargetX, mon.TargetY = -1, -1
-		mon.TargetFocusAt = time.Time{}
-		mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchNoTargetMSLocked(mon)) * time.Millisecond)
-		return nil, nil, nil, nil
-	}
-	if abs(mon.X-target.X) <= 1 && abs(mon.Y-target.Y) <= 1 {
-		if now.Sub(mon.LastAttackAt) < time.Duration(w.monsterAttackIntervalMSLocked(mon))*time.Millisecond {
-			return nil, nil, nil, nil
+	if mon.TargetCharacterID != "" {
+		if target, ok := players[mon.TargetCharacterID]; ok && w.monsterCanKeepCharacterTargetLocked(mon, target) && abs(mon.X-target.X) <= 1 && abs(mon.Y-target.Y) <= 1 && now.Sub(mon.LastAttackAt) > time.Duration(w.monsterAttackIntervalMSLocked(mon))*time.Millisecond {
+			mon.LastAttackAt = now
+			mon.TargetFocusAt = now
+			mon.Dir = direction(mon.X, mon.Y, target.X, target.Y)
+			return w.explosionSpiderLocked(mon, players, now)
 		}
-		mon.LastAttackAt = now
-		mon.TargetFocusAt = now
-		return w.explosionSpiderLocked(mon, players)
 	}
-	return w.tickNormalMonsterLocked(mon, players, now)
+	return nil, nil, nil, nil
 }
 
 func (w *World) tickSpiderHouseLocked(mon *Monster, players map[string]storage.Character, now time.Time) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
 	if now.Sub(mon.LastAttackAt) < time.Duration(w.monsterAttackIntervalMSLocked(mon))*time.Millisecond {
 		return nil, nil, nil, nil
 	}
+	mon.LastAttackAt = now
 	w.searchMonsterTargetLocked(mon, players, now)
 	if mon.TargetCharacterID == "" {
 		return nil, nil, nil, nil
@@ -2268,17 +2982,11 @@ func (w *World) tickSpiderHouseLocked(mon *Monster, players map[string]storage.C
 		mon.TargetFocusAt = time.Time{}
 		return nil, nil, nil, nil
 	}
-	if w.countMonsterChildrenLocked(mon.ID) >= 15 {
+	if w.countMonsterGenerationEntriesLocked(mon.ID) >= 15 {
 		return nil, nil, nil, nil
 	}
 	childName := "爆裂蜘蛛"
-	for _, pending := range w.pendingMonsterSpawns {
-		if pending.ParentID == mon.ID && pending.ChildName == childName {
-			return nil, nil, nil, nil
-		}
-	}
 	w.pendingMonsterSpawns = append(w.pendingMonsterSpawns, pendingMonsterSpawn{DueAt: now.Add(500 * time.Millisecond), ParentID: mon.ID, ChildName: childName})
-	mon.LastAttackAt = now
 	mon.TargetFocusAt = now
 	return []MonsterAction{w.monsterActionLocked(mon, MonsterActionHit)}, nil, nil, nil
 }
@@ -2293,31 +3001,48 @@ func (w *World) countMonsterChildrenLocked(parentID string) int {
 	return count
 }
 
+func (w *World) countMonsterGenerationEntriesLocked(parentID string) int {
+	count := 0
+	for _, mon := range w.monsters {
+		if mon.ParentID == parentID {
+			count++
+		}
+	}
+	return count
+}
+
 func (w *World) spawnChildMonsterLocked(parent *Monster, childName string, now time.Time) bool {
-	if w.countMonsterChildrenLocked(parent.ID) >= 15 {
+	childCount := w.countMonsterChildrenLocked(parent.ID)
+	if parent.Race == 103 || parent.Race == 116 {
+		childCount = w.countMonsterGenerationEntriesLocked(parent.ID)
+	}
+	if childCount >= 15 {
 		return false
 	}
 	tpl, ok := w.monsterTemplateByIDLocked(childName)
 	if !ok {
 		return false
 	}
-	mp, ok := w.data.Maps[parent.MapID]
-	if !ok {
-		return false
-	}
 	childX, childY := parent.X, parent.Y+1
-	if !mp.Walkable(childX, childY) {
-		return false
-	}
-	if _, occupied := w.occupied[monsterPosition{MapID: parent.MapID, X: childX, Y: childY}]; occupied {
-		return false
+	if parent.Race == 103 {
+		childX, childY = parent.X, parent.Y
+	} else {
+		mp, ok := w.data.Maps[parent.MapID]
+		if !ok {
+			return false
+		}
+		if !mp.Walkable(childX, childY) {
+			return false
+		}
 	}
 	child := w.createSpawnMonsterLocked(data.StdSpawn{MapID: parent.MapID, MonsterID: tpl.ID, X: childX, Y: childY, Count: 1, RespawnSeconds: 0}, tpl, childX, childY)
 	if child == nil {
 		return false
 	}
 	if child.X != parent.X || child.Y != parent.Y {
-		w.occupyMonsterLocked(child)
+		if _, occupied := w.occupied[monsterPosition{MapID: parent.MapID, X: childX, Y: childY}]; !occupied {
+			w.occupyMonsterLocked(child)
+		}
 	}
 	child.ParentID = parent.ID
 	child.TargetCharacterID = parent.TargetCharacterID

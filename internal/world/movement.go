@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"openmir2/internal/data"
 	"openmir2/internal/npc"
 	"openmir2/internal/protocol/mir176"
 	"openmir2/internal/storage"
@@ -23,34 +24,50 @@ func (w *World) Move(ch storage.Character, x, y int) (storage.Character, error) 
 func (w *World) Turn(ch storage.Character, x, y, dir int) (storage.Character, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if err := validDir(dir); err != nil {
-		return ch, err
-	}
 	if x != ch.X || y != ch.Y {
 		return ch, fmt.Errorf("turn coordinates do not match current position")
 	}
 	ch.Dir = dir
-	return ch, w.store.SaveCharacter(ch)
+	return ch, nil
 }
 
 func (w *World) Walk(ch storage.Character, x, y, dir int, blockers ...storage.Character) (storage.Character, error) {
+	result, err := w.WalkWithEvents(ch, x, y, dir, blockers...)
+	return result.Character, err
+}
+
+// WalkWithEvents applies one walk step and returns any ground-event impacts
+// generated at the resulting tile before the caller emits the move result.
+func (w *World) WalkWithEvents(ch storage.Character, x, y, dir int, blockers ...storage.Character) (MovementResult, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if err := validDir(dir); err != nil {
-		return ch, err
+		return MovementResult{Character: ch}, err
 	}
 	ch.Dir = dir
 	return w.directionalStepLocked(ch, x, y, dir, 1, blockers)
 }
 
 func (w *World) Run(ch storage.Character, x, y, dir int, blockers ...storage.Character) (storage.Character, error) {
+	result, err := w.RunWithEvents(ch, x, y, dir, blockers...)
+	return result.Character, err
+}
+
+// RunWithEvents applies one run action and returns any ground-event impacts
+// generated at the resulting tile before the caller emits the move result.
+func (w *World) RunWithEvents(ch storage.Character, x, y, dir int, blockers ...storage.Character) (MovementResult, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if err := validDir(dir); err != nil {
-		return ch, err
+		return MovementResult{Character: ch}, err
 	}
 	ch.Dir = dir
 	return w.directionalStepLocked(ch, x, y, dir, 2, blockers)
+}
+
+type MovementResult struct {
+	CharacterHits []CharacterHit
+	Character     storage.Character
 }
 
 // Hit resolves a melee swing (CM_HIT and its variants) in the character's
@@ -77,16 +94,17 @@ func (w *World) HitWithIdent(ch storage.Character, x, y, dir int, attackIdent ui
 		attackIdent = mir176.CMHit
 	}
 	ch.Dir = dir
-	applyAttackRecoveryDelay(&ch)
 	w.respawnLocked(now)
 	if attackIdent == mir176.CMHeavyHit {
 		if mineResult, handled, err := w.mineWithHeavyHitLocked(ch, dir); handled {
+			applyMiningRecoveryDelay(&mineResult.Character)
 			if err != nil {
 				return AttackResult{}, err
 			}
 			return mineResult, nil
 		}
 	}
+	applyAttackRecoveryDelay(&ch)
 	result := AttackResult{Character: ch}
 	consumeSpecialHit := func(hit *AttackResult) {
 		if !fireHitActive && !powerHitActive {
@@ -148,6 +166,12 @@ func (w *World) HitWithIdent(ch storage.Character, x, y, dir int, attackIdent ui
 		result.CharacterHits = append(result.CharacterHits, hit)
 		result.Character = ch
 	}
+	applyAttackerWeaponDamage := func() {
+		durability, deleted, featureChanged := w.applyWeaponDamageLocked(&ch)
+		result.Durability = append(result.Durability, durability...)
+		result.DeletedItems = append(result.DeletedItems, deleted...)
+		result.FeatureChanged = result.FeatureChanged || featureChanged
+	}
 	appendNPCTrainingHit := func(entity npc.Entity, damage int) error {
 		hit, err := w.applyNPCTrainingHitLocked(entity.ID, ch.ID, damage, false, now)
 		if err != nil {
@@ -178,6 +202,9 @@ func (w *World) HitWithIdent(ch storage.Character, x, y, dir int, attackIdent ui
 		}
 	}
 	points := w.hitPointsForAttackLocked(ch.X, ch.Y, dir, attackIdent)
+	if w.weaponUpgradeTargetAtPointsLocked(ch, points, blockers...) {
+		w.resolveWeaponUpgradeLocked(&ch, &result)
+	}
 	for _, point := range points {
 		if entity, ok := w.trainerAtExactPointLocked(ch.MapID, point[0], point[1]); ok {
 			damage := w.characterHitDamageForAttackLocked(ch, attackIdent)
@@ -204,7 +231,7 @@ func (w *World) HitWithIdent(ch storage.Character, x, y, dir int, attackIdent ui
 				if err != nil {
 					return AttackResult{}, err
 				}
-				if hit.Connected {
+				if hit.Connected && hit.Damage > 0 {
 					appendMonsterHit(hit)
 				}
 				continue
@@ -236,6 +263,7 @@ func (w *World) HitWithIdent(ch storage.Character, x, y, dir int, attackIdent ui
 				}
 				hit.ImpactDelay = 500 * time.Millisecond
 				if hit.Connected {
+					applyAttackerWeaponDamage()
 					ch = w.mergeStoredCharacterPKFlagLocked(ch)
 					appendCharacterHit(hit)
 				}
@@ -246,6 +274,7 @@ func (w *World) HitWithIdent(ch storage.Character, x, y, dir int, attackIdent ui
 				return AttackResult{}, err
 			}
 			if hit.Damage > 0 {
+				applyAttackerWeaponDamage()
 				ch = w.mergeStoredCharacterPKFlagLocked(ch)
 				ch.TargetID = target.ID
 				result.Character = ch
@@ -299,6 +328,7 @@ func (w *World) HitWithIdent(ch storage.Character, x, y, dir int, attackIdent ui
 			}
 			appendCharacterHit(hit)
 			if hit.Damage > 0 {
+				applyAttackerWeaponDamage()
 				ch = w.mergeStoredCharacterPKFlagLocked(ch)
 				if err := trainMainAttack(); err != nil {
 					return AttackResult{}, err
@@ -313,12 +343,74 @@ func (w *World) HitWithIdent(ch storage.Character, x, y, dir int, attackIdent ui
 	return result, w.store.SaveCharacter(ch)
 }
 
+func (w *World) weaponUpgradeTargetAtPointsLocked(ch storage.Character, points [][2]int, blockers ...storage.Character) bool {
+	for _, point := range points {
+		if entity, ok := w.trainerAtExactPointLocked(ch.MapID, point[0], point[1]); ok && entity.ID != "" {
+			return true
+		}
+		if w.monsterAtExactPointLocked(ch.MapID, point[0], point[1]) != nil {
+			return true
+		}
+		if _, ok := w.characterAtExactPointLocked(blockers, ch.MapID, point[0], point[1]); ok {
+			return true
+		}
+	}
+	return false
+}
+
+func (w *World) resolveWeaponUpgradeLocked(ch *storage.Character, result *AttackResult) {
+	weapon, ok := ch.EquippedItems[SlotWeapon]
+	if !ok || weapon.Desc[10] == 0 {
+		return
+	}
+	marker := weapon.Desc[10]
+	if int(weapon.Desc[0])+int(weapon.Desc[1])+int(weapon.Desc[2]) >= w.gameplay.Item.UpgradeWeaponMaxPoint || marker == 1 {
+		result.DeletedItems = append(result.DeletedItems, weapon)
+		result.WeaponBroken = true
+		delete(ch.EquippedItems, SlotWeapon)
+		result.FeatureChanged = true
+		result.Character = *ch
+		return
+	}
+	if marker >= 10 && marker <= 13 {
+		weapon.Desc[0] = clampByteAdd(weapon.Desc[0], marker-9)
+	} else if marker >= 20 && marker <= 23 {
+		weapon.Desc[1] = clampByteAdd(weapon.Desc[1], marker-19)
+	} else if marker >= 30 && marker <= 33 {
+		weapon.Desc[2] = clampByteAdd(weapon.Desc[2], marker-29)
+	}
+	weapon.Desc[10] = 0
+	ch.EquippedItems[SlotWeapon] = weapon
+	result.FeatureChanged = true
+	result.Character = *ch
+}
+
+func clampByteAdd(a, b byte) byte {
+	if int(a)+int(b) > 255 {
+		return 255
+	}
+	return a + b
+}
+
 func applyAttackRecoveryDelay(ch *storage.Character) {
 	if ch == nil {
 		return
 	}
 	ch.HealthTick -= 30
 	ch.SpellTick -= 100
+	if ch.SpellTick < 0 {
+		ch.SpellTick = 0
+	}
+	ch.PerHealth -= 2
+	ch.PerSpell -= 2
+}
+
+func applyMiningRecoveryDelay(ch *storage.Character) {
+	if ch == nil {
+		return
+	}
+	ch.HealthTick -= 30
+	ch.SpellTick -= 50
 	if ch.SpellTick < 0 {
 		ch.SpellTick = 0
 	}
@@ -388,7 +480,7 @@ func (w *World) stepLocked(ch storage.Character, x, y, maxDist int) (storage.Cha
 		ch.TransparentUntil = time.Now().Add(time.Second).UnixNano()
 	}
 	w.syncCharacterHomeFromStartPointLocked(&ch)
-	return ch, w.store.SaveCharacter(ch)
+	return ch, nil
 }
 
 // directionalStepLocked resolves CM_WALK/CM_RUN the way the reference
@@ -399,12 +491,12 @@ func (w *World) stepLocked(ch storage.Character, x, y, maxDist int) (storage.Cha
 // be walkable, matching RunTo's CanWalkEx checks on both the +1 and +2 tiles
 // — a distance-only bound would let a run "jump" a one-tile-wide obstacle by
 // only checking the final tile. The client's (x, y) must match the derived
-// destination exactly, which also rejects diagonal-skewed moves (e.g. a run
-// claiming dx=2, dy=1) that no direction actually produces.
-func (w *World) directionalStepLocked(ch storage.Character, x, y, dir, steps int, blockers []storage.Character) (storage.Character, error) {
+// destination. The requested coordinates select the direction before this
+// function runs; they do not prevent the directional movement itself.
+func (w *World) directionalStepLocked(ch storage.Character, x, y, dir, steps int, blockers []storage.Character) (MovementResult, error) {
 	mp, ok := w.data.Maps[ch.MapID]
 	if !ok {
-		return ch, fmt.Errorf("map %s not found", ch.MapID)
+		return MovementResult{Character: ch}, fmt.Errorf("map %s not found", ch.MapID)
 	}
 	off := dirOffsets[dir]
 	destX, destY := ch.X, ch.Y
@@ -414,29 +506,108 @@ func (w *World) directionalStepLocked(ch storage.Character, x, y, dir, steps int
 	for i := 1; i <= steps; i++ {
 		destX, destY = ch.X+off[0]*i, ch.Y+off[1]*i
 		if !mp.Walkable(destX, destY) {
-			return ch, fmt.Errorf("move is blocked")
+			return MovementResult{Character: ch}, fmt.Errorf("move is blocked")
 		}
 		if w.monsterAtLockedWithRun(ch.MapID, destX, destY, "", ignoreRunMonsters) {
-			return ch, fmt.Errorf("move is blocked")
+			return MovementResult{Character: ch}, fmt.Errorf("move is blocked")
 		}
 		for _, blocker := range blockers {
-			if blocker.ID != "" && blocker.ID != ch.ID && blocker.HP > 0 && !blocker.AdminMode && !ignoreRunHumans && blocker.MapID == ch.MapID && blocker.X == destX && blocker.Y == destY {
-				return ch, fmt.Errorf("move is blocked")
+			if blocker.ID != "" && blocker.ID != ch.ID && blocker.HP > 0 && !blocker.ObserverMode && !ignoreRunHumans && blocker.MapID == ch.MapID && blocker.X == destX && blocker.Y == destY {
+				return MovementResult{Character: ch}, fmt.Errorf("move is blocked")
 			}
 		}
 	}
-	if x != destX || y != destY {
-		return ch, fmt.Errorf("move coordinates do not match direction")
+	var gate *data.StdMapConnection
+	for i := range mp.Connections {
+		connection := &mp.Connections[i]
+		if connection.FromX != destX || connection.FromY != destY {
+			continue
+		}
+		gate = connection
+		break
 	}
+	oldMapID, oldX, oldY := ch.MapID, ch.X, ch.Y
 	ch.X = destX
 	ch.Y = destY
+	result := MovementResult{Character: ch}
+	if hit, ok := w.movementGroundEventHitLocked(ch); ok {
+		ch = hit.Character
+		result.Character = ch
+		result.CharacterHits = append(result.CharacterHits, hit)
+	}
+	if gate != nil {
+		targetMap, targetExists := w.data.Maps[gate.ToMap]
+		if !targetExists || !targetMap.Walkable(gate.ToX, gate.ToY) {
+			ch.MapID, ch.X, ch.Y = oldMapID, oldX, oldY
+			result.Character = ch
+			return result, fmt.Errorf("map gate destination is invalid")
+		}
+		if targetMap.NeedHole && !w.hasDigOutEventLocked(oldMapID, destX, destY, time.Now()) {
+			ch.MapID, ch.X, ch.Y = oldMapID, oldX, oldY
+			result.Character = ch
+			return result, fmt.Errorf("map gate requires an active dig-out event")
+		}
+		if !w.doorsOpenAroundLocked(oldMapID, destX, destY, time.Now()) {
+			ch.MapID, ch.X, ch.Y = oldMapID, oldX, oldY
+			result.Character = ch
+			return result, fmt.Errorf("map gate requires nearby doors to be open")
+		}
+		ch.MapID = targetMap.ID
+		ch.X = gate.ToX
+		ch.Y = gate.ToY
+	}
 	w.refreshCharacterObjectOrderLocked(&ch)
 	ch.MapMoveAt = time.Now().UnixNano()
+	if steps == 2 {
+		ch.HealthTick -= 60
+		ch.SpellTick -= 10
+		if ch.SpellTick < 0 {
+			ch.SpellTick = 0
+		}
+		ch.PerHealth--
+		ch.PerSpell--
+	} else {
+		ch.HealthTick -= 10
+	}
 	if characterTransparentStatePresent(ch) {
 		ch.TransparentUntil = time.Now().Add(time.Second).UnixNano()
 	}
 	w.syncCharacterHomeFromStartPointLocked(&ch)
-	return ch, w.store.SaveCharacter(ch)
+	result.Character = ch
+	return result, nil
+}
+
+func (w *World) movementGroundEventHitLocked(ch storage.Character) (CharacterHit, bool) {
+	key := fireFieldKey{MapID: ch.MapID, X: ch.X, Y: ch.Y}
+	field, ok := w.fireFields[key]
+	if !ok || field.OwnerID == "" || !field.ExpiresAt.IsZero() && time.Now().After(field.ExpiresAt) || field.Damage <= 0 {
+		return CharacterHit{}, false
+	}
+	owner := field.Owner
+	if owner.ID == "" {
+		owner = storage.Character{ID: field.OwnerID, MapID: field.MapID, X: field.X, Y: field.Y}
+	}
+	if !w.isProperCharacterAreaTargetLocked(owner, ch) {
+		return CharacterHit{}, false
+	}
+	updated, hit, err := w.spellCharacterDamageWithPowerLocked(owner, ch, field.Damage)
+	if err != nil || hit.Damage <= 0 {
+		return CharacterHit{}, false
+	}
+	hit.Character = updated
+	return hit, true
+}
+
+func (w *World) hasDigOutEventLocked(mapID string, x, y int, now time.Time) bool {
+	for _, event := range w.groundEvents {
+		if event.Type != 1 || event.MapID != mapID || event.X != x || event.Y != y {
+			continue
+		}
+		if event.Duration <= 0 || !now.After(event.StartAt.Add(event.Duration)) {
+			return true
+		}
+	}
+	return false
 }
 
 func validDir(dir int) error {

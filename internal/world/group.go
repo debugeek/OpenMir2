@@ -6,6 +6,30 @@ import (
 	"openmir2/internal/storage"
 )
 
+func (w *World) hasRecallSuiteLocked(ch storage.Character) bool {
+	if w.data.Items == nil || ch.EquippedItems == nil {
+		return false
+	}
+	hasShape := func(slot int, shape int) bool {
+		entry, ok := ch.EquippedItems[slot]
+		if !ok {
+			return false
+		}
+		item, ok := w.data.Items[entry.ItemID]
+		return ok && item.Shape == shape
+	}
+	return hasShape(SlotNecklace, 123) &&
+		(hasShape(SlotRingL, 122) || hasShape(SlotRingR, 122)) &&
+		(hasShape(SlotArmRingL, 124) || hasShape(SlotArmRingR, 124)) &&
+		hasShape(SlotHelmet, 125)
+}
+
+func (w *World) HasRecallSuite(ch storage.Character) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.hasRecallSuiteLocked(ch)
+}
+
 func (w *World) SetGroupMode(ch storage.Character, allow bool) (storage.Character, []storage.Character, error) {
 	updated, result, err := w.SetGroupModeWithResult(ch, allow)
 	return updated, result.Sync.Updated, err
@@ -33,7 +57,19 @@ func (w *World) SetGroupModeWithResult(ch storage.Character, allow bool) (storag
 			if err != nil {
 				return ch, GroupModeResult{}, err
 			}
-			event := GroupSyncEvent{Updated: append([]storage.Character(nil), changed...)}
+			event := GroupSyncEvent{Updated: append([]storage.Character(nil), changed...), Cancel: []storage.Character{ch}}
+			ownerID := ch.GroupOwnerID
+			for _, entry := range changed {
+				if entry.ID != ownerID {
+					continue
+				}
+				if entry.GroupOwnerID == "" {
+					event.Cancel = append(event.Cancel, entry)
+				} else {
+					event.MemberListOwnerID = ownerID
+				}
+				break
+			}
 			for _, entry := range changed {
 				if entry.ID == ch.ID {
 					ch = entry
@@ -42,6 +78,7 @@ func (w *World) SetGroupModeWithResult(ch storage.Character, allow bool) (storag
 			}
 			return ch, GroupModeResult{Character: ch, Sync: event, ResponseParam: 0}, nil
 		}
+		return ch, GroupModeResult{Character: ch, Sync: GroupSyncEvent{}, ResponseParam: 1}, nil
 	}
 	ch.AllowGroup = true
 	if err := w.store.SaveCharacter(ch); err != nil {
@@ -61,7 +98,7 @@ func (w *World) CreateGroupWithResult(owner, target storage.Character, onlineMem
 	if owner.GroupOwnerID != "" {
 		return owner, target, GroupSyncEvent{}, fmt.Errorf("group already exists")
 	}
-	if target.ID == "" || target.ID == owner.ID || target.HP <= 0 {
+	if target.ID == "" || target.ID == owner.ID || target.HP <= 0 || target.Ghost {
 		return owner, target, GroupSyncEvent{}, fmt.Errorf("invalid group target")
 	}
 	if target.GroupOwnerID != "" {
@@ -97,7 +134,7 @@ func (w *World) AddGroupMemberWithResult(owner, target storage.Character, online
 	if owner.GroupOwnerID != owner.ID {
 		return owner, target, GroupSyncEvent{}, fmt.Errorf("not group owner")
 	}
-	if target.ID == "" || target.ID == owner.ID || target.HP <= 0 {
+	if target.ID == "" || target.ID == owner.ID || target.HP <= 0 || target.Ghost {
 		return owner, target, GroupSyncEvent{}, fmt.Errorf("invalid group target")
 	}
 	if target.GroupOwnerID != "" {
@@ -130,6 +167,16 @@ func (w *World) DelGroupMemberWithResult(owner, target storage.Character) (stora
 	defer w.mu.Unlock()
 	if owner.GroupOwnerID != owner.ID {
 		return owner, target, GroupSyncEvent{}, fmt.Errorf("not group owner")
+	}
+	memberOfGroup := false
+	for _, memberID := range owner.GroupMembers {
+		if memberID == target.ID {
+			memberOfGroup = true
+			break
+		}
+	}
+	if !memberOfGroup {
+		return owner, target, GroupSyncEvent{}, fmt.Errorf("target not group member")
 	}
 	changed, err := w.removeGroupMemberLocked(owner.ID, target.ID, false)
 	if err != nil {
@@ -187,6 +234,55 @@ func (w *World) removeGroupMemberLocked(ownerID, memberID string, clearMemberAll
 	}
 	changed = append(changed, owner)
 	return changed, nil
+}
+
+func (w *World) settleDeadCharacterGroupLocked(ch *storage.Character, players map[string]storage.Character) (GroupSyncEvent, error) {
+	if ch == nil || ch.GroupOwnerID == "" {
+		return GroupSyncEvent{}, nil
+	}
+	if ch.GroupOwnerID == ch.ID {
+		event := GroupSyncEvent{}
+		for _, memberID := range ch.GroupMembers {
+			if memberID == ch.ID {
+				continue
+			}
+			member, ok := players[memberID]
+			if !ok {
+				continue
+			}
+			member.GroupOwnerID = ""
+			member.GroupMembers = nil
+			if err := w.store.SaveCharacter(member); err != nil {
+				return GroupSyncEvent{}, err
+			}
+			players[member.ID] = member
+			event.Updated = append(event.Updated, member)
+			event.Cancel = append(event.Cancel, member)
+		}
+		ch.GroupOwnerID = ""
+		ch.GroupMembers = nil
+		event.Cancel = append(event.Cancel, *ch)
+		return event, nil
+	}
+	owner, ok := players[ch.GroupOwnerID]
+	if !ok {
+		return GroupSyncEvent{}, nil
+	}
+	owner.GroupMembers = removeString(owner.GroupMembers, ch.ID)
+	if len(owner.GroupMembers) <= 1 {
+		owner.GroupOwnerID = ""
+		owner.GroupMembers = nil
+	}
+	if err := w.store.SaveCharacter(owner); err != nil {
+		return GroupSyncEvent{}, err
+	}
+	players[owner.ID] = owner
+	event := GroupSyncEvent{Updated: []storage.Character{owner}}
+	if owner.GroupOwnerID != "" {
+		event.MemberListOwnerID = owner.ID
+	}
+	event.Cancel = append(event.Cancel, *ch)
+	return event, nil
 }
 
 func removeString(values []string, target string) []string {

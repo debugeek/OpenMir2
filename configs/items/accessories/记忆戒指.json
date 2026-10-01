@@ -1,7 +1,6 @@
 {
   "id": "记忆戒指",
   "name": "记忆戒指",
-  "kind": "misc",
   "weight": 1,
   "stats": {
     "min_attack": 0,
@@ -21,6 +20,6 @@
   "dura_max": 7000,
   "need_level": 26,
   "price": 10000,
-  "stock": 5,
-  "color": 251
+  "need": 0,
+  "ani_count": 0
 }

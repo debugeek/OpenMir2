@@ -12,6 +12,31 @@ type StdBundle struct {
 	Spawns    []StdSpawn
 	MakeItems map[string][]StdMakeIngredient
 	NPCs      npc.Library
+	Castle    CastleConfig
+}
+
+type CastleConfig struct {
+	ID        string              `json:"id"`
+	CastleMap string              `json:"castle_map"`
+	PalaceMap string              `json:"palace_map"`
+	SecretMap string              `json:"secret_map"`
+	HomeMap   string              `json:"home_map"`
+	HomeX     int                 `json:"home_x"`
+	HomeY     int                 `json:"home_y"`
+	WarRangeX int                 `json:"war_range_x"`
+	WarRangeY int                 `json:"war_range_y"`
+	MainDoor  CastleDefenseSlot   `json:"main_door"`
+	Walls     []CastleDefenseSlot `json:"walls"`
+	Guards    []CastleDefenseSlot `json:"guards"`
+	Archers   []CastleDefenseSlot `json:"archers"`
+}
+
+type CastleDefenseSlot struct {
+	Name      string `json:"name"`
+	MonsterID string `json:"monster_id,omitempty"`
+	X         int    `json:"x"`
+	Y         int    `json:"y"`
+	HP        int    `json:"hp"`
 }
 
 type StdLoadReport struct {
@@ -29,7 +54,6 @@ type StdLoadSkip struct {
 type StdItem struct {
 	ID           string       `json:"id"`
 	Name         string       `json:"name"`
-	Kind         string       `json:"kind"`
 	StdMode      int          `json:"std_mode,omitempty"`
 	Shape        int          `json:"shape,omitempty"`
 	Looks        int          `json:"looks,omitempty"`
@@ -41,32 +65,15 @@ type StdItem struct {
 	NeedLevel    int          `json:"need_level,omitempty"`
 	NeedIdentify int          `json:"need_identify,omitempty"`
 	Price        int          `json:"price,omitempty"`
-	Stock        int          `json:"stock,omitempty"`
-	Color        int          `json:"color,omitempty"`
 	AtkSpd       int          `json:"atk_spd,omitempty"`
 	Agility      int          `json:"agility,omitempty"`
 	Accurate     int          `json:"accurate,omitempty"`
 	MgAvoid      int          `json:"mg_avoid,omitempty"`
 	Strong       int          `json:"strong,omitempty"`
 	Undead       int          `json:"undead,omitempty"`
-	HpAdd        int          `json:"hp_add,omitempty"`
-	MpAdd        int          `json:"mp_add,omitempty"`
-	ExpAdd       int          `json:"exp_add,omitempty"`
-	EffType1     int          `json:"eff_type_1,omitempty"`
-	EffRate1     int          `json:"eff_rate_1,omitempty"`
-	EffValue1    int          `json:"eff_value_1,omitempty"`
-	EffType2     int          `json:"eff_type_2,omitempty"`
-	EffRate2     int          `json:"eff_rate_2,omitempty"`
-	EffValue2    int          `json:"eff_value_2,omitempty"`
 	Slowdown     int          `json:"slowdown,omitempty"`
 	Tox          int          `json:"tox,omitempty"`
 	ToxAvoid     int          `json:"tox_avoid,omitempty"`
-	UniqueItem   int          `json:"unique_item,omitempty"`
-	OverlapItem  int          `json:"overlap_item,omitempty"`
-	Light        int          `json:"light,omitempty"`
-	ItemType     int          `json:"item_type,omitempty"`
-	ItemSet      int          `json:"item_set,omitempty"`
-	Reference    string       `json:"reference,omitempty"`
 	Weight       int          `json:"weight"`
 	Stats        StdItemStats `json:"stats"`
 }
@@ -179,10 +186,13 @@ type StdMap struct {
 	MonsterSpawnRate int                `json:"monster_spawn_rate"`
 	ExperienceRate   int                `json:"experience_rate,omitempty"`
 	Mine             bool               `json:"mine,omitempty"`
+	NeedHole         bool               `json:"need_hole,omitempty"`
+	NoRecall         bool               `json:"no_recall,omitempty"`
 	Blocked          []StdPoint         `json:"-"`
 	BlockedBits      []byte             `json:"blocked_bits,omitempty"`
 	StartPoints      []StdStartPoint    `json:"start_points,omitempty"`
 	Connections      []StdMapConnection `json:"connections"`
+	Doors            []StdMapDoor       `json:"doors,omitempty"`
 	Spawns           []StdMapSpawn      `json:"monster_spawns"`
 }
 
@@ -198,6 +208,12 @@ type StdMapConnection struct {
 	FromY int    `json:"from_y"`
 	ToX   int    `json:"to_x"`
 	ToY   int    `json:"to_y"`
+}
+
+type StdMapDoor struct {
+	X     int `json:"x"`
+	Y     int `json:"y"`
+	Group int `json:"group"`
 }
 
 type StdMapSpawn struct {

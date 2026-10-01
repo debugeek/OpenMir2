@@ -1,7 +1,6 @@
 {
   "id": "恶魔长袍(男)",
   "name": "恶魔长袍(男)",
-  "kind": "armor",
   "weight": 19,
   "stats": {
     "min_attack": 0,
@@ -22,6 +21,5 @@
   "need": 2,
   "need_level": 28,
   "price": 22000,
-  "stock": 5,
-  "color": 251
+  "ani_count": 0
 }

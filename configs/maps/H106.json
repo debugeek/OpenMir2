@@ -1,6 +1,7 @@
 {
   "id": "H106",
   "name": "王者禁地",
+  "need_hole": true,
   "width": 200,
   "height": 200,
   "connections": [],

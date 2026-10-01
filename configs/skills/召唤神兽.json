@@ -5,9 +5,16 @@
   "effect_type": 4,
   "effect": 28,
   "power": 0,
-  "max_power": 24,
+  "max_power": 0,
   "spell": 16,
   "delay": 120,
   "need_level_1": 35,
-  "train_level_1": 100
+  "train_level_1": 100,
+  "def_spell": 24,
+  "def_power": 0,
+  "def_max_power": 0,
+  "need_level_2": 37,
+  "need_level_3": 40,
+  "train_level_2": 500,
+  "train_level_3": 1500
 }

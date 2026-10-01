@@ -1,7 +1,6 @@
 {
   "id": "荣誉勋章44号",
   "name": "荣誉勋章44号",
-  "kind": "misc",
   "weight": 0,
   "stats": {
     "min_attack": 0,
@@ -20,6 +19,7 @@
   "dura_max": 50000,
   "need_level": 28,
   "price": 5000,
-  "stock": 500,
-  "color": 251
+  "shape": 0,
+  "need": 0,
+  "ani_count": 0
 }

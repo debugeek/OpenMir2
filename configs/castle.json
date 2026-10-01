@@ -1,0 +1,37 @@
+{
+  "id": "0",
+  "castle_map": "3",
+  "palace_map": "0150",
+  "secret_map": "D701",
+  "home_map": "3",
+  "home_x": 644,
+  "home_y": 290,
+  "war_range_x": 100,
+  "war_range_y": 100,
+  "main_door": { "name": "城门", "monster_id": "城门", "x": 672, "y": 330, "hp": 2000 },
+  "walls": [
+    { "name": "左城墙", "monster_id": "左城墙", "x": 624, "y": 278, "hp": 2000 },
+    { "name": "中城墙", "monster_id": "中城墙", "x": 627, "y": 278, "hp": 2000 },
+    { "name": "右城墙", "monster_id": "右城墙", "x": 634, "y": 271, "hp": 2000 }
+  ],
+  "guards": [
+    { "name": "守卫", "monster_id": "守卫", "x": 671, "y": 334, "hp": 0 },
+    { "name": "守卫", "monster_id": "守卫", "x": 675, "y": 330, "hp": 0 },
+    { "name": "守卫", "monster_id": "守卫", "x": 670, "y": 335, "hp": 0 },
+    { "name": "守卫", "monster_id": "守卫", "x": 676, "y": 329, "hp": 0 }
+  ],
+  "archers": [
+    { "name": "弓箭手", "monster_id": "弓箭护卫", "x": 662, "y": 333, "hp": 2000 },
+    { "name": "弓箭手", "monster_id": "弓箭护卫", "x": 664, "y": 331, "hp": 2000 },
+    { "name": "弓箭手", "monster_id": "弓箭护卫", "x": 666, "y": 329, "hp": 2000 },
+    { "name": "弓箭手", "monster_id": "弓箭护卫", "x": 676, "y": 319, "hp": 2000 },
+    { "name": "弓箭手", "monster_id": "弓箭护卫", "x": 678, "y": 317, "hp": 2000 },
+    { "name": "弓箭手", "monster_id": "弓箭护卫", "x": 681, "y": 314, "hp": 2000 },
+    { "name": "弓箭手", "monster_id": "弓箭护卫", "x": 628, "y": 271, "hp": 0 },
+    { "name": "弓箭手", "monster_id": "弓箭护卫", "x": 632, "y": 267, "hp": 0 },
+    { "name": "弓箭手", "monster_id": "弓箭护卫", "x": 670, "y": 335, "hp": 2000 },
+    { "name": "弓箭手", "monster_id": "弓箭护卫", "x": 671, "y": 334, "hp": 2000 },
+    { "name": "弓箭手", "monster_id": "弓箭护卫", "x": 675, "y": 330, "hp": 2000 },
+    { "name": "弓箭手", "monster_id": "弓箭护卫", "x": 676, "y": 329, "hp": 0 }
+  ]
+}

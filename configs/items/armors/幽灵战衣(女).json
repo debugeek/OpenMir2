@@ -1,7 +1,6 @@
 {
   "id": "幽灵战衣(女)",
   "name": "幽灵战衣(女)",
-  "kind": "armor",
   "weight": 26,
   "stats": {
     "min_attack": 0,
@@ -22,6 +21,5 @@
   "need": 3,
   "need_level": 27,
   "price": 22000,
-  "stock": 5,
-  "color": 251
+  "ani_count": 0
 }

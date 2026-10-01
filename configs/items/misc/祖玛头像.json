@@ -1,7 +1,6 @@
 {
   "id": "祖玛头像",
   "name": "祖玛头像",
-  "kind": "misc",
   "weight": 1,
   "stats": {
     "min_attack": 0,
@@ -20,6 +19,7 @@
   "looks": 271,
   "need_level": 1,
   "price": 1000,
-  "stock": 5,
-  "color": 251
+  "dura_max": 0,
+  "need": 0,
+  "ani_count": 0
 }

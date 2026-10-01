@@ -22,9 +22,19 @@
   "monster": {
     "tick_ms": 100
   },
+  "movement": {
+    "run_npc": false,
+    "run_war_all": false
+  },
+  "persistence": {
+    "save_human_rcd_time_ms": 600000
+  },
   "item": {
     "floor_drop_max_stack_per_tile": 5,
     "floor_item_can_pick_up_ms": 120000,
     "max_bag_item": 46
+  },
+  "castle": {
+    "start_war_days": 4
   }
 }

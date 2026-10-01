@@ -26,6 +26,9 @@
       "to_y": 25
     }
   ],
+  "doors": [
+    {"x": 289, "y": 151, "group": 38044823}
+  ],
   "monster_spawns": [
     {
       "monster_id": "天狼蜘蛛3",

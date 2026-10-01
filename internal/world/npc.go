@@ -30,12 +30,30 @@ func (w *World) NPCConversation(activeChar storage.Character, npcID, label strin
 	if label == "" {
 		label = "@main"
 	}
+	castleID := w.data.Castle.ID
+	castle, okCastle := w.store.Castle(castleID)
+	if entity.CastleOfficial && !okCastle {
+		castle = storage.Castle{ID: castleID, MainDoorHP: w.data.Castle.MainDoor.HP}
+		for i := 0; i < len(castle.WallHP) && i < len(w.data.Castle.Walls); i++ {
+			castle.WallHP[i] = w.data.Castle.Walls[i].HP
+		}
+		_ = w.store.SaveCastle(castle)
+	}
+	castleGold := castle.Gold
+	castleDoorState := "关闭"
+	if castle.MainDoorOpen {
+		castleDoorState = "打开"
+	}
+	ownerGuild := castle.OwnerGuildID
+	if ownerGuild == "" {
+		ownerGuild = "无"
+	}
 	ctx := npc.Context{
-		OwnerGuild:       "无",
+		OwnerGuild:       ownerGuild,
 		Lord:             "无",
-		CastleGold:       0,
-		TodayIncome:      0,
-		CastleDoorState:  "关闭",
+		CastleGold:       castleGold,
+		TodayIncome:      castle.TodayIncome,
+		CastleDoorState:  castleDoorState,
 		RepairDoorGold:   w.gameplay.Castle.RepairDoorPrice,
 		RepairWallGold:   w.gameplay.Castle.RepairWallPrice,
 		GuardFee:         w.gameplay.Castle.HireGuardPrice,
@@ -60,26 +78,11 @@ func (w *World) NPCLabelSelection(label string) string {
 	if label == "" {
 		return "@main"
 	}
-	if strings.HasPrefix(label, "@@InPutString") || strings.HasPrefix(label, "@@InPutInteger") {
-		return label
-	}
-	if keepSpecialDoubleLabel(label) {
-		return label
-	}
 	if strings.HasPrefix(label, "@@") {
-		return "@" + strings.TrimPrefix(label, "@@")
+		return label
 	}
 	if strings.HasPrefix(label, "@") {
 		return label
 	}
 	return "@" + label
-}
-
-func keepSpecialDoubleLabel(label string) bool {
-	switch strings.ToLower(strings.TrimSpace(label)) {
-	case "@@guildwar", "@@withdrawal", "@@receipts", "@@castlename", "@@sendmsg", "@@getmaster", "@@getmarry", "@@useitemname", "@@offlinemsg", "@@dealgold", "@@lycreatehero", "@@buhero":
-		return true
-	default:
-		return false
-	}
 }

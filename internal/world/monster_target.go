@@ -23,19 +23,19 @@ func (w *World) monsterIsStickLocked(mon *Monster) bool {
 }
 
 func (w *World) monsterCannotBePushedLocked(mon *Monster) bool {
-	return mon.Race == 85 || mon.Race == 103 || mon.Race == 116 || mon.Behavior == "centipede_king"
+	return mon.Race == 85 || mon.Race == 103 || mon.Race == 116 || mon.Race == 107 || mon.Behavior == "centipede_king"
 }
 
 func (w *World) monsterIsCentipedeLocked(mon *Monster) bool {
-	return mon.Behavior == "centipede_king"
+	return mon.Race == 107 || mon.Behavior == "centipede_king"
 }
 
 func (w *World) monsterIsArcherLocked(mon *Monster) bool {
-	return mon.Race == 104 || mon.Race == 112
+	return mon.Race == 112
 }
 
 func (w *World) monsterIsWhiteSkeletonLocked(mon *Monster) bool {
-	return mon.Race == 100 || mon.Race == 87 && mon.TemplateID == "变异骷髅"
+	return mon.Race == 100
 }
 
 func (w *World) monsterIsStoneLocked(mon *Monster) bool {
@@ -43,7 +43,7 @@ func (w *World) monsterIsStoneLocked(mon *Monster) bool {
 }
 
 func (w *World) monsterIsDualAxeLocked(mon *Monster) bool {
-	return mon.Race == 87 && mon.TemplateID == "掷斧骷髅"
+	return mon.Race == 87 || mon.Race == 104
 }
 
 func (w *World) monsterIsThornDarkLocked(mon *Monster) bool {
@@ -56,6 +56,10 @@ func (w *World) monsterIsGasAttackLocked(mon *Monster) bool {
 
 func (w *World) monsterIsMagicCowLocked(mon *Monster) bool {
 	return mon.Race == 91
+}
+
+func (w *World) monsterIsCowKingLocked(mon *Monster) bool {
+	return mon.Race == 92
 }
 
 func (w *World) monsterIsDigOutZombieLocked(mon *Monster) bool {
@@ -171,7 +175,8 @@ func (w *World) clearInvalidMonsterTargetLocked(mon *Monster, players map[string
 	tooFar := abs(target.X-mon.X) > w.monsterLeashRangeLocked(mon) || abs(target.Y-mon.Y) > w.monsterLeashRangeLocked(mon)
 	focusExpired := !mon.TargetFocusAt.IsZero() && now.Sub(mon.TargetFocusAt) > 30*time.Second
 	retainSpecialFocus := tooFar && (w.monsterIsCentipedeLocked(mon) || w.monsterIsStickLocked(mon))
-	if !ok || !w.monsterCanKeepCharacterTargetLocked(mon, target) || tooFar || focusExpired {
+	preserveDualCrossMap := ok && (w.monsterIsDualAxeLocked(mon) || w.monsterIsThornDarkLocked(mon)) && target.MapID != mon.MapID
+	if !preserveDualCrossMap && (!ok || !w.monsterCanKeepCharacterTargetLocked(mon, target) || tooFar || focusExpired) {
 		mon.TargetCharacterID = ""
 		if !retainSpecialFocus {
 			mon.TargetFocusAt = time.Time{}
@@ -209,6 +214,31 @@ func (w *World) searchMonsterTargetLocked(mon *Monster, players map[string]stora
 	mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchHasTargetMSLocked(mon)) * time.Millisecond)
 }
 
+func (w *World) searchMonsterTargetIgnoringHideLocked(mon *Monster, players map[string]storage.Character, now time.Time) {
+	var target storage.Character
+	best := 999999
+	for _, ch := range players {
+		if mon == nil || ch.MapID != mon.MapID || ch.HP <= 0 || ch.AdminMode || ch.StoneMode {
+			continue
+		}
+		if abs(ch.X-mon.X) > w.monsterViewRangeLocked(mon) || abs(ch.Y-mon.Y) > w.monsterViewRangeLocked(mon) {
+			continue
+		}
+		dist := abs(ch.X-mon.X) + abs(ch.Y-mon.Y)
+		if dist < best || dist == best && monsterTargetOrderPreferred(ch, target) {
+			best = dist
+			target = ch
+		}
+	}
+	if target.ID == "" {
+		mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchNoTargetMSLocked(mon)) * time.Millisecond)
+		return
+	}
+	mon.TargetCharacterID = target.ID
+	mon.TargetFocusAt = now
+	mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchHasTargetMSLocked(mon)) * time.Millisecond)
+}
+
 func (w *World) monsterViewRangeLocked(mon *Monster) int {
 	return mon.ViewRange
 }
@@ -218,9 +248,24 @@ func (w *World) monsterLeashRangeLocked(mon *Monster) int {
 }
 
 func (w *World) monsterSearchNoTargetMSLocked(mon *Monster) int {
+	if mon.SearchNoTargetMS == 0 {
+		switch mon.Race {
+		case 53, 83, 84, 86, 88, 89, 97, 100, 101, 102:
+			return 1000
+		}
+	}
 	return mon.SearchNoTargetMS
 }
 
 func (w *World) monsterSearchHasTargetMSLocked(mon *Monster) int {
 	return mon.SearchHasTargetMS
+}
+
+func (w *World) monsterUsesReferencePeriodicSearchLocked(mon *Monster) bool {
+	switch mon.Race {
+	case 53, 81, 82, 83, 84, 86, 88, 89, 96, 97, 100, 118, 119:
+		return true
+	default:
+		return false
+	}
 }

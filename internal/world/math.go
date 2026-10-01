@@ -36,6 +36,17 @@ func direction(fromX, fromY, toX, toY int) int {
 	return dir
 }
 
+func walkDirection(fromX, fromY, toX, toY int) int {
+	flagX := sign(toX - fromX)
+	flagY := sign(toY - fromY)
+	for candidate, off := range dirOffsets {
+		if off[0] == flagX && off[1] == flagY {
+			return candidate
+		}
+	}
+	return 4
+}
+
 func Direction(fromX, fromY, toX, toY int) int {
 	return direction(fromX, fromY, toX, toY)
 }

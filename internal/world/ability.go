@@ -245,17 +245,7 @@ func (w *World) Abilities(ch storage.Character) Abilities {
 	if extra[5] > 0 {
 		base.MaxMP = minInt(65535, base.MaxMP+int(extra[5]))
 	}
-	var wear, hand int
-	for slot, itemID := range w.equippedSlotMapLocked(ch) {
-		if it, ok := w.data.Items[itemID]; ok {
-			switch slot {
-			case SlotDress:
-				wear = it.Weight
-			case SlotWeapon:
-				hand = it.Weight
-			}
-		}
-	}
+	wear, hand := w.equippedWeightTotalsLocked(ch)
 	bagWeight := 0
 	for _, entry := range ch.BagItems {
 		if it, ok := w.data.Items[entry.ItemID]; ok {
@@ -291,6 +281,21 @@ type CombatStats struct {
 	Undead      int
 	Luck        int
 	UnLuck      int
+}
+
+func (w *World) equippedWeightTotalsLocked(ch storage.Character) (wear, hand int) {
+	for slot, itemID := range w.equippedSlotMapLocked(ch) {
+		item, ok := w.data.Items[itemID]
+		if !ok {
+			continue
+		}
+		if slot == SlotWeapon || slot == SlotRightHand {
+			hand += item.Weight
+		} else {
+			wear += item.Weight
+		}
+	}
+	return wear, hand
 }
 
 func (w *World) CombatStats(ch storage.Character) CombatStats {
@@ -334,17 +339,7 @@ func (w *World) AbilityStats(ch storage.Character) AbilityStats {
 	if extra[5] > 0 {
 		base.MaxMP = minInt(65535, base.MaxMP+int(extra[5]))
 	}
-	var wear, hand int
-	for slot, itemID := range w.equippedSlotMapLocked(ch) {
-		if it, ok := w.data.Items[itemID]; ok {
-			switch slot {
-			case SlotDress:
-				wear = it.Weight
-			case SlotWeapon:
-				hand = it.Weight
-			}
-		}
-	}
+	wear, hand := w.equippedWeightTotalsLocked(ch)
 	bagWeight := 0
 	for _, entry := range ch.BagItems {
 		if it, ok := w.data.Items[entry.ItemID]; ok {
@@ -439,13 +434,11 @@ func (w *World) combatStatsLocked(ch storage.Character) CombatStats {
 	stats.MCMax += temporaryCombatBonus(extra[1])
 	stats.SCMax += temporaryCombatBonus(extra[2])
 	if state, _, ok := ch.Skills.Get("基本剑术"); ok {
-		bonus := (int(state.Level) + 1) * 3
+		bonus := int(state.Level) * 3
 		stats.Hit += bonus
 	}
 	if state, _, ok := ch.Skills.Get("精神力战法"); ok {
-		bonus := int(state.Level) + 1
-		stats.SC += bonus
-		stats.SCMax += bonus
+		stats.Hit += (int(state.Level)*8 + 1) / 3
 	}
 	return stats
 }

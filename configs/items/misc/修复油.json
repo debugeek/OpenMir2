@@ -1,7 +1,6 @@
 {
   "id": "修复油",
   "name": "修复油",
-  "kind": "consumable",
   "weight": 1,
   "stats": {
     "min_attack": 0,
@@ -20,6 +19,7 @@
   "looks": 27,
   "dura_max": 1,
   "price": 800,
-  "stock": 5,
-  "color": 251
+  "need": 0,
+  "need_level": 0,
+  "ani_count": 0
 }

@@ -1,6 +1,7 @@
 {
   "id": "Q004",
   "name": "尸王殿",
+  "need_hole": true,
   "width": 30,
   "height": 30,
   "connections": [],

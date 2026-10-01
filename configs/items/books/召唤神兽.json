@@ -1,7 +1,6 @@
 {
   "id": "召唤神兽",
   "name": "召唤神兽",
-  "kind": "book",
   "weight": 1,
   "stats": {
     "min_attack": 0,
@@ -19,6 +18,8 @@
   "shape": 2,
   "dura_max": 35,
   "price": 20000,
-  "stock": 5,
-  "color": 251
+  "looks": 0,
+  "need": 0,
+  "need_level": 0,
+  "ani_count": 0
 }

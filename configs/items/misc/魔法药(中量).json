@@ -1,7 +1,6 @@
 {
   "id": "魔法药(中量)",
   "name": "魔法药(中量)",
-  "kind": "consumable",
   "weight": 2,
   "stats": {
     "min_attack": 0,
@@ -17,6 +16,10 @@
   },
   "looks": 396,
   "price": 200,
-  "stock": 5,
-  "color": 251
+  "std_mode": 0,
+  "shape": 0,
+  "dura_max": 0,
+  "need": 0,
+  "need_level": 0,
+  "ani_count": 105
 }

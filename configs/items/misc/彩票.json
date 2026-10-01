@@ -1,7 +1,6 @@
 {
   "id": "彩票",
   "name": "彩票",
-  "kind": "consumable",
   "weight": 1,
   "stats": {
     "min_attack": 0,
@@ -20,6 +19,7 @@
   "looks": 265,
   "dura_max": 1,
   "price": 500,
-  "stock": 10000,
-  "color": 251
+  "need": 0,
+  "need_level": 0,
+  "ani_count": 0
 }

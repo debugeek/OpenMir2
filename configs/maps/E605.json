@@ -19,6 +19,9 @@
       "to_y": 198
     }
   ],
+  "doors": [
+    {"x": 12, "y": 9, "group": 36712457}
+  ],
   "monster_spawns": [
     {
       "monster_id": "弓箭护卫",

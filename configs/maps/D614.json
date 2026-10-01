@@ -19,6 +19,9 @@
       "to_y": 183
     }
   ],
+  "doors": [
+    {"x": 70, "y": 65, "group": 45160513}
+  ],
   "monster_spawns": [
     {
       "monster_id": "黑色恶蛆",

@@ -1,7 +1,6 @@
 package npc
 
 import (
-	"sort"
 	"strconv"
 	"strings"
 )
@@ -19,19 +18,20 @@ type Library struct {
 }
 
 type Entity struct {
-	ID            string          `json:"id"`
-	Name          string          `json:"name"`
-	Kind          string          `json:"kind"`
-	MapID         string          `json:"map_id"`
-	X             int             `json:"x"`
-	Y             int             `json:"y"`
-	Dir           int             `json:"dir"`
-	Appr          int             `json:"appr,omitempty"`
-	RaceImg       int             `json:"race_img,omitempty"`
-	MonsterWeapon int             `json:"monster_weapon,omitempty"`
-	Hidden        bool            `json:"hidden,omitempty"`
-	ScriptID      string          `json:"script_id,omitempty"`
-	Merchant      MerchantProfile `json:"merchant,omitempty"`
+	ID             string          `json:"id"`
+	Name           string          `json:"name"`
+	Kind           string          `json:"kind"`
+	MapID          string          `json:"map_id"`
+	X              int             `json:"x"`
+	Y              int             `json:"y"`
+	Dir            int             `json:"dir"`
+	Appr           int             `json:"appr,omitempty"`
+	RaceImg        int             `json:"race_img,omitempty"`
+	MonsterWeapon  int             `json:"monster_weapon,omitempty"`
+	Hidden         bool            `json:"hidden,omitempty"`
+	CastleOfficial bool            `json:"castle_official,omitempty"`
+	ScriptID       string          `json:"script_id,omitempty"`
+	Merchant       MerchantProfile `json:"merchant,omitempty"`
 }
 
 type MerchantProfile struct {
@@ -41,11 +41,15 @@ type MerchantProfile struct {
 }
 
 type MerchantCapabilities struct {
-	Buy     bool `json:"buy,omitempty"`
-	Sell    bool `json:"sell,omitempty"`
-	Storage bool `json:"storage,omitempty"`
-	GetBack bool `json:"get_back,omitempty"`
-	Repair  bool `json:"repair,omitempty"`
+	Buy           bool `json:"buy,omitempty"`
+	Sell          bool `json:"sell,omitempty"`
+	Storage       bool `json:"storage,omitempty"`
+	GetBack       bool `json:"get_back,omitempty"`
+	Repair        bool `json:"repair,omitempty"`
+	MakeDrug      bool `json:"make_drug,omitempty"`
+	UpgradeWeapon bool `json:"upgrade_weapon,omitempty"`
+	GetBackWeapon bool `json:"get_back_weapon,omitempty"`
+	SpecialRepair bool `json:"special_repair,omitempty"`
 }
 
 type MerchantStockItem struct {
@@ -141,11 +145,6 @@ func (l Library) Conversation(entityID, label string, ctx Context) (Conversation
 	if !ok {
 		return Conversation{}, false
 	}
-	if _, ok := lookupLabel(script.Labels, label); !ok && strings.EqualFold(label, "@main") {
-		if fallback, ok := firstLabel(script.Labels); ok {
-			label = fallback.Name
-		}
-	}
 	return script.Conversation(entity, label, ctx), true
 }
 
@@ -206,18 +205,6 @@ func lookupLabel(labels map[string]Label, want string) (Label, bool) {
 		}
 	}
 	return Label{}, false
-}
-
-func firstLabel(labels map[string]Label) (Label, bool) {
-	if len(labels) == 0 {
-		return Label{}, false
-	}
-	keys := make([]string, 0, len(labels))
-	for key := range labels {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return labels[keys[0]], true
 }
 
 func stripLabelSuffix(label string) (string, bool) {

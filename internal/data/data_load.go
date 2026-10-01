@@ -39,6 +39,10 @@ func LoadConfigsWithReport(dir string) (StdBundle, StdLoadReport, error) {
 	if err != nil {
 		return StdBundle{}, report, err
 	}
+	var castle CastleConfig
+	if err := loadJSON(filepath.Join(dir, "castle.json"), &castle); err != nil {
+		return StdBundle{}, report, err
+	}
 	b := StdBundle{
 		Items:     items,
 		ItemOrder: append([]string(nil), itemOrder...),
@@ -49,6 +53,7 @@ func LoadConfigsWithReport(dir string) (StdBundle, StdLoadReport, error) {
 		Spawns:    spawns,
 		MakeItems: makeItems,
 		NPCs:      npcs,
+		Castle:    castle,
 	}
 	if err := b.Validate(); err != nil {
 		return StdBundle{}, report, err
@@ -402,9 +407,6 @@ func loadConfigItemsFromManifest(dir string, manifest []string) (map[string]StdI
 		}
 		item.ID = name
 		item.Name = name
-		if item.Kind == "" {
-			return nil, fmt.Errorf("%s: item kind is required", path)
-		}
 		out[item.ID] = item
 		seen[name] = struct{}{}
 	}

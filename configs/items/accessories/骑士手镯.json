@@ -1,7 +1,6 @@
 {
   "id": "骑士手镯",
   "name": "骑士手镯",
-  "kind": "misc",
   "weight": 1,
   "stats": {
     "min_attack": 2,
@@ -21,6 +20,6 @@
   "need": 1,
   "need_level": 39,
   "price": 15000,
-  "stock": 5,
-  "color": 251
+  "shape": 0,
+  "ani_count": 0
 }

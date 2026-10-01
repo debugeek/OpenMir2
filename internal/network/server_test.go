@@ -46,12 +46,12 @@ func WireString(t *testing.T, text string) []byte {
 	return payload
 }
 
-func TestCharacterStruckCommandUsesTargetFields(t *testing.T) {
+func TestCharacterStruckCommandUsesAttackerAndTargetFields(t *testing.T) {
 	hit := world.CharacterHit{Character: storage.Character{ID: "target-7", HP: 80, MaxHP: 100}, AttackerActor: 123456, Damage: 12}
 
 	cmd := CharacterStruckCommand(hit)
-	if cmd.Recog != world.CharacterActorID(hit.Character) || cmd.Param != uint16(hit.Character.HP) || cmd.Tag != uint16(hit.Character.MaxHP) || cmd.Series != uint16(hit.Damage) {
-		t.Fatalf("SM_STRUCK command = %+v, want target=%d hp=%d maxhp=%d damage=%d", cmd, world.CharacterActorID(hit.Character), hit.Character.HP, hit.Character.MaxHP, hit.Damage)
+	if cmd.Recog != hit.AttackerActor || cmd.Param != uint16(hit.Character.HP) || cmd.Tag != uint16(hit.Character.MaxHP) || cmd.Series != uint16(hit.Damage) {
+		t.Fatalf("SM_STRUCK command = %+v, want attacker=%d hp=%d maxhp=%d damage=%d", cmd, hit.AttackerActor, hit.Character.HP, hit.Character.MaxHP, hit.Damage)
 	}
 }
 
@@ -272,13 +272,6 @@ func TestSelfStruckSuppressionRefreshesTargetAndPreservesObserverStruck(t *testi
 	if targetCmd.Ident != mir176.SMHealthSpellChanged || targetCmd.Recog != world.CharacterActorID(hit.Character) {
 		t.Fatalf("target suppressed frame = %+v, want target health refresh", targetCmd)
 	}
-	observerHealth, _, err := decodeMessageLikeClient(readFrame(t, observerClient))
-	if err != nil {
-		t.Fatalf("decode observer health frame error = %v", err)
-	}
-	if observerHealth.Ident != mir176.SMHealthSpellChanged || observerHealth.Recog != world.CharacterActorID(hit.Character) {
-		t.Fatalf("observer health frame = %+v, want target health refresh", observerHealth)
-	}
 	observerStruck, _, err := decodeMessageLikeClient(readFrame(t, observerClient))
 	if err != nil {
 		t.Fatalf("decode observer struck frame error = %v", err)
@@ -314,13 +307,13 @@ func TestSelfMagicStruckSuppressionRefreshesTargetAndPreservesObserverStruck(t *
 		name string
 		conn net.Conn
 		want int
-	}{{name: "target", conn: targetClient, want: 2}, {name: "observer", conn: observerClient, want: 2}} {
+	}{{name: "target", conn: targetClient, want: 1}, {name: "observer", conn: observerClient, want: 1}} {
 		for i := 0; i < recipient.want; i++ {
 			cmd, _, err := decodeMessageLikeClient(readFrame(t, recipient.conn))
 			if err != nil {
 				t.Fatalf("decode %s suppressed magic frame error = %v", recipient.name, err)
 			}
-			if recipient.name == "observer" && i == 1 {
+			if recipient.name == "observer" {
 				if cmd.Ident != mir176.SMStruck {
 					t.Fatalf("observer suppressed magic frame = %+v, want struck frame", cmd)
 				}
@@ -570,12 +563,12 @@ func TestDelayedSpellUsesReconnectedCharacter(t *testing.T) {
 	assertActionFail(t, readFrame(t, newClient))
 }
 
-func TestCharacterSpellStruckCommandUsesTargetFields(t *testing.T) {
+func TestCharacterSpellStruckCommandUsesAttackerAndTargetFields(t *testing.T) {
 	hit := world.CharacterHit{Character: storage.Character{ID: "target-7", HP: 80, MaxHP: 100}, AttackerActor: 123456, Damage: 12}
 
 	cmd := CharacterSpellStruckCommand(hit)
-	if cmd.Recog != world.CharacterActorID(hit.Character) || cmd.Param != uint16(hit.Character.HP) || cmd.Tag != uint16(hit.Character.MaxHP) || cmd.Series != uint16(hit.Damage) {
-		t.Fatalf("magic SM_STRUCK command = %+v, want target=%d hp=%d maxhp=%d damage=%d", cmd, world.CharacterActorID(hit.Character), hit.Character.HP, hit.Character.MaxHP, hit.Damage)
+	if cmd.Recog != hit.AttackerActor || cmd.Param != uint16(hit.Character.HP) || cmd.Tag != uint16(hit.Character.MaxHP) || cmd.Series != uint16(hit.Damage) {
+		t.Fatalf("magic SM_STRUCK command = %+v, want attacker=%d hp=%d maxhp=%d damage=%d", cmd, hit.AttackerActor, hit.Character.HP, hit.Character.MaxHP, hit.Damage)
 	}
 }
 
@@ -603,8 +596,8 @@ func TestMagicStruckBodyUsesTargetStateAndAttackerID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode magic struck frame error = %v", err)
 	}
-	if cmd.Recog != world.CharacterActorID(target) {
-		t.Fatalf("magic struck recog = %d, want target actor %d", cmd.Recog, world.CharacterActorID(target))
+	if cmd.Recog != world.CharacterActorID(caster) {
+		t.Fatalf("magic struck recog = %d, want attacker actor %d", cmd.Recog, world.CharacterActorID(caster))
 	}
 	assertMessageBodyWL(t, body, s.world.HumanFeatureForCharacter(target), s.world.CharacterStatus(target), world.CharacterActorID(caster), 1)
 }
@@ -1816,6 +1809,7 @@ func testMakeDrugNPC() npc.Entity {
 	entity.ID = "maker"
 	entity.Name = "Maker"
 	entity.ScriptID = "makedrug_script"
+	entity.Merchant.Capabilities.MakeDrug = true
 	entity.Merchant.Stock = []npc.MerchantStockItem{{ItemID: "灰色药粉(少量)", Count: 1}}
 	return entity
 }
@@ -1918,6 +1912,8 @@ func newGuaranteedDropServer(t *testing.T) (*Server, storage.Character, net.Conn
 	mon := bundle.Monsters[testMonsterID]
 	mon.ID = dropTableID
 	mon.Name = "test-dropper"
+	mon.Race = 81
+	mon.Animal = false
 	mon.HP = 1
 	bundle.Monsters[dropTableID] = mon
 	bundle.Spawns = []data.StdSpawn{{
@@ -1995,7 +1991,7 @@ func TestHandleTurnRejectsParalyzedCharacter(t *testing.T) {
 	}()
 	assertActionFail(t, readFrame(t, client))
 	<-done
-	if ch.Dir == 5 {
+	if ch.Dir != 0 {
 		t.Fatal("paralyzed character changed direction")
 	}
 }
@@ -2027,6 +2023,93 @@ func TestHandleTurnQueuesWhenTurnIntervalIsActive(t *testing.T) {
 	assertActionAck(t, frame)
 }
 
+func TestHandleTurnQueuePreservesActionTimestampForActionDelay(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "turn-action-delay", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	state := s.registerClient(server, ch)
+	oldActionAt := time.Now()
+	state.mu.Lock()
+	state.turnAt = oldActionAt.Add(-time.Second)
+	state.actionAt = oldActionAt
+	state.actionIdent = mir176.CMHit
+	state.actionDir = 1
+	state.mu.Unlock()
+	s.processTurn(server, &ch, mir176.Command{Ident: mir176.CMTurn, Recog: int32(uint32(x) | uint32(y)<<16), Tag: 2}, false)
+	state.mu.Lock()
+	pending := state.pendingTurnMessages
+	actionAt := state.actionAt
+	actionIdent := state.actionIdent
+	state.mu.Unlock()
+	if pending != 1 {
+		t.Fatalf("pending turn messages = %d, want 1", pending)
+	}
+	if actionIdent != mir176.CMTurn {
+		t.Fatalf("queued action ident = %d, want turn", actionIdent)
+	}
+	if actionAt.Before(oldActionAt) || actionAt.After(oldActionAt.Add(20*time.Millisecond)) {
+		t.Fatalf("queued action timestamp = %v, want preserved near %v", actionAt, oldActionAt)
+	}
+	s.delayedMu.Lock()
+	if s.delayedTimer != nil {
+		s.delayedTimer.Stop()
+	}
+	s.delayedEvents = nil
+	s.delayedTimer = nil
+	s.delayedActive = false
+	s.delayedMu.Unlock()
+}
+
+func TestHandleTurnDoesNotAdvanceActionStateWhenControlDisabled(t *testing.T) {
+	gameplay := config.DefaultGameplay()
+	gameplay.Combat.ControlActionInterval = false
+	s := newTestServerWithGameplay(t, gameplay)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "turn-control-disabled", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	state := s.registerClient(server, ch)
+	oldActionAt := time.Now()
+	state.mu.Lock()
+	state.turnAt = oldActionAt
+	state.actionAt = oldActionAt.Add(-time.Second)
+	state.actionIdent = mir176.CMHit
+	state.mu.Unlock()
+	s.processTurn(server, &ch, mir176.Command{Ident: mir176.CMTurn, Recog: int32(uint32(x) | uint32(y)<<16), Tag: 2}, false)
+	state.mu.Lock()
+	pending := state.pendingTurnMessages
+	actionAt := state.actionAt
+	actionIdent := state.actionIdent
+	state.mu.Unlock()
+	if pending != 1 {
+		t.Fatalf("pending turn messages = %d, want 1", pending)
+	}
+	if actionIdent != mir176.CMHit {
+		t.Fatalf("action ident = %d, want unchanged hit", actionIdent)
+	}
+	if actionAt.Before(oldActionAt.Add(-time.Second-20*time.Millisecond)) || actionAt.After(oldActionAt.Add(-time.Second+20*time.Millisecond)) {
+		t.Fatalf("action timestamp = %v, want unchanged near %v", actionAt, oldActionAt.Add(-time.Second))
+	}
+	s.delayedMu.Lock()
+	if s.delayedTimer != nil {
+		s.delayedTimer.Stop()
+	}
+	s.delayedEvents = nil
+	s.delayedTimer = nil
+	s.delayedActive = false
+	s.delayedMu.Unlock()
+}
+
 func TestHandleTurnAcknowledgesShortDelayWithoutQueueing(t *testing.T) {
 	s := newTestServer(t)
 	mapID, x, y := testDefaultSpawn(t)
@@ -2051,6 +2134,30 @@ func TestHandleTurnAcknowledgesShortDelayWithoutQueueing(t *testing.T) {
 	if pending != 0 {
 		t.Fatalf("pending turn messages = %d, want 0 for short delay", pending)
 	}
+}
+
+func TestHandleTurnRejectsWhenDelayQueueIsFull(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "turn-queue-full", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	state := s.registerClient(server, ch)
+	state.mu.Lock()
+	state.turnAt = time.Now()
+	state.pendingTurnMessages = s.world.Gameplay().Combat.MaxTurnMessages
+	state.mu.Unlock()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleTurn(server, &ch, mir176.Command{Ident: mir176.CMTurn, Recog: int32(uint32(x) | uint32(y)<<16), Tag: 2})
+	}()
+	assertActionFail(t, readFrame(t, client))
+	<-done
 }
 
 func TestHandleTurnBroadcastsTurnAndFeatureToObserver(t *testing.T) {
@@ -2079,6 +2186,7 @@ func TestHandleTurnBroadcastsTurnAndFeatureToObserver(t *testing.T) {
 		s.handleTurn(server, &caster, mir176.Command{Ident: mir176.CMTurn, Recog: recog, Tag: 5})
 	}()
 	assertActionAck(t, readFrame(t, client))
+	s.runClientActionTick()
 	turnFrame := readFrame(t, observerClient)
 	turnCmd, turnBody, err := decodeMessageLikeClient(turnFrame)
 	if err != nil {
@@ -2099,7 +2207,7 @@ func TestHandleTurnBroadcastsTurnAndFeatureToObserver(t *testing.T) {
 	<-done
 }
 
-func TestHandleTurnRejectsCoordinateMismatchAndResyncs(t *testing.T) {
+func TestHandleTurnRejectsCoordinateMismatch(t *testing.T) {
 	s := newTestServer(t)
 	mapID, x, y := testDefaultSpawn(t)
 	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
@@ -2117,21 +2225,58 @@ func TestHandleTurnRejectsCoordinateMismatchAndResyncs(t *testing.T) {
 		s.handleTurn(server, &ch, mir176.Command{Ident: mir176.CMTurn, Recog: recog, Tag: 2})
 	}()
 
-	frame := readFrame(t, client)
-	cmd, _, err := decodeMessageLikeClient(frame)
-	if err != nil {
-		t.Fatalf("decodeMessageLikeClient() error = %v", err)
-	}
+	assertActionFail(t, readFrame(t, client))
 	<-done
 
-	if cmd.Ident != mir176.SMMoveFail {
-		t.Fatalf("reply ident = %d, want %d", cmd.Ident, mir176.SMMoveFail)
-	}
-	if int(cmd.Param) != x || int(cmd.Tag) != y {
-		t.Fatalf("resync position = (%d,%d), want (%d,%d)", cmd.Param, cmd.Tag, x, y)
-	}
 	if ch.Dir != 0 {
 		t.Fatalf("character Dir = %d, want unchanged 0", ch.Dir)
+	}
+}
+
+func TestHandleTurnTruncatesDirectionToByte(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "turn-byte", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleTurn(server, &ch, mir176.Command{Ident: mir176.CMTurn, Recog: int32(uint32(x) | uint32(y)<<16), Tag: 0x108})
+	}()
+	assertActionAck(t, readFrame(t, client))
+	<-done
+	if ch.Dir != 8 {
+		t.Fatalf("turn direction = %d, want byte-truncated 8", ch.Dir)
+	}
+}
+
+func TestHandleTurnQueuesInStrictMode(t *testing.T) {
+	gameplay := config.DefaultGameplay()
+	gameplay.Combat.SpeedControlMode = 1
+	s := newTestServerWithGameplay(t, gameplay)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "strict-turn", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	state := s.registerClient(server, ch)
+	state.mu.Lock()
+	state.turnAt = time.Now()
+	state.mu.Unlock()
+	s.handleTurn(server, &ch, mir176.Command{Ident: mir176.CMTurn, Recog: int32(uint32(x) | uint32(y)<<16), Tag: 2})
+	state.mu.Lock()
+	pending := state.pendingTurnMessages
+	state.mu.Unlock()
+	if pending != 1 {
+		t.Fatalf("pending turn messages = %d, want 1", pending)
 	}
 }
 
@@ -2148,7 +2293,7 @@ func TestHandleSitDownQueuesWhenTurnIntervalIsActive(t *testing.T) {
 	s.registerClient(server, ch)
 	state := s.clientForConn(server)
 	state.mu.Lock()
-	state.sitDownAt = time.Now()
+	state.turnAt = time.Now()
 	state.mu.Unlock()
 	recog := int32(uint32(x) | uint32(y)<<16)
 	s.handleSitDown(server, &ch, mir176.Command{Ident: mir176.CMSitDown, Recog: recog, Tag: 5})
@@ -2175,7 +2320,7 @@ func TestHandleSitDownAcknowledgesShortDelayWithoutQueueing(t *testing.T) {
 	s.registerClient(server, ch)
 	state := s.clientForConn(server)
 	state.mu.Lock()
-	state.sitDownAt = time.Now().Add(-time.Duration(s.world.Gameplay().Combat.TurnIntervalMS)*time.Millisecond + 5*time.Millisecond)
+	state.turnAt = time.Now().Add(-time.Duration(s.world.Gameplay().Combat.TurnIntervalMS)*time.Millisecond + 5*time.Millisecond)
 	state.mu.Unlock()
 	recog := int32(uint32(x) | uint32(y)<<16)
 	s.handleSitDown(server, &ch, mir176.Command{Ident: mir176.CMSitDown, Recog: recog, Tag: 5})
@@ -2185,6 +2330,82 @@ func TestHandleSitDownAcknowledgesShortDelayWithoutQueueing(t *testing.T) {
 	state.mu.Unlock()
 	if pending != 0 {
 		t.Fatalf("pending sit-down messages = %d, want 0 for short delay", pending)
+	}
+}
+
+func TestHandleSitDownRejectsWhenDelayQueueIsFull(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "sit-queue-full", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	state := s.registerClient(server, ch)
+	state.mu.Lock()
+	state.turnAt = time.Now()
+	state.pendingSitDownMessages = s.world.Gameplay().Combat.MaxSitDownMessages
+	state.mu.Unlock()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleSitDown(server, &ch, mir176.Command{Ident: mir176.CMSitDown, Recog: int32(uint32(x) | uint32(y)<<16), Tag: 2})
+	}()
+	assertActionFail(t, readFrame(t, client))
+	<-done
+}
+
+func TestHandleSitDownQueuesInStrictMode(t *testing.T) {
+	gameplay := config.DefaultGameplay()
+	gameplay.Combat.SpeedControlMode = 1
+	s := newTestServerWithGameplay(t, gameplay)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "strict-sit", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	state := s.registerClient(server, ch)
+	state.mu.Lock()
+	state.turnAt = time.Now()
+	state.mu.Unlock()
+	s.handleSitDown(server, &ch, mir176.Command{Ident: mir176.CMSitDown, Recog: int32(uint32(x) | uint32(y)<<16), Tag: 5})
+	state.mu.Lock()
+	pending := state.pendingSitDownMessages
+	state.mu.Unlock()
+	if pending != 1 {
+		t.Fatalf("pending sit-down messages = %d, want 1", pending)
+	}
+}
+
+func TestTurnAndSitDownShareTurnThrottle(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "turn-sit-throttle", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	state := s.registerClient(server, ch)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleTurn(server, &ch, mir176.Command{Ident: mir176.CMTurn, Recog: int32(uint32(x) | uint32(y)<<16), Tag: 2})
+	}()
+	assertActionAck(t, readFrame(t, client))
+	<-done
+	s.handleSitDown(server, &ch, mir176.Command{Ident: mir176.CMSitDown, Recog: int32(uint32(x) | uint32(y)<<16), Tag: 2})
+	state.mu.Lock()
+	pending := state.pendingSitDownMessages
+	state.mu.Unlock()
+	if pending != 1 {
+		t.Fatalf("pending sit-down messages = %d, want 1 after turn", pending)
 	}
 }
 
@@ -2203,6 +2424,682 @@ func TestHandleSitDownDoesNotMutateCharacterState(t *testing.T) {
 	assertActionAck(t, readFrame(t, client))
 	if ch.X != x || ch.Y != y || ch.Dir != 0 || ch.Sitting {
 		t.Fatalf("sit-down changed character state = %+v", ch)
+	}
+}
+
+func TestHandleSitDownUpdatesReferenceActionTimestamp(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "sit-action-tick", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	state := s.registerClient(server, ch)
+	state.mu.Lock()
+	state.actionIdent = mir176.CMHit
+	state.actionAt = time.Now().Add(-time.Second)
+	before := state.actionAt
+	state.mu.Unlock()
+	s.handleSitDown(server, &ch, mir176.Command{Ident: mir176.CMSitDown, Recog: int32(uint32(x) | uint32(y)<<16), Tag: 2})
+	assertActionAck(t, readFrame(t, client))
+	state.mu.Lock()
+	actionAt := state.actionAt
+	actionIdent := state.actionIdent
+	state.mu.Unlock()
+	if !actionAt.After(before) {
+		t.Fatalf("sit action timestamp = %v, want newer than %v", actionAt, before)
+	}
+	if actionIdent != mir176.CMHit {
+		t.Fatalf("sit changed previous action ident to %d, want %d", actionIdent, mir176.CMHit)
+	}
+}
+
+func TestHandleSitDownDoesNotBroadcastToObservers(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	caster, err := s.world.CreateCharacterWithAppearance("test", "sit-caster", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter(caster) error = %v", err)
+	}
+	observer, err := s.world.CreateCharacterWithAppearance("test", "sit-observer", "warrior", 0, 0, mapID, x+1, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter(observer) error = %v", err)
+	}
+	server, client := net.Pipe()
+	observerServer, observerClient := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	defer observerServer.Close()
+	defer observerClient.Close()
+	s.registerClient(server, caster)
+	s.registerClient(observerServer, observer)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleSitDown(server, &caster, mir176.Command{Ident: mir176.CMSitDown, Recog: int32(uint32(x) | uint32(y)<<16), Tag: 5})
+	}()
+	assertActionAck(t, readFrame(t, client))
+	<-done
+	if frame, ok := readFrameWithTimeout(t, observerClient, 50*time.Millisecond); ok {
+		t.Fatalf("observer received sit-down frame: %x", frame)
+	}
+}
+
+func TestClientActionQueueKeepsOnlyLatestAction(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "queued-action", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	state := s.registerClient(server, ch)
+	turn := mir176.Command{Ident: mir176.CMTurn, Recog: int32(uint32(x) | uint32(y)<<16), Tag: 2}
+	walk := mir176.Command{Ident: mir176.CMWalk, Recog: int32(uint32(x+1) | uint32(y)<<16), Tag: 2}
+	s.queueClientAction(server, turn)
+	s.queueClientAction(server, walk)
+	state.mu.Lock()
+	if len(state.actionMessages) != 1 || state.actionMessages[0].cmd != walk {
+		state.mu.Unlock()
+		t.Fatalf("queued actions = %+v, want only latest walk", state.actionMessages)
+	}
+	state.actionRunAt = time.Now().Add(-251 * time.Millisecond)
+	state.mu.Unlock()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.runClientActionTick()
+	}()
+	assertActionAck(t, readFrame(t, client))
+	<-done
+	updated := state.character()
+	if updated.X != x+1 || updated.Y != y || updated.Dir != 2 {
+		t.Fatalf("queued action result = %+v, want walk to (%d,%d) facing 2", updated, x+1, y)
+	}
+}
+
+func TestClientActionQueueReplacesDelayedActionAndReleasesCount(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "queued-delayed-action", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	state := s.registerClient(server, ch)
+	s.clientActionQueueActive = true
+	turn := mir176.Command{Ident: mir176.CMTurn, Recog: int32(uint32(x) | uint32(y)<<16), Tag: 2}
+	if !s.queueDelayedClientAction(server, ch.ID, turn, time.Hour) {
+		t.Fatal("queueDelayedClientAction() did not use client action queue")
+	}
+	state.mu.Lock()
+	state.pendingTurnMessages = 1
+	state.mu.Unlock()
+	walk := mir176.Command{Ident: mir176.CMWalk, Recog: int32(uint32(x+1) | uint32(y)<<16), Tag: 2}
+	s.queueClientAction(server, walk)
+	state.mu.Lock()
+	pendingTurns := state.pendingTurnMessages
+	messages := append([]clientActionMessage(nil), state.actionMessages...)
+	state.mu.Unlock()
+	if pendingTurns != 0 {
+		t.Fatalf("pending turn messages = %d, want 0 after replacement", pendingTurns)
+	}
+	if len(messages) != 1 || messages[0].cmd != walk || messages[0].late {
+		t.Fatalf("queued actions = %+v, want only immediate walk", messages)
+	}
+}
+
+func TestDelayedClientActionRejectsGhostCharacterAtEnqueue(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "ghost-delayed-action", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	state := s.registerClient(server, ch)
+	s.clientActionQueueActive = true
+	state.mu.Lock()
+	state.ch.Ghost = true
+	state.mu.Unlock()
+	if !s.queueDelayedClientAction(server, ch.ID, mir176.Command{Ident: mir176.CMTurn}, time.Second) {
+		t.Fatal("ghost action should be consumed by delayed queue")
+	}
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if len(state.actionMessages) != 0 {
+		t.Fatalf("ghost delayed actions = %+v, want none", state.actionMessages)
+	}
+}
+
+func TestClientActionQueueDeliversDueActionLateAndReleasesCount(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "queued-due-action", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	state := s.registerClient(server, ch)
+	s.clientActionQueueActive = true
+	turn := mir176.Command{Ident: mir176.CMTurn, Recog: int32(uint32(x) | uint32(y)<<16), Tag: 2}
+	if !s.queueDelayedClientAction(server, ch.ID, turn, time.Hour) {
+		t.Fatal("queueDelayedClientAction() did not use client action queue")
+	}
+	state.mu.Lock()
+	state.pendingTurnMessages = 1
+	state.actionMessages[0].at = time.Now().Add(-time.Millisecond)
+	state.actionRunAt = time.Now().Add(-251 * time.Millisecond)
+	state.mu.Unlock()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.runClientActionTick()
+	}()
+	assertActionAck(t, readFrame(t, client))
+	<-done
+	state.mu.Lock()
+	pending := state.pendingTurnMessages
+	state.mu.Unlock()
+	if pending != 0 {
+		t.Fatalf("pending turn messages = %d, want 0 after late delivery", pending)
+	}
+	if updated := state.character(); updated.Dir != 2 {
+		t.Fatalf("late turn direction = %d, want 2", updated.Dir)
+	}
+}
+
+func TestClientActionQueueRevalidatesAllMovementActionsAtDelivery(t *testing.T) {
+	cases := []struct {
+		name string
+		cmd  mir176.Command
+		prep func(*Client)
+		call func(*Server, net.Conn, *storage.Character, mir176.Command)
+	}{
+		{name: "turn", cmd: mir176.Command{Ident: mir176.CMTurn, Tag: 2}, prep: func(client *Client) {
+			client.turnAt = time.Now()
+		}, call: func(s *Server, conn net.Conn, ch *storage.Character, cmd mir176.Command) {
+			s.processTurn(conn, ch, cmd, false)
+		}},
+		{name: "walk", cmd: mir176.Command{Ident: mir176.CMWalk, Tag: 2}, prep: func(client *Client) {
+			client.moveAt = time.Now()
+		}, call: func(s *Server, conn net.Conn, ch *storage.Character, cmd mir176.Command) {
+			s.processMove(conn, ch, cmd, false, false)
+		}},
+		{name: "run", cmd: mir176.Command{Ident: mir176.CMRun, Tag: 2}, prep: func(client *Client) {
+			client.moveAt = time.Now()
+		}, call: func(s *Server, conn net.Conn, ch *storage.Character, cmd mir176.Command) {
+			s.processMove(conn, ch, cmd, true, false)
+		}},
+		{name: "sit", cmd: mir176.Command{Ident: mir176.CMSitDown, Tag: 2}, prep: func(client *Client) {
+			client.turnAt = time.Now()
+		}, call: func(s *Server, conn net.Conn, ch *storage.Character, cmd mir176.Command) {
+			s.processSitDown(conn, ch, cmd, false)
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newTestServer(t)
+			mapID, x, y := testDefaultSpawn(t)
+			if tc.name == "walk" {
+				tc.cmd.Recog = int32(uint32(x+1) | uint32(y)<<16)
+			} else if tc.name == "run" {
+				tc.cmd.Recog = int32(uint32(x+2) | uint32(y)<<16)
+				tc.cmd.Series = 0
+			} else {
+				tc.cmd.Recog = int32(uint32(x) | uint32(y)<<16)
+			}
+			ch, err := s.world.CreateCharacterWithAppearance("test", "late-"+tc.name, "warrior", 0, 0, mapID, x, y)
+			if err != nil {
+				t.Fatalf("CreateCharacter() error = %v", err)
+			}
+			server, client := net.Pipe()
+			defer server.Close()
+			defer client.Close()
+			state := s.registerClient(server, ch)
+			s.clientActionQueueActive = true
+			state.mu.Lock()
+			tc.prep(state)
+			state.mu.Unlock()
+			tc.call(s, server, &ch, tc.cmd)
+			state.mu.Lock()
+			if len(state.actionMessages) != 1 || !state.actionMessages[0].late {
+				state.mu.Unlock()
+				t.Fatalf("queued action messages = %+v, want one late action", state.actionMessages)
+			}
+			state.actionMessages[0].at = time.Now().Add(-time.Millisecond)
+			state.actionRunAt = time.Now().Add(-251 * time.Millisecond)
+			state.ch.HP = 0
+			state.mu.Unlock()
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				s.runClientActionTick()
+			}()
+			assertActionFail(t, readFrame(t, client))
+			<-done
+			state.mu.Lock()
+			pending := state.pendingMoveMessages + state.pendingTurnMessages + state.pendingSitDownMessages
+			updated := state.ch
+			state.mu.Unlock()
+			if pending != 0 {
+				t.Fatalf("pending action count = %d, want 0", pending)
+			}
+			if updated.X != x || updated.Y != y {
+				t.Fatalf("late %s moved character to (%d,%d)", tc.name, updated.X, updated.Y)
+			}
+		})
+	}
+}
+
+func TestClientActionQueueAdvancesOnlyTheQueuedCharacterRunTime(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "queued-action-timing", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	state := s.registerClient(server, ch)
+	base := time.Now()
+	state.mu.Lock()
+	state.actionRunAt = base
+	state.mu.Unlock()
+	turn := mir176.Command{Ident: mir176.CMTurn, Recog: int32(uint32(x) | uint32(y)<<16), Tag: 2}
+	s.queueClientAction(server, turn)
+	state.mu.Lock()
+	runAt := state.actionRunAt
+	state.mu.Unlock()
+	if delta := base.Sub(runAt); delta < 99*time.Millisecond || delta > 101*time.Millisecond {
+		t.Fatalf("action run advance = %s, want 100ms", delta)
+	}
+	s.runClientActionTick()
+	if frame, ok := readFrameWithTimeout(t, client, 20*time.Millisecond); ok {
+		t.Fatalf("action ran before its advanced 250ms period: %x", frame)
+	}
+	state.mu.Lock()
+	state.actionRunAt = time.Now().Add(-251 * time.Millisecond)
+	state.mu.Unlock()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.runClientActionTick()
+	}()
+	assertActionAck(t, readFrame(t, client))
+	<-done
+}
+
+func TestClientActionTickResumesAfterReferenceHumanBudget(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	firstConn, firstPeer := net.Pipe()
+	secondConn, secondPeer := net.Pipe()
+	defer firstPeer.Close()
+	defer secondPeer.Close()
+	defer s.unregisterClient(firstConn)
+	defer s.unregisterClient(secondConn)
+	first, err := s.world.CreateCharacterWithAppearance("budget-1", "budget-1", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("first character = %v", err)
+	}
+	second, err := s.world.CreateCharacterWithAppearance("budget-2", "budget-2", "warrior", 0, 0, mapID, x+1, y)
+	if err != nil {
+		t.Fatalf("second character = %v", err)
+	}
+	s.registerClient(firstConn, first)
+	s.registerClient(secondConn, second)
+	s.actionProcessLimit = -time.Nanosecond
+	s.runClientActionTick()
+	s.clientMu.Lock()
+	firstCursor := s.actionClientCursor
+	s.clientMu.Unlock()
+	if firstCursor != 1 {
+		t.Fatalf("action cursor after budget = %d, want 1", firstCursor)
+	}
+	s.actionProcessLimit = time.Second
+	s.runClientActionTick()
+	s.clientMu.Lock()
+	secondCursor := s.actionClientCursor
+	s.clientMu.Unlock()
+	if secondCursor != 0 {
+		t.Fatalf("action cursor after completing rotation = %d, want 0", secondCursor)
+	}
+}
+
+func TestQueuedCharacterMapChangePreservesReferenceMessageOrder(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch := storage.Character{ID: "queued-map-change", MapID: mapID, X: x, Y: y, HP: 100, MaxHP: 100}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	state := s.registerClient(server, ch)
+	state.softVersion = 1
+	s.queueCharacterMapChange(state, ch)
+	s.runClientActionTick()
+	want := []uint16{mir176.SMClearObjects, mir176.SMChangeMap, mir176.SMAreaState, mir176.SMServerConfig}
+	for i, ident := range want {
+		cmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+		if err != nil {
+			t.Fatalf("decode map-change frame %d: %v", i, err)
+		}
+		if cmd.Ident != ident {
+			t.Fatalf("map-change frame %d ident = %d, want %d", i, cmd.Ident, ident)
+		}
+	}
+}
+
+func TestCharacterMapChangePrecedesMovementAck(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch := storage.Character{ID: "direct-map-change", MapID: mapID, X: x, Y: y, HP: 100, MaxHP: 100}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	state := s.registerClient(server, ch)
+	state.softVersion = 1
+	done := make(chan struct{})
+	go func() {
+		s.sendCharacterMapChange(server, state, ch)
+		s.sendActionOK(server)
+		close(done)
+	}()
+	want := []uint16{mir176.SMClearObjects, mir176.SMChangeMap, mir176.SMAreaState, mir176.SMServerConfig}
+	for i, ident := range want {
+		cmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+		if err != nil {
+			t.Fatalf("decode direct map-change frame %d: %v", i, err)
+		}
+		if cmd.Ident != ident {
+			t.Fatalf("direct map-change frame %d ident = %d, want %d", i, cmd.Ident, ident)
+		}
+	}
+	assertActionAck(t, readFrame(t, client))
+	<-done
+}
+
+func TestServerConfigUsesReferenceFieldLayout(t *testing.T) {
+	s := newTestServer(t)
+	ch := storage.Character{ID: "server-config", MapID: testMapID}
+	gameplay := s.world.Gameplay()
+	body := s.serverConfigBody(ch)
+	if len(body) != 24 {
+		t.Fatalf("server config body length = %d, want 24", len(body))
+	}
+	if got := binary.LittleEndian.Uint16(body[6:8]); int(got) != gameplay.Combat.MagicHitIntervalMS+300 {
+		t.Fatalf("server config spell interval = %d, want %d", got, gameplay.Combat.MagicHitIntervalMS+300)
+	}
+	if got := binary.LittleEndian.Uint16(body[8:10]); int(got) != gameplay.Combat.HitIntervalMS+500 {
+		t.Fatalf("server config hit interval = %d, want %d", got, gameplay.Combat.HitIntervalMS+500)
+	}
+	if body[14] != boolByte(gameplay.Combat.ParalyCanRun) || body[15] != boolByte(gameplay.Combat.ParalyCanWalk) || body[16] != boolByte(gameplay.Combat.ParalyCanHit) || body[17] != boolByte(gameplay.Combat.ParalyCanSpell) {
+		t.Fatalf("server config paralysis flags = %v, want gameplay flags", body[14:18])
+	}
+	for _, idx := range []int{0, 5, 10, 11, 12, 13, 18, 19, 20, 21, 22, 23} {
+		if body[idx] != 0 {
+			t.Fatalf("server config body[%d] = %d, want zero for the reference field layout", idx, body[idx])
+		}
+	}
+	command := s.serverConfigCommand(ch)
+	if command.Ident != mir176.SMServerConfig || command.Param != makeWord(5, 0) {
+		t.Fatalf("server config command = %+v, want ident and version marker", command)
+	}
+	gameplay = config.DefaultGameplay()
+	gameplay.Movement.RunNPC = true
+	gameplay.Movement.RunWarAll = true
+	s = newTestServerWithGameplay(t, gameplay)
+	command = s.serverConfigCommand(ch)
+	if byte(uint32(command.Recog)>>16) != 1 || byte(uint32(command.Recog)>>24) != 1 {
+		t.Fatalf("configured NPC/war flags = %#x, want both enabled", uint32(command.Recog))
+	}
+	body = s.serverConfigBody(ch)
+	if body[3] != 1 || body[4] != 1 {
+		t.Fatalf("configured NPC/war body flags = %v, want both enabled", body[3:5])
+	}
+	gameplay = config.DefaultGameplay()
+	gameplay.Movement.DisableHumanRun = true
+	s = newTestServerWithGameplay(t, gameplay)
+	command = s.serverConfigCommand(ch)
+	if byte(command.Recog) != 1 || byte(uint32(command.Recog)>>8) != 1 || byte(uint32(command.Recog)>>16) != 1 || byte(uint32(command.Recog)>>24) != 1 {
+		t.Fatalf("disabled-human-run flags = %#x, want all run flags enabled", uint32(command.Recog))
+	}
+	body = s.serverConfigBody(ch)
+	if body[1] != 1 || body[2] != 1 || body[3] != 1 || body[4] != 1 {
+		t.Fatalf("disabled-human-run body flags = %v, want all run flags enabled", body[1:5])
+	}
+}
+
+func TestSendServerConfigHonorsReferenceVersionGate(t *testing.T) {
+	s := newTestServer(t)
+	server, clientConn := net.Pipe()
+	defer server.Close()
+	defer clientConn.Close()
+	ch := storage.Character{ID: "server-config-send", MapID: testMapID, X: 10, Y: 10}
+	client := s.registerClient(server, ch)
+	client.softVersion = 1
+	done := make(chan struct{})
+	go func() {
+		s.sendServerConfig(server, ch)
+		close(done)
+	}()
+	command, body, err := decodeMessageLikeClient(readFrame(t, clientConn))
+	if err != nil {
+		t.Fatalf("decode server config frame: %v", err)
+	}
+	if command.Ident != mir176.SMServerConfig || command.Param != makeWord(5, 0) {
+		t.Fatalf("server config command = %+v", command)
+	}
+	decoded, err := mir176.DecodePlain6Payload(body)
+	if err != nil {
+		t.Fatalf("decode server config body: %v", err)
+	}
+	if len(decoded) != 24 {
+		t.Fatalf("decoded server config body length = %d, want 24", len(decoded))
+	}
+	<-done
+}
+
+func TestSaveDueCharactersPersistsLatestMovementState(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "periodic-save", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, clientConn := net.Pipe()
+	defer server.Close()
+	defer clientConn.Close()
+	state := s.registerClient(server, ch)
+	updated := ch
+	updated.X++
+	s.updateClient(server, updated)
+	now := time.Now()
+	s.saveMu.Lock()
+	s.lastCharacterSave[ch.ID] = now.Add(-time.Duration(s.world.Gameplay().Persistence.SaveHumanRcdTimeMS) * time.Millisecond)
+	s.saveMu.Unlock()
+	s.saveDueCharacters(now)
+	stored, ok := s.store.Character(ch.ID)
+	if !ok || stored.X != updated.X {
+		t.Fatalf("stored character = %+v, want latest movement state %+v", stored, updated)
+	}
+	if state.character().X != updated.X {
+		t.Fatalf("client character = %+v, want %+v", state.character(), updated)
+	}
+}
+
+func TestDisconnectSaveFallsBackWhenSaveQueueIsFull(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "disconnect-save-full", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	updated := ch
+	updated.X++
+	s.saveMu.Lock()
+	s.characterSaveActive = true
+	for i := 0; i < cap(s.characterSaveQueue); i++ {
+		s.characterSaveQueue <- characterSaveJob{character: ch}
+	}
+	s.saveMu.Unlock()
+	s.queueCharacterSave(updated)
+	stored, ok := s.store.Character(ch.ID)
+	if !ok || stored.X != updated.X {
+		t.Fatalf("disconnect fallback stored character = %+v, want x=%d", stored, updated.X)
+	}
+}
+
+func TestSaveDueCharactersCancelsDealBeforeSnapshot(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	first, err := s.world.CreateCharacterWithAppearance("test", "deal-save-first", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("first character = %v", err)
+	}
+	second, err := s.world.CreateCharacterWithAppearance("test", "deal-save-second", "warrior", 0, 0, mapID, x+1, y)
+	if err != nil {
+		t.Fatalf("second character = %v", err)
+	}
+	firstServer, firstClient := net.Pipe()
+	secondServer, secondClient := net.Pipe()
+	defer firstServer.Close()
+	defer firstClient.Close()
+	defer secondServer.Close()
+	defer secondClient.Close()
+	firstState := s.registerClient(firstServer, first)
+	secondState := s.registerClient(secondServer, second)
+	firstItem := storage.UserItem{ItemID: "deal-item-first", MakeIndex: 1}
+	secondItem := storage.UserItem{ItemID: "deal-item-second", MakeIndex: 2}
+	firstState.mu.Lock()
+	firstState.dealPeerID = second.ID
+	firstState.dealItems = []storage.UserItem{firstItem}
+	firstState.dealGold = 11
+	firstState.mu.Unlock()
+	secondState.mu.Lock()
+	secondState.dealPeerID = first.ID
+	secondState.dealItems = []storage.UserItem{secondItem}
+	secondState.dealGold = 22
+	secondState.mu.Unlock()
+	now := time.Now()
+	interval := time.Duration(s.world.Gameplay().Persistence.SaveHumanRcdTimeMS) * time.Millisecond
+	s.saveMu.Lock()
+	s.lastCharacterSave[first.ID] = now.Add(-interval)
+	s.lastCharacterSave[second.ID] = now.Add(-interval)
+	s.saveMu.Unlock()
+	s.saveDueCharacters(now)
+
+	containsItem := func(items []storage.UserItem, id string) bool {
+		for _, item := range items {
+			if item.ItemID == id {
+				return true
+			}
+		}
+		return false
+	}
+	firstStored, firstOK := s.store.Character(first.ID)
+	secondStored, secondOK := s.store.Character(second.ID)
+	if !firstOK || firstStored.Gold != first.Gold+11 || !containsItem(firstStored.BagItems, firstItem.ItemID) {
+		t.Fatalf("first deal snapshot = %+v, want restored item and gold", firstStored)
+	}
+	if !secondOK || secondStored.Gold != second.Gold+22 || !containsItem(secondStored.BagItems, secondItem.ItemID) {
+		t.Fatalf("second deal snapshot = %+v, want restored item and gold", secondStored)
+	}
+	firstFrame := readFrame(t, firstClient)
+	firstCommand, _, err := decodeMessageLikeClient(firstFrame)
+	if err != nil || firstCommand.Ident != mir176.SMDealCancel {
+		t.Fatalf("first deal cancel frame = %+v, %v", firstCommand, err)
+	}
+	secondFrame := readFrame(t, secondClient)
+	secondCommand, _, err := decodeMessageLikeClient(secondFrame)
+	if err != nil || secondCommand.Ident != mir176.SMDealCancel {
+		t.Fatalf("second deal cancel frame = %+v, %v", secondCommand, err)
+	}
+}
+
+func TestSaveDueCharactersDoesNotCancelDealBeforeDue(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	first, err := s.world.CreateCharacterWithAppearance("test", "deal-not-due-first", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("first character = %v", err)
+	}
+	second, err := s.world.CreateCharacterWithAppearance("test", "deal-not-due-second", "warrior", 0, 0, mapID, x+1, y)
+	if err != nil {
+		t.Fatalf("second character = %v", err)
+	}
+	firstServer, firstClient := net.Pipe()
+	secondServer, secondClient := net.Pipe()
+	defer firstServer.Close()
+	defer firstClient.Close()
+	defer secondServer.Close()
+	defer secondClient.Close()
+	firstState := s.registerClient(firstServer, first)
+	secondState := s.registerClient(secondServer, second)
+	firstState.mu.Lock()
+	firstState.dealPeerID = second.ID
+	firstState.mu.Unlock()
+	secondState.mu.Lock()
+	secondState.dealPeerID = first.ID
+	secondState.mu.Unlock()
+	now := time.Now()
+	s.saveMu.Lock()
+	s.lastCharacterSave[first.ID] = now
+	s.lastCharacterSave[second.ID] = now
+	s.saveMu.Unlock()
+	s.saveDueCharacters(now.Add(time.Millisecond))
+
+	firstState.mu.Lock()
+	firstStillTrading := firstState.dealPeerID == second.ID
+	firstState.mu.Unlock()
+	secondState.mu.Lock()
+	secondStillTrading := secondState.dealPeerID == first.ID
+	secondState.mu.Unlock()
+	if !firstStillTrading || !secondStillTrading {
+		t.Fatal("save check cancelled a deal before the save interval elapsed")
+	}
+	if frame, ok := readFrameWithTimeout(t, firstClient, 100*time.Millisecond); ok {
+		t.Fatalf("first client received premature deal frame: %x", frame)
+	}
+	if frame, ok := readFrameWithTimeout(t, secondClient, 100*time.Millisecond); ok {
+		t.Fatalf("second client received premature deal frame: %x", frame)
+	}
+}
+
+func TestActionRefClientsUseInitialAndCachedReferenceRanges(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	caster := storage.Character{ID: "action-range-caster", MapID: mapID, X: x, Y: y, HP: 100, MaxHP: 100}
+	edge := storage.Character{ID: "action-range-edge", MapID: mapID, X: x + 12, Y: y, HP: 100, MaxHP: 100}
+	casterServer, casterClient := net.Pipe()
+	edgeServer, edgeClient := net.Pipe()
+	defer casterServer.Close()
+	defer casterClient.Close()
+	defer edgeServer.Close()
+	defer edgeClient.Close()
+	s.registerClient(casterServer, caster)
+	edgeState := s.registerClient(edgeServer, edge)
+	if clients := s.actionRefClients(caster, casterServer); len(clients) != 1 || clients[0] != edgeState {
+		t.Fatalf("initial action recipients = %+v, want edge observer at range 12", clients)
+	}
+	edgeState.mu.Lock()
+	edgeState.ch.X = x + 11
+	edgeState.mu.Unlock()
+	if clients := s.actionRefClients(caster, casterServer); len(clients) != 0 {
+		t.Fatalf("cached action recipients = %+v, want none at range 11", clients)
 	}
 }
 
@@ -2425,6 +3322,62 @@ func clientIDs(clients []*Client) []string {
 	return ids
 }
 
+func TestHandleSitDownRejectsParalyzedCharacter(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "paralyzed-sit", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.ParalyzedUntil = time.Now().Add(time.Minute).UnixNano()
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleSitDown(server, &ch, mir176.Command{Ident: mir176.CMSitDown, Recog: int32(uint32(x) | uint32(y)<<16), Tag: 5})
+	}()
+	assertActionFail(t, readFrame(t, client))
+	<-done
+}
+
+func TestLateMovementActionsRevalidateCharacterState(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	base, err := s.world.CreateCharacterWithAppearance("test", "late-action-state", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	tests := []struct {
+		name string
+		cmd  mir176.Command
+		call func(net.Conn, *storage.Character, mir176.Command)
+	}{
+		{name: "turn", cmd: mir176.Command{Ident: mir176.CMTurn, Recog: int32(uint32(x) | uint32(y)<<16), Tag: 2}, call: func(conn net.Conn, ch *storage.Character, cmd mir176.Command) { s.processTurn(conn, ch, cmd, true) }},
+		{name: "walk", cmd: mir176.Command{Ident: mir176.CMWalk, Recog: int32(uint32(x+1) | uint32(y)<<16), Tag: 2}, call: func(conn net.Conn, ch *storage.Character, cmd mir176.Command) {
+			s.processMove(conn, ch, cmd, false, true)
+		}},
+		{name: "run", cmd: mir176.Command{Ident: mir176.CMRun, Recog: int32(uint32(x+2) | uint32(y)<<16), Tag: 2, Series: mir176.CMRun}, call: func(conn net.Conn, ch *storage.Character, cmd mir176.Command) {
+			s.processMove(conn, ch, cmd, true, true)
+		}},
+		{name: "sit", cmd: mir176.Command{Ident: mir176.CMSitDown, Recog: int32(uint32(x) | uint32(y)<<16), Tag: 2}, call: func(conn net.Conn, ch *storage.Character, cmd mir176.Command) { s.processSitDown(conn, ch, cmd, true) }},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			server, client := net.Pipe()
+			defer server.Close()
+			defer client.Close()
+			ch := base
+			ch.HP = 0
+			s.registerClient(server, ch)
+			tc.call(server, &ch, tc.cmd)
+			assertActionFail(t, readFrame(t, client))
+			s.unregisterClient(server)
+		})
+	}
+}
+
 func TestHandleMoveWalkUpdatesCharacterAndAcks(t *testing.T) {
 	s := newTestServer(t)
 	mapID, x, y := testDefaultSpawn(t)
@@ -2450,6 +3403,55 @@ func TestHandleMoveWalkUpdatesCharacterAndAcks(t *testing.T) {
 
 	if ch.X != x+1 || ch.Y != y || ch.Dir != dir {
 		t.Fatalf("walk result = (%d,%d,dir %d), want (%d,%d,dir %d)", ch.X, ch.Y, ch.Dir, x+1, y, dir)
+	}
+}
+
+func TestHandleMoveRejectsWhenDelayQueueIsFull(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "move-queue-full", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	state := s.registerClient(server, ch)
+	state.mu.Lock()
+	state.moveAt = time.Now()
+	state.pendingMoveMessages = s.world.Gameplay().Combat.MaxWalkMessages
+	state.mu.Unlock()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleMove(server, &ch, mir176.Command{Ident: mir176.CMWalk, Recog: int32(uint32(x+1) | uint32(y)<<16), Tag: 2}, false)
+	}()
+	assertActionFail(t, readFrame(t, client))
+	<-done
+}
+
+func TestHandleMoveAllowsStoneCharacterWhenConfigured(t *testing.T) {
+	gameplay := config.DefaultGameplay()
+	gameplay.Combat.ParalyCanWalk = true
+	s := newTestServerWithGameplay(t, gameplay)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.StoneMode = true
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleMove(server, &ch, mir176.Command{Ident: mir176.CMWalk, Recog: int32(uint32(x+1) | uint32(y)<<16), Tag: 2}, false)
+	}()
+	assertActionAck(t, readFrame(t, client))
+	<-done
+	if ch.X != x+1 || ch.Y != y {
+		t.Fatalf("stone walk result = (%d,%d), want (%d,%d)", ch.X, ch.Y, x+1, y)
 	}
 }
 
@@ -2483,6 +3485,65 @@ func TestHandleMoveQueuesWhenStruckWindowIsActive(t *testing.T) {
 	}
 }
 
+func TestHandleWalkAcknowledgesShortMoveDelayWithoutQueueing(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "short-walk-delay", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	state := s.registerClient(server, ch)
+	state.mu.Lock()
+	interval := time.Duration(s.world.Gameplay().Combat.WalkIntervalMS) * time.Millisecond
+	state.moveAt = time.Now().Add(-interval + 5*time.Millisecond)
+	state.mu.Unlock()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleMove(server, &ch, mir176.Command{Ident: mir176.CMWalk, Recog: int32(uint32(x+1) | uint32(y)<<16), Tag: 2}, false)
+	}()
+	assertActionAck(t, readFrame(t, client))
+	<-done
+	updated := state.character()
+	state.mu.Lock()
+	pending := state.pendingMoveMessages
+	state.mu.Unlock()
+	if pending != 0 {
+		t.Fatalf("pending walk messages = %d, want 0 for short delay", pending)
+	}
+	if updated.X != x || updated.Y != y {
+		t.Fatalf("short-delay walk moved to (%d,%d), want unchanged (%d,%d)", updated.X, updated.Y, x, y)
+	}
+}
+
+func TestHandleMoveQueuesStruckDelayInStrictMode(t *testing.T) {
+	gameplay := config.DefaultGameplay()
+	gameplay.Combat.SpeedControlMode = 1
+	s := newTestServerWithGameplay(t, gameplay)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "strict-struck-walk", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	state := s.registerClient(server, ch)
+	state.mu.Lock()
+	state.struckAt = time.Now()
+	state.mu.Unlock()
+	s.handleMove(server, &ch, mir176.Command{Ident: mir176.CMWalk, Recog: int32(uint32(x+1) | uint32(y)<<16), Tag: 2}, false)
+	state.mu.Lock()
+	pending := state.pendingMoveMessages
+	state.mu.Unlock()
+	if pending != 1 {
+		t.Fatalf("pending move messages = %d, want 1", pending)
+	}
+}
+
 func TestHandleMoveBroadcastsWalkToObserver(t *testing.T) {
 	s := newTestServer(t)
 	mapID, x, y := testDefaultSpawn(t)
@@ -2509,6 +3570,7 @@ func TestHandleMoveBroadcastsWalkToObserver(t *testing.T) {
 		s.handleMove(server, &caster, mir176.Command{Ident: mir176.CMWalk, Recog: recog, Tag: 2}, false)
 	}()
 	assertActionAck(t, readFrame(t, client))
+	s.runClientActionTick()
 	frame := readFrame(t, observerClient)
 	command, body, err := decodeMessageLikeClient(frame)
 	if err != nil {
@@ -2519,6 +3581,116 @@ func TestHandleMoveBroadcastsWalkToObserver(t *testing.T) {
 	}
 	assertCharDesc(t, body, s.world.HumanFeatureForCharacter(caster), s.world.CharacterStatus(caster))
 	<-done
+}
+
+func TestQueuedCharacterActionsReachObserverInObjectOrder(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	actorOne := storage.Character{ID: "ordered-actor-1", MapID: mapID, X: x, Y: y, HP: 100, MaxHP: 100, ObjectOrder: 1}
+	actorTwo := storage.Character{ID: "ordered-actor-2", MapID: mapID, X: x + 4, Y: y, HP: 100, MaxHP: 100, ObjectOrder: 2}
+	observer := storage.Character{ID: "ordered-observer", MapID: mapID, X: x + 2, Y: y, HP: 100, MaxHP: 100, ObjectOrder: 3}
+	actorOneServer, actorOneClient := net.Pipe()
+	actorTwoServer, actorTwoClient := net.Pipe()
+	observerServer, observerClient := net.Pipe()
+	defer actorOneServer.Close()
+	defer actorOneClient.Close()
+	defer actorTwoServer.Close()
+	defer actorTwoClient.Close()
+	defer observerServer.Close()
+	defer observerClient.Close()
+	s.registerClient(actorOneServer, actorOne)
+	s.registerClient(actorTwoServer, actorTwo)
+	s.registerClient(observerServer, observer)
+	s.queueClientAction(actorOneServer, mir176.Command{Ident: mir176.CMWalk, Recog: int32(uint32(x+1) | uint32(y)<<16)})
+	s.queueClientAction(actorTwoServer, mir176.Command{Ident: mir176.CMWalk, Recog: int32(uint32(x+5) | uint32(y)<<16)})
+	for _, conn := range []net.Conn{actorOneServer, actorTwoServer} {
+		state := s.clientForConn(conn)
+		state.mu.Lock()
+		state.actionRunAt = time.Now().Add(-251 * time.Millisecond)
+		state.mu.Unlock()
+	}
+	s.runClientActionTick()
+	assertActionAck(t, readFrame(t, actorOneClient))
+	assertActionAck(t, readFrame(t, actorTwoClient))
+	firstFrame, ok := readFrameWithTimeout(t, observerClient, time.Second)
+	if !ok {
+		t.Fatal("timed out waiting for first ordered observer frame")
+	}
+	secondFrame, ok := readFrameWithTimeout(t, observerClient, time.Second)
+	if !ok {
+		t.Fatal("timed out waiting for second ordered observer frame")
+	}
+	firstCommand, _, err := decodeMessageLikeClient(firstFrame)
+	if err != nil {
+		t.Fatalf("first ordered observer frame error = %v", err)
+	}
+	secondCommand, _, err := decodeMessageLikeClient(secondFrame)
+	if err != nil {
+		t.Fatalf("second ordered observer frame error = %v", err)
+	}
+	if firstCommand.Ident != mir176.SMWalk || firstCommand.Recog != world.CharacterActorID(actorOne) || secondCommand.Ident != mir176.SMWalk || secondCommand.Recog != world.CharacterActorID(actorTwo) {
+		t.Fatalf("observer action order = first:%+v second:%+v, want actor-one then actor-two", firstCommand, secondCommand)
+	}
+}
+
+func TestDelayedCharacterActionsReachObserverInObjectOrder(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	actorOne := storage.Character{ID: "delayed-actor-1", MapID: mapID, X: x, Y: y, HP: 100, MaxHP: 100, ObjectOrder: 1}
+	actorTwo := storage.Character{ID: "delayed-actor-2", MapID: mapID, X: x + 4, Y: y, HP: 100, MaxHP: 100, ObjectOrder: 2}
+	observer := storage.Character{ID: "delayed-observer", MapID: mapID, X: x + 2, Y: y, HP: 100, MaxHP: 100, ObjectOrder: 3}
+	actorOneServer, actorOneClient := net.Pipe()
+	actorTwoServer, actorTwoClient := net.Pipe()
+	observerServer, observerClient := net.Pipe()
+	defer actorOneServer.Close()
+	defer actorOneClient.Close()
+	defer actorTwoServer.Close()
+	defer actorTwoClient.Close()
+	defer observerServer.Close()
+	defer observerClient.Close()
+	s.registerClient(actorOneServer, actorOne)
+	s.registerClient(actorTwoServer, actorTwo)
+	s.registerClient(observerServer, observer)
+	s.clientActionQueueActive = true
+	for _, item := range []struct {
+		conn net.Conn
+		cmd  mir176.Command
+	}{
+		{actorOneServer, mir176.Command{Ident: mir176.CMWalk, Recog: int32(uint32(x+1) | uint32(y)<<16)}},
+		{actorTwoServer, mir176.Command{Ident: mir176.CMWalk, Recog: int32(uint32(x+5) | uint32(y)<<16)}},
+	} {
+		state := s.clientForConn(item.conn)
+		if !s.queueDelayedClientAction(item.conn, state.character().ID, item.cmd, time.Hour) {
+			t.Fatal("queueDelayedClientAction() did not use client action queue")
+		}
+		state.mu.Lock()
+		state.pendingMoveMessages = 1
+		state.actionMessages[0].at = time.Now().Add(-time.Millisecond)
+		state.actionRunAt = time.Now().Add(-251 * time.Millisecond)
+		state.mu.Unlock()
+	}
+	s.runClientActionTick()
+	assertActionAck(t, readFrame(t, actorOneClient))
+	assertActionAck(t, readFrame(t, actorTwoClient))
+	firstFrame, ok := readFrameWithTimeout(t, observerClient, time.Second)
+	if !ok {
+		t.Fatal("timed out waiting for first delayed observer frame")
+	}
+	secondFrame, ok := readFrameWithTimeout(t, observerClient, time.Second)
+	if !ok {
+		t.Fatal("timed out waiting for second delayed observer frame")
+	}
+	firstCommand, _, err := decodeMessageLikeClient(firstFrame)
+	if err != nil {
+		t.Fatalf("first delayed observer frame error = %v", err)
+	}
+	secondCommand, _, err := decodeMessageLikeClient(secondFrame)
+	if err != nil {
+		t.Fatalf("second delayed observer frame error = %v", err)
+	}
+	if firstCommand.Ident != mir176.SMWalk || firstCommand.Recog != world.CharacterActorID(actorOne) || secondCommand.Ident != mir176.SMWalk || secondCommand.Recog != world.CharacterActorID(actorTwo) {
+		t.Fatalf("delayed observer action order = first:%+v second:%+v, want actor-one then actor-two", firstCommand, secondCommand)
+	}
 }
 
 func TestBroadcastCharacterMoveUsesRunIdent(t *testing.T) {
@@ -2535,6 +3707,7 @@ func TestBroadcastCharacterMoveUsesRunIdent(t *testing.T) {
 	s.registerClient(server, ch)
 	s.registerClient(observerServer, observer)
 	s.broadcastCharacterMove(server, ch, true)
+	s.runClientActionTick()
 	frame := readFrame(t, observerClient)
 	command, body, err := decodeMessageLikeClient(frame)
 	if err != nil {
@@ -2546,7 +3719,7 @@ func TestBroadcastCharacterMoveUsesRunIdent(t *testing.T) {
 	assertCharDesc(t, body, s.world.HumanFeatureForCharacter(ch), s.world.CharacterStatus(ch))
 }
 
-func TestHandleMoveRejectsTooFarAndResyncs(t *testing.T) {
+func TestHandleMoveBroadcastsActualStepThenRejectsMismatchedDestination(t *testing.T) {
 	s := newTestServer(t)
 	mapID, x, y := testDefaultSpawn(t)
 	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
@@ -2564,18 +3737,11 @@ func TestHandleMoveRejectsTooFarAndResyncs(t *testing.T) {
 		s.handleMove(server, &ch, mir176.Command{Ident: mir176.CMWalk, Recog: recog, Tag: 2}, false)
 	}()
 
-	frame := readFrame(t, client)
-	cmd, _, err := decodeMessageLikeClient(frame)
-	if err != nil {
-		t.Fatalf("decodeMessageLikeClient() error = %v", err)
-	}
+	assertActionFail(t, readFrame(t, client))
 	<-done
 
-	if cmd.Ident != mir176.SMMoveFail {
-		t.Fatalf("reply ident = %d, want %d", cmd.Ident, mir176.SMMoveFail)
-	}
-	if int(cmd.Param) != x || int(cmd.Tag) != y {
-		t.Fatalf("resync position = (%d,%d), want (%d,%d)", cmd.Param, cmd.Tag, x, y)
+	if ch.X != x+1 || ch.Y != y || ch.Dir != 2 {
+		t.Fatalf("move result = (%d,%d,dir %d), want actual one-step destination (%d,%d,dir 2)", ch.X, ch.Y, ch.Dir, x+1, y)
 	}
 }
 
@@ -2934,7 +4100,7 @@ func TestHandleHitBroadcastsDeathWhenMonsterHPReachesZero(t *testing.T) {
 			}
 			s.applyWorldTick(tick, time.Now())
 			var sawWinExp, sawDeath, sawDrop bool
-			winExpFrame, deathFrame, dropFrame := -1, -1, -1
+			winExpFrame, deathFrame := -1, -1
 			for frameNo := 0; frameNo < 8; frameNo++ {
 				frame, ok := readFrameWithTimeout(t, client, 200*time.Millisecond)
 				if !ok {
@@ -2957,14 +4123,13 @@ func TestHandleHitBroadcastsDeathWhenMonsterHPReachesZero(t *testing.T) {
 					assertCharDesc(t, body, world.MonsterFeature(mon), 0)
 				case mir176.SMItemShow:
 					sawDrop = true
-					dropFrame = frameNo
 				}
 			}
-			if !sawWinExp || !sawDeath || !sawDrop {
+			if !sawWinExp || !sawDeath || sawDrop {
 				t.Fatalf("deferred death frames seen winExp=%v death=%v drop=%v", sawWinExp, sawDeath, sawDrop)
 			}
-			if !(winExpFrame < dropFrame && dropFrame < deathFrame) {
-				t.Fatalf("deferred death frame order = exp:%d drop:%d death:%d, want experience then drop then death", winExpFrame, dropFrame, deathFrame)
+			if !(winExpFrame < deathFrame) {
+				t.Fatalf("deferred death frame order = exp:%d death:%d, want experience then death", winExpFrame, deathFrame)
 			}
 		}
 	}
@@ -3459,6 +4624,28 @@ func TestHandleSpellRejectsBlockedCharacter(t *testing.T) {
 	<-done
 }
 
+func TestHandleSpellRejectsStoneCharacter(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "wizard", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.StoneMode = true
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleSpell(server, &ch, mir176.Command{Ident: mir176.CMSpell})
+	}()
+	assertActionFail(t, readFrame(t, client))
+	<-done
+}
+
 func TestHandleSpellKeepsStartedFailureStateInSession(t *testing.T) {
 	s := newTestServer(t)
 	mapID, x, y := testDefaultSpawn(t)
@@ -3598,11 +4785,11 @@ func TestHandleSpellConsumesManaBeforeOutOfRangeFailure(t *testing.T) {
 		}
 	}
 	<-done
-	if !sawFail || !sawHealth || sawStart {
-		t.Fatalf("out-of-range frames = %+v, want fail+health without caster spell start", frames)
+	if !sawFail || sawHealth || sawStart {
+		t.Fatalf("out-of-range frames = %+v, want fail without resource update or caster spell start", frames)
 	}
-	if ch.MP >= 100 {
-		t.Fatalf("caster MP = %d, want consumed resource", ch.MP)
+	if ch.MP != 100 {
+		t.Fatalf("caster MP = %d, want preserved resource", ch.MP)
 	}
 	if frame, ok := readFrameWithTimeout(t, observerClient, 100*time.Millisecond); ok {
 		cmd, _, err := decodeMessageLikeClient(frame)
@@ -3727,6 +4914,7 @@ func TestHandleHitRejectsDeadAndParalyzedCharacter(t *testing.T) {
 		set  func(*storage.Character)
 	}{
 		{name: "dead", set: func(ch *storage.Character) { ch.HP = 0 }},
+		{name: "stone", set: func(ch *storage.Character) { ch.StoneMode = true }},
 		{name: "paralyzed", set: func(ch *storage.Character) { ch.ParalyzedUntil = time.Now().Add(time.Minute).UnixNano() }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -3766,16 +4954,135 @@ func TestHandleMoveRejectsParalyzedCharacter(t *testing.T) {
 	<-done
 }
 
-func TestRunCommandSeriesMarksLateDelivery(t *testing.T) {
-	if !isLateRunCommand(mir176.Command{Ident: mir176.CMRun, Series: mir176.CMRun}, true) {
-		t.Fatal("CM_RUN Series=CM_RUN was not recognized as late delivery")
+func TestHandleMoveRejectsStoneCharacter(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
 	}
-	if isLateRunCommand(mir176.Command{Ident: mir176.CMRun, Series: 0}, true) {
-		t.Fatal("ordinary CM_RUN was incorrectly recognized as late delivery")
+	ch.StoneMode = true
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleMove(server, &ch, mir176.Command{Ident: mir176.CMWalk, Recog: int32(uint32(x) | uint32(y)<<16), Tag: 2}, false)
+	}()
+	assertActionFail(t, readFrame(t, client))
+	<-done
+}
+
+func TestRunCommandSeriesDoesNotBypassThrottle(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "run-series-throttle", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
 	}
-	if isLateRunCommand(mir176.Command{Ident: mir176.CMRun, Series: mir176.CMRun}, false) {
-		t.Fatal("non-run command path was incorrectly recognized as late delivery")
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	state := s.registerClient(server, ch)
+	state.mu.Lock()
+	state.moveAt = time.Now()
+	state.mu.Unlock()
+	s.handleMove(server, &ch, mir176.Command{Ident: mir176.CMRun, Recog: int32(uint32(x+2) | uint32(y)<<16), Tag: 2, Series: mir176.CMRun}, true)
+	state.mu.Lock()
+	pending := state.pendingMoveMessages
+	state.mu.Unlock()
+	if pending != 1 {
+		t.Fatalf("pending run messages = %d, want 1", pending)
 	}
+}
+
+func TestRunCommandSeriesMatchingIdentSkipsActionWindow(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "run-series-action-window", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	state := s.registerClient(server, ch)
+	state.mu.Lock()
+	state.moveAt = time.Now().Add(-time.Second)
+	state.actionAt = time.Now()
+	state.actionIdent = mir176.CMHit
+	state.mu.Unlock()
+	targetX, targetY, targetDir := x+2, y, 2
+	for _, candidate := range []struct{ dx, dy, dir int }{
+		{0, -2, 0}, {2, -2, 1}, {2, 0, 2}, {2, 2, 3}, {0, 2, 4}, {-2, 2, 5}, {-2, 0, 6}, {-2, -2, 7},
+	} {
+		if _, err := s.world.Run(ch, x+candidate.dx, y+candidate.dy, candidate.dir); err == nil {
+			targetX, targetY, targetDir = x+candidate.dx, y+candidate.dy, candidate.dir
+			break
+		}
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleMove(server, &ch, mir176.Command{
+			Ident:  mir176.CMRun,
+			Recog:  int32(uint32(targetX) | uint32(targetY)<<16),
+			Tag:    uint16(targetDir),
+			Series: mir176.CMRun,
+		}, true)
+	}()
+	assertActionAck(t, readFrame(t, client))
+	<-done
+	state.mu.Lock()
+	pending := state.pendingMoveMessages
+	state.mu.Unlock()
+	if pending != 0 || ch.X != targetX || ch.Y != targetY {
+		t.Fatalf("run matching flag = pending:%d position:(%d,%d), want pending:0 position:(%d,%d)", pending, ch.X, ch.Y, targetX, targetY)
+	}
+}
+
+func TestRunCommandSeriesPreservesReferenceFilterActionState(t *testing.T) {
+	gameplay := config.DefaultGameplay()
+	gameplay.Combat.SpeedControlMode = 1
+	s := newTestServerWithGameplay(t, gameplay)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "run-series-filter-state", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	state := s.registerClient(server, ch)
+	state.mu.Lock()
+	state.moveAt = time.Now()
+	state.filterAction = false
+	state.mu.Unlock()
+	targetX, targetY, targetDir := x+2, y, 2
+	for _, candidate := range []struct{ dx, dy, dir int }{
+		{0, -2, 0}, {2, -2, 1}, {2, 0, 2}, {2, 2, 3}, {0, 2, 4}, {-2, 2, 5}, {-2, 0, 6}, {-2, -2, 7},
+	} {
+		if _, err := s.world.Run(ch, x+candidate.dx, y+candidate.dy, candidate.dir); err == nil {
+			targetX, targetY, targetDir = x+candidate.dx, y+candidate.dy, candidate.dir
+			break
+		}
+	}
+	s.processMove(server, &ch, mir176.Command{Ident: mir176.CMRun, Recog: int32(uint32(targetX) | uint32(targetY)<<16), Tag: uint16(targetDir), Series: mir176.CMRun}, true, false)
+	state.mu.Lock()
+	pending := state.pendingMoveMessages
+	state.mu.Unlock()
+	if pending != 1 {
+		t.Fatalf("pending run messages = %d, want 1 when prior filter state is false", pending)
+	}
+	s.delayedMu.Lock()
+	if s.delayedTimer != nil {
+		s.delayedTimer.Stop()
+	}
+	s.delayedEvents = nil
+	s.delayedTimer = nil
+	s.delayedActive = false
+	s.delayedMu.Unlock()
 }
 
 func TestHitDeliveryDelayUsesReferenceActionWindow(t *testing.T) {
@@ -3841,13 +5148,13 @@ func TestHandleHitDoesNotConsumeAttackIntervalForInvalidCoordinates(t *testing.T
 		})
 	}()
 	frame := readFrame(t, clientConn)
-	cmd, _, err := decodeMessageLikeClient(frame)
+	payload, err := mir176.UnwrapFrame(frame)
 	if err != nil {
-		t.Fatalf("decodeMessageLikeClient() error = %v", err)
+		t.Fatalf("UnwrapFrame() error = %v", err)
 	}
 	<-done
-	if cmd.Ident != mir176.SMMoveFail {
-		t.Fatalf("reply ident = %d, want %d", cmd.Ident, mir176.SMMoveFail)
+	if !strings.HasPrefix(string(payload), "+FAIL/") {
+		t.Fatalf("reply payload = %q, want +FAIL status", payload)
 	}
 
 	client.mu.Lock()
@@ -3877,6 +5184,143 @@ func TestMoveActionIntervalUsesReferenceDirectionalTransitions(t *testing.T) {
 	combat.ControlRunMagic = false
 	if got := moveActionInterval(combat, true, mir176.CMSpell, 1, 2); got != 0 {
 		t.Fatalf("disabled run-magic interval = %s, want no special interval", got)
+	}
+}
+
+func TestHandleRunQueuesReferenceDirectionalHitDelay(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "run-hit-delay", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+	state := s.clientForConn(server)
+	dir := world.Direction(x, y, x+2, y)
+	state.mu.Lock()
+	state.moveAt = time.Now().Add(-time.Second)
+	state.actionAt = time.Now()
+	state.actionIdent = mir176.CMHit
+	state.actionDir = (dir + 1) % 8
+	state.mu.Unlock()
+	s.processMove(server, &ch, mir176.Command{Ident: mir176.CMRun, Recog: int32(uint32(x+2) | uint32(y)<<16), Tag: uint16(dir)}, true, false)
+	state.mu.Lock()
+	pending := state.pendingMoveMessages
+	state.mu.Unlock()
+	if pending != 1 {
+		t.Fatalf("pending run messages = %d, want 1 after directional hit delay", pending)
+	}
+	s.delayedMu.Lock()
+	if s.delayedTimer != nil {
+		s.delayedTimer.Stop()
+	}
+	s.delayedEvents = nil
+	s.delayedTimer = nil
+	s.delayedActive = false
+	s.delayedMu.Unlock()
+}
+
+func TestHandleMoveQueuePreservesActionTimestampForActionDelay(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "action-delay-state", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	state := s.registerClient(server, ch)
+	oldActionAt := time.Now()
+	dir := world.Direction(x, y, x+1, y)
+	state.mu.Lock()
+	state.moveAt = oldActionAt.Add(-time.Second)
+	state.actionAt = oldActionAt
+	state.actionIdent = mir176.CMHit
+	state.actionDir = (dir + 1) % 8
+	state.mu.Unlock()
+	s.processMove(server, &ch, mir176.Command{Ident: mir176.CMWalk, Recog: int32(uint32(x+1) | uint32(y)<<16), Tag: uint16(dir)}, false, false)
+	state.mu.Lock()
+	pending := state.pendingMoveMessages
+	actionAt := state.actionAt
+	actionIdent := state.actionIdent
+	state.mu.Unlock()
+	if pending != 1 {
+		t.Fatalf("pending move messages = %d, want 1", pending)
+	}
+	if actionIdent != mir176.CMWalk {
+		t.Fatalf("queued action ident = %d, want walk", actionIdent)
+	}
+	if actionAt.Before(oldActionAt) || actionAt.After(oldActionAt.Add(20*time.Millisecond)) {
+		t.Fatalf("queued action timestamp = %v, want preserved near %v", actionAt, oldActionAt)
+	}
+	s.delayedMu.Lock()
+	if s.delayedTimer != nil {
+		s.delayedTimer.Stop()
+	}
+	s.delayedEvents = nil
+	s.delayedTimer = nil
+	s.delayedActive = false
+	s.delayedMu.Unlock()
+}
+
+func TestHandleMoveQueuesAllReferenceDirectionalActionDelays(t *testing.T) {
+	cases := []struct {
+		name          string
+		run           bool
+		previousIdent uint16
+	}{
+		{name: "walk-after-hit", previousIdent: mir176.CMHit},
+		{name: "walk-after-longhit", previousIdent: mir176.CMLongHit},
+		{name: "run-after-longhit", run: true, previousIdent: mir176.CMLongHit},
+		{name: "run-after-spell", run: true, previousIdent: mir176.CMSpell},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newTestServer(t)
+			mapID, x, y := testDefaultSpawn(t)
+			ch, err := s.world.CreateCharacterWithAppearance("test", tc.name, "warrior", 0, 0, mapID, x, y)
+			if err != nil {
+				t.Fatalf("CreateCharacter() error = %v", err)
+			}
+			server, client := net.Pipe()
+			defer server.Close()
+			defer client.Close()
+			state := s.registerClient(server, ch)
+			dir := 2
+			targetX, targetY := x+1, y
+			if tc.run {
+				targetX, targetY = x+2, y
+			}
+			state.mu.Lock()
+			state.moveAt = time.Now().Add(-time.Second)
+			state.actionAt = time.Now()
+			state.actionIdent = tc.previousIdent
+			state.actionDir = (dir + 1) % 8
+			state.mu.Unlock()
+			ident := uint16(mir176.CMWalk)
+			if tc.run {
+				ident = mir176.CMRun
+			}
+			s.processMove(server, &ch, mir176.Command{Ident: ident, Recog: int32(uint32(targetX) | uint32(targetY)<<16), Tag: uint16(dir)}, tc.run, false)
+			state.mu.Lock()
+			pending := state.pendingMoveMessages
+			state.mu.Unlock()
+			if pending != 1 {
+				t.Fatalf("pending %s messages = %d, want 1", tc.name, pending)
+			}
+			s.delayedMu.Lock()
+			if s.delayedTimer != nil {
+				s.delayedTimer.Stop()
+			}
+			s.delayedEvents = nil
+			s.delayedTimer = nil
+			s.delayedActive = false
+			s.delayedMu.Unlock()
+		})
 	}
 }
 
@@ -4238,12 +5682,12 @@ func TestHandleHitDoesNotAdvancePowerHitStateForRejectedSwing(t *testing.T) {
 	}()
 
 	frame := readFrame(t, client)
-	cmd, _, err := decodeMessageLikeClient(frame)
+	payload, err := mir176.UnwrapFrame(frame)
 	if err != nil {
-		t.Fatalf("decodeMessageLikeClient() error = %v", err)
+		t.Fatalf("UnwrapFrame() error = %v", err)
 	}
-	if cmd.Ident != mir176.SMMoveFail {
-		t.Fatalf("reply ident = %d, want %d", cmd.Ident, mir176.SMMoveFail)
+	if !strings.HasPrefix(string(payload), "+FAIL/") {
+		t.Fatalf("reply payload = %q, want +FAIL status", payload)
 	}
 	<-done
 
@@ -4409,8 +5853,8 @@ func TestHandleHitBroadcastsCharacterStruckToTarget(t *testing.T) {
 			break
 		}
 	}
-	if attackerStruckCmd.Ident != mir176.SMStruck || attackerStruckCmd.Recog != world.CharacterActorID(target) || attackerStruckCmd.Param == 0 || attackerStruckCmd.Param >= uint16(target.HP) || attackerStruckCmd.Tag != uint16(target.MaxHP) {
-		t.Fatalf("attacker struck frame = %+v, want target fields", attackerStruckCmd)
+	if attackerStruckCmd.Ident != mir176.SMStruck || attackerStruckCmd.Recog != world.CharacterActorID(attacker) || attackerStruckCmd.Param == 0 || attackerStruckCmd.Param >= uint16(target.HP) || attackerStruckCmd.Tag != uint16(target.MaxHP) {
+		t.Fatalf("attacker struck frame = %+v, want attacker and target fields", attackerStruckCmd)
 	}
 	assertMessageBodyWL(t, attackerStruckBody, s.world.HumanFeatureForCharacter(target), s.world.CharacterStatus(target), world.CharacterActorID(attacker), 0)
 	<-done
@@ -4680,6 +6124,9 @@ func TestHandleHitBroadcastsSpecialWeaponActionsToTargets(t *testing.T) {
 					continue
 				}
 				if cmd.Ident == mir176.SMChangeNameColor {
+					continue
+				}
+				if cmd.Ident == mir176.SMDuraChange || cmd.Ident == mir176.SMDelItems || cmd.Ident == mir176.SMDelItem {
 					continue
 				}
 				if cmd.Ident != mir176.SMHealthSpellChanged {
@@ -6251,8 +7698,8 @@ func TestSpellDurabilityMessageMatchesReferenceFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode durability frame error = %v", err)
 	}
-	if cmd.Ident != mir176.SMDuraChange || cmd.Recog != 37 || cmd.Param != uint16(world.SlotBujuk) || cmd.Tag != 99 || cmd.Series != 0 {
-		t.Fatalf("durability command = %+v, want dura=37 slot=%d duramax=99", cmd, world.SlotBujuk)
+	if cmd.Ident != mir176.SMDuraChange || cmd.Recog != int32(world.SlotBujuk) || cmd.Param != 37 || cmd.Tag != 99 || cmd.Series != 0 {
+		t.Fatalf("durability command = %+v, want slot=%d dura=37 duramax=99", cmd, world.SlotBujuk)
 	}
 	if len(body) != 0 {
 		t.Fatalf("durability body len = %d, want 0", len(body))
@@ -7162,7 +8609,6 @@ func TestHandleSpellExplosionBroadcastsMonsterHits(t *testing.T) {
 	if len(second.Monsters) != 1 {
 		t.Fatalf("SpawnMonsterByNameAt() second monsters = %d, want 1", len(second.Monsters))
 	}
-
 	server, client := net.Pipe()
 	defer server.Close()
 	defer client.Close()
@@ -7337,7 +8783,6 @@ func TestHandleSpellHellfireBroadcastsMonsterHits(t *testing.T) {
 	if len(second.Monsters) != 1 {
 		t.Fatalf("SpawnMonsterByNameAt() second monsters = %d, want 1", len(second.Monsters))
 	}
-
 	server, client := net.Pipe()
 	defer server.Close()
 	defer client.Close()
@@ -7371,7 +8816,9 @@ func TestHandleSpellHellfireBroadcastsMonsterHits(t *testing.T) {
 		s.handleSpell(server, &caster, mir176.Command{Ident: mir176.CMSpell, Recog: int32(uint32(targetX) | uint32(targetY)<<16), Param: 0, Tag: 9})
 	}()
 	<-done
-	tickResult, err := s.world.Tick(s.PlayerSnapshots(), time.Now().Add(2*time.Second))
+	tickCaster := caster
+	tickCaster.StoneMode = true
+	tickResult, err := s.world.Tick([]world.PlayerSnapshot{{Character: tickCaster}}, time.Now().Add(2*time.Second))
 	if err != nil {
 		t.Fatalf("Tick() error = %v", err)
 	}
@@ -7569,8 +9016,8 @@ func TestHandleSpellLightningLineBroadcastsHits(t *testing.T) {
 	if casterAck != 1 {
 		t.Fatalf("caster ack count = %d, want 1", casterAck)
 	}
-	if casterStruck != 3 {
-		t.Fatalf("caster SMStruck count = %d, want 3 for two monster hits and one character", casterStruck)
+	if casterStruck != 4 {
+		t.Fatalf("caster SMStruck count = %d, want 4 for two monster hits and two character notifications", casterStruck)
 	}
 	wantCasterHealth := 1
 	if cost > 0 {
@@ -7633,7 +9080,7 @@ func TestHandleSpellLightningLineBroadcastsHits(t *testing.T) {
 
 }
 
-func TestHandleSpellParalysisBroadcastsSpellOnly(t *testing.T) {
+func TestHandleSpellMabeBroadcastsSpellWithoutTrapNameColor(t *testing.T) {
 	s := newDataDirTestServer(t, testConfigsDir)
 	bundle, _, err := data.LoadConfigsWithReport(testConfigsDir)
 	if err != nil {
@@ -7881,15 +9328,15 @@ func TestHandleSpellSummonRefreshesMonsterAppearBroadcast(t *testing.T) {
 			if err != nil {
 				t.Fatalf("decode caster summon monster name error = %v", err)
 			}
-			if got := DecodeString(namePayload); got != "骷髅(tester)/255" {
-				t.Fatalf("caster summon monster name = %q, want %q", got, "骷髅(tester)/255")
+			if got := DecodeString(namePayload); got != "变异骷髅(tester)/255" {
+				t.Fatalf("caster summon monster name = %q, want %q", got, "变异骷髅(tester)/255")
 			}
 		case mir176.SMFeatureChanged:
 			casterFeature = true
 		case mir176.SMHealthSpellChanged:
 			casterHealth = true
 		case mir176.SMDuraChange:
-			if cmd.Param != uint16(world.SlotBujuk) || cmd.Recog != 9900 {
+			if cmd.Recog != int32(world.SlotBujuk) || cmd.Param != 9900 {
 				t.Fatalf("caster skeleton summon durability command = %+v, want slot %d and dura 9900", cmd, world.SlotBujuk)
 			}
 			casterDurability = true
@@ -7921,8 +9368,8 @@ func TestHandleSpellSummonRefreshesMonsterAppearBroadcast(t *testing.T) {
 			if err != nil {
 				t.Fatalf("decode observer summon monster name error = %v", err)
 			}
-			if got := DecodeString(namePayload); got != "骷髅(tester)/255" {
-				t.Fatalf("observer summon monster name = %q, want %q", got, "骷髅(tester)/255")
+			if got := DecodeString(namePayload); got != "变异骷髅(tester)/255" {
+				t.Fatalf("observer summon monster name = %q, want %q", got, "变异骷髅(tester)/255")
 			}
 		case mir176.SMFeatureChanged:
 			observerFeature = true
@@ -9755,13 +11202,14 @@ func TestHandleSpellIceStormBroadcastsMonsterHitsToObservers(t *testing.T) {
 	if targetX < 0 {
 		t.Fatal("could not find clear tile for ice storm test")
 	}
-	result, err := s.world.SpawnMonsterByNameAt(mapID, targetX, targetY, "黑色恶蛆1", 2)
+	result, err := s.world.SpawnMonsterByNameAt(mapID, targetX, targetY, "僵尸", 2)
 	if err != nil {
 		t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
 	}
 	if len(result.Monsters) != 2 {
 		t.Fatalf("SpawnMonsterByNameAt() monsters = %d, want 2", len(result.Monsters))
 	}
+	caster.X, caster.Y = targetX, targetY
 
 	server, client := net.Pipe()
 	defer server.Close()
@@ -11635,13 +13083,6 @@ func TestSpaceMoveSpellEventsUseHide2AndShow(t *testing.T) {
 	if areaCmd.Ident != mir176.SMAreaState {
 		t.Fatalf("area state command = %+v, want SM_AREASTATE", areaCmd)
 	}
-	mapDescCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
-	if err != nil {
-		t.Fatalf("decode map description frame error = %v", err)
-	}
-	if mapDescCmd.Ident != mir176.SMMapDescription {
-		t.Fatalf("map description command = %+v, want SM_MAPDESCRIPTION", mapDescCmd)
-	}
 	<-mapDone
 	if got := s.clientForConn(server).character(); got.MapID != show.MapID || got.X != show.X || got.Y != show.Y {
 		t.Fatalf("client state after space move = %+v, want map %q at (%d,%d)", got, show.MapID, show.X, show.Y)
@@ -11803,6 +13244,117 @@ func TestHandleSaySendsHearMessage(t *testing.T) {
 	}
 }
 
+func TestHandleSayPreservesLeadingSpaceBeforeCommand(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "space-tester", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleSay(server, &ch, []byte(" @letguild"))
+	}()
+	cmd, body, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() error = %v", err)
+	}
+	<-done
+	if cmd.Ident != mir176.SMHear {
+		t.Fatalf("ident = %d, want SM_HEAR (%d)", cmd.Ident, mir176.SMHear)
+	}
+	decoded, err := mir176.DecodePlain6Payload(body)
+	if err != nil {
+		t.Fatalf("DecodePlain6Payload() error = %v", err)
+	}
+	if got := DecodeString(decoded); got != "space-tester: @letguild" {
+		t.Fatalf("message = %q, want leading-space chat text", got)
+	}
+}
+
+func TestHandleSayMuteSendsOnePrompt(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "mute-tester", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	say := func() {
+		done := make(chan struct{})
+		go func() {
+			s.handleSay(server, &ch, []byte("hello"))
+			close(done)
+		}()
+		_ = readFrame(t, client)
+		<-done
+	}
+
+	say()
+	say()
+	done := make(chan struct{})
+	go func() {
+		s.handleSay(server, &ch, []byte("hello"))
+		close(done)
+	}()
+	cmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode mute prompt = %v", err)
+	}
+	if cmd.Ident != mir176.SMSystemMessage {
+		t.Fatalf("mute prompt ident = %d, want SMSystemMessage (%d)", cmd.Ident, mir176.SMSystemMessage)
+	}
+	<-done
+}
+
+func TestWeaponUpgradeUsesReferenceMCBonusForSCBranch(t *testing.T) {
+	s := newTestServer(t)
+	setWorldRandSource(t, s.world, &fixedRandSource{vals: []int64{0}})
+	item := storage.UserItem{ItemID: "测试武器"}
+	state := storage.WeaponUpgradeState{Item: item, BonusSC: 10}
+	updated := s.applyWeaponUpgradeResult(item, state, storage.Character{})
+	if updated.Desc[10] != 30 {
+		t.Fatalf("SC upgrade marker = %d, want 30 from reference BonusMC=0", updated.Desc[10])
+	}
+}
+
+func TestWeaponUpgradeAllowsBlackStoneWithoutAccessory(t *testing.T) {
+	s := newTestServer(t)
+	ch := storage.Character{BagItems: []storage.UserItem{{ItemID: "黑铁矿石", MakeIndex: 1, Dura: 1000}}}
+	dc, mc, sc, dura, removed, ok := s.weaponUpgradeMaterialStats(ch)
+	if !ok {
+		t.Fatal("black stone alone should start the reference upgrade material calculation")
+	}
+	if dc != 0 || mc != 0 || sc != 0 || dura == 0 || len(removed) != 1 {
+		t.Fatalf("black-stone-only stats = dc:%d mc:%d sc:%d dura:%d removed:%d", dc, mc, sc, dura, len(removed))
+	}
+}
+
+func TestWeaponUpgradeStoresAndChecksNPCIdentity(t *testing.T) {
+	s := newTestServer(t)
+	ch := storage.Character{
+		Gold:          10000,
+		EquippedItems: map[int]storage.UserItem{SlotWeapon: {ItemID: "测试武器"}},
+		BagItems:      []storage.UserItem{{ItemID: "黑铁矿石", Dura: 5000}},
+	}
+	updated, _, state, ok := s.startWeaponUpgrade(ch, "炼武器-0151")
+	if !ok || state == nil || updated.WeaponUpgrade == nil {
+		t.Fatal("startWeaponUpgrade() did not create upgrade state")
+	}
+	if got := updated.WeaponUpgrade.NPCID; got != "炼武器-0151" {
+		t.Fatalf("npc id = %q, want 炼武器-0151", got)
+	}
+}
+
 func TestHandleClickNPCSendsMerchantSay(t *testing.T) {
 	s := newTestServer(t)
 	entity := testGuideNPC()
@@ -11837,6 +13389,29 @@ func TestHandleClickNPCSendsMerchantSay(t *testing.T) {
 	}
 	if got := DecodeString(text); got != "Guide/你好，这是 NPC 标准库测试。\\ \\<继续/@info>" {
 		t.Fatalf("message = %q, want guide main dialogue", got)
+	}
+}
+
+func TestTruncateSayMessageUsesReferenceByteLimit(t *testing.T) {
+	line := strings.Repeat("中", 50)
+	got := truncateSayMessage(line, 80)
+	encoded, err := simplifiedchinese.GB18030.NewEncoder().String(got)
+	if err != nil {
+		t.Fatalf("encode truncated message: %v", err)
+	}
+	if len(encoded) != 80 || got != strings.Repeat("中", 40) {
+		t.Fatalf("truncated message = %q, encoded length %d; want 40 Chinese characters and 80 bytes", got, len(encoded))
+	}
+}
+
+func TestMerchantBuyRangeIncludesFifteenTiles(t *testing.T) {
+	ch := storage.Character{MapID: "0", X: 100, Y: 100}
+	entity := npc.Entity{MapID: "0", X: 115, Y: 115}
+	if !merchantWithinBuyRange(ch, entity) {
+		t.Fatal("buy range should include a 15-tile boundary")
+	}
+	if merchantWithinStorageRange(ch, entity) {
+		t.Fatal("storage/sell range should remain strict at 15 tiles")
 	}
 }
 
@@ -11981,7 +13556,7 @@ func TestHandleMerchantDlgSelectContinuesNPCScript(t *testing.T) {
 	selectDone := make(chan struct{})
 	go func() {
 		defer close(selectDone)
-		s.handleMerchantDlgSelect(server, &ch, activeClient, mir176.Command{Ident: mir176.CMMerchantDlgSelect, Recog: s.world.NPCActorID("guide")}, WireString(t, "info"))
+		s.handleMerchantDlgSelect(server, &ch, activeClient, mir176.Command{Ident: mir176.CMMerchantDlgSelect, Recog: s.world.NPCActorID("guide")}, WireString(t, "@info"))
 	}()
 	cmd, body, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
@@ -11997,6 +13572,25 @@ func TestHandleMerchantDlgSelectContinuesNPCScript(t *testing.T) {
 	}
 	if got := DecodeString(text); got != "Guide/你已经点到 NPC 了。\\ \\<返回/@main>" {
 		t.Fatalf("message = %q, want info dialogue", got)
+	}
+}
+
+func TestHandleMerchantDlgSelectIgnoresPlainTextWithoutPendingInput(t *testing.T) {
+	s := newTestServer(t)
+	entity := testGuideNPC()
+	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, entity.MapID, entity.X, entity.Y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	activeClient := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+	s.handleMerchantDlgSelect(server, &ch, activeClient, mir176.Command{Ident: mir176.CMMerchantDlgSelect, Recog: s.world.NPCActorID("guide")}, WireString(t, "info"))
+	_ = client.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+	if _, ok := readFrameWithTimeout(t, client, 100*time.Millisecond); ok {
+		t.Fatal("plain merchant input emitted a response")
 	}
 }
 
@@ -12026,6 +13620,9 @@ func TestHandleMerchantDlgSelectOpensBuyList(t *testing.T) {
 	<-done
 	if cmd.Ident != mir176.SMSendGoodsList {
 		t.Fatalf("ident = %d, want SMSendGoodsList (%d)", cmd.Ident, mir176.SMSendGoodsList)
+	}
+	if cmd.Recog != s.world.NPCActorID("guide") || cmd.Param == 0 || cmd.Tag != 0 {
+		t.Fatalf("numeric fields = recog:%d param:%d tag:%d, want merchant handle, positive count and zero tag", cmd.Recog, cmd.Param, cmd.Tag)
 	}
 	if len(body) == 0 {
 		t.Fatal("expected buy list body")
@@ -12200,16 +13797,13 @@ func TestHandleUserGetDetailItemReturnsEncodedItemRows(t *testing.T) {
 		t.Fatalf("ident = %d, want SMSendDetailGoodsList (%d)", cmd.Ident, mir176.SMSendDetailGoodsList)
 	}
 	if cmd.Recog != s.world.NPCActorID("guide") {
-		t.Fatalf("merchant id = %d, want %d", cmd.Recog, s.world.NPCActorID("guide"))
+		t.Fatalf("recognition = %d, want merchant id %d", cmd.Recog, s.world.NPCActorID("guide"))
 	}
-	if int(cmd.Param) == 0 {
+	if cmd.Param == 0 {
 		t.Fatal("expected non-zero detail item count")
 	}
 	if cmd.Tag != 0 {
 		t.Fatalf("page = %d, want 0", cmd.Tag)
-	}
-	if cmd.Series != 0 {
-		t.Fatalf("series = %d, want 0", cmd.Series)
 	}
 	decodedBody, err := mir176.DecodePlain6Payload(body)
 	if err != nil {
@@ -12261,10 +13855,8 @@ func TestHandleMerchantQuerySellPriceReturnsPrice(t *testing.T) {
 	if cmd.Ident != mir176.SMSendBuyPrice {
 		t.Fatalf("ident = %d, want SMSendBuyPrice (%d)", cmd.Ident, mir176.SMSendBuyPrice)
 	}
-	item, _ := s.world.Item(testHPItemID)
-	want := merchantSellPrice(item, ch.BagItems[0], entity.Merchant.PriceRate)
-	if int(cmd.Recog) != want {
-		t.Fatalf("price = %d, want %d", cmd.Recog, want)
+	if cmd.Recog <= 0 || cmd.Param != 0 || cmd.Tag != 0 || cmd.Series != 0 {
+		t.Fatalf("price fields = recog:%d param:%d tag:%d series:%d, want positive price in Recog", cmd.Recog, cmd.Param, cmd.Tag, cmd.Series)
 	}
 }
 
@@ -12293,27 +13885,30 @@ func TestHandleUserBuyItemAddsItemImmediately(t *testing.T) {
 		}, WireString(t, testHPItemID))
 	}()
 
+	weightCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode weight frame error = %v", err)
+	}
+	if weightCmd.Ident != mir176.SMWeightChanged {
+		t.Fatalf("first ident = %d, want SMWeightChanged (%d)", weightCmd.Ident, mir176.SMWeightChanged)
+	}
 	cmd1, _, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
-		t.Fatalf("decodeMessageLikeClient() #1 error = %v", err)
+		t.Fatalf("decode add frame error = %v", err)
 	}
 	cmd2, _, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
-		t.Fatalf("decodeMessageLikeClient() #2 error = %v", err)
-	}
-	cmd3, _, err := decodeMessageLikeClient(readFrame(t, client))
-	if err != nil {
-		t.Fatalf("decodeMessageLikeClient() #3 error = %v", err)
+		t.Fatalf("decode success frame error = %v", err)
 	}
 	<-done
-	if cmd1.Ident != mir176.SMBuyItemSuccess {
-		t.Fatalf("first ident = %d, want SMBuyItemSuccess (%d)", cmd1.Ident, mir176.SMBuyItemSuccess)
+	if cmd1.Ident != mir176.SMAddItem {
+		t.Fatalf("second ident = %d, want SMAddItem (%d)", cmd1.Ident, mir176.SMAddItem)
 	}
-	if cmd2.Ident != mir176.SMAddItem {
-		t.Fatalf("second ident = %d, want SMAddItem (%d)", cmd2.Ident, mir176.SMAddItem)
+	if cmd2.Ident != mir176.SMBuyItemSuccess {
+		t.Fatalf("second ident = %d, want SMBuyItemSuccess (%d)", cmd2.Ident, mir176.SMBuyItemSuccess)
 	}
-	if cmd3.Ident != mir176.SMGoldChanged {
-		t.Fatalf("third ident = %d, want SMGoldChanged (%d)", cmd3.Ident, mir176.SMGoldChanged)
+	if cmd2.Recog != int32(ch.Gold) || (cmd2.Param == 0 && cmd2.Tag == 0) {
+		t.Fatalf("buy success fields = recog:%d param:%d tag:%d, want gold:%d and stock index", cmd2.Recog, cmd2.Param, cmd2.Tag, ch.Gold)
 	}
 	if len(ch.BagItems) != before+1 {
 		t.Fatalf("bag len = %d, want %d", len(ch.BagItems), before+1)
@@ -12322,6 +13917,9 @@ func TestHandleUserBuyItemAddsItemImmediately(t *testing.T) {
 	for _, entry := range ch.BagItems {
 		if entry.ItemID == testHPItemID {
 			found = true
+			if entry.MakeIndex <= 0 {
+				t.Fatalf("bought make index = %d, want positive item index", entry.MakeIndex)
+			}
 			break
 		}
 	}
@@ -12380,6 +13978,47 @@ func TestHandleUserBuyItemFailsWhenBagIsFull(t *testing.T) {
 	}
 }
 
+func TestHandleUserBuyItemFailsWhenWeightIsFull(t *testing.T) {
+	s := newTestServer(t)
+	entity := testGuideNPC()
+	mapID, x, y := entity.MapID, entity.X, entity.Y
+	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.Gold = 100000
+	ch.BagItems = make([]storage.UserItem, 8)
+	for i := range ch.BagItems {
+		ch.BagItems[i] = storage.UserItem{ItemID: testWeaponID, MakeIndex: int32(i + 1)}
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	activeClient := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleUserBuyItem(server, &ch, activeClient, mir176.Command{
+			Ident: mir176.CMUserBuyItem,
+			Recog: s.world.NPCActorID("guide"),
+		}, WireString(t, testHPItemID))
+	}()
+
+	cmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() error = %v", err)
+	}
+	<-done
+	if cmd.Ident != mir176.SMBuyItemFail {
+		t.Fatalf("ident = %d, want SMBuyItemFail (%d)", cmd.Ident, mir176.SMBuyItemFail)
+	}
+	if len(ch.BagItems) != 8 {
+		t.Fatalf("bag len = %d, want 8", len(ch.BagItems))
+	}
+}
+
 func TestHandleUserSellItemAddsMerchantStock(t *testing.T) {
 	s := newTestServer(t)
 	entity := testGuideNPC()
@@ -12410,20 +14049,55 @@ func TestHandleUserSellItemAddsMerchantStock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decodeMessageLikeClient() error = %v", err)
 	}
-	goldCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	weightCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
-		t.Fatalf("decodeMessageLikeClient() gold error = %v", err)
+		t.Fatalf("decodeMessageLikeClient() weight error = %v", err)
 	}
 	<-done
 	if cmd.Ident != mir176.SMUserSellItemOK {
 		t.Fatalf("ident = %d, want SMUserSellItemOK (%d)", cmd.Ident, mir176.SMUserSellItemOK)
 	}
-	if goldCmd.Ident != mir176.SMGoldChanged {
-		t.Fatalf("gold ident = %d, want SMGoldChanged (%d)", goldCmd.Ident, mir176.SMGoldChanged)
+	if cmd.Recog != int32(ch.Gold) {
+		t.Fatalf("sell remaining gold = %d, want %d", cmd.Recog, ch.Gold)
+	}
+	if weightCmd.Ident != mir176.SMWeightChanged {
+		t.Fatalf("weight ident = %d, want SMWeightChanged (%d)", weightCmd.Ident, mir176.SMWeightChanged)
 	}
 	stocks := s.world.MerchantStock("guide")
 	if len(stocks) != 4 {
 		t.Fatalf("merchant stocks = %+v, want 4 stock entries", stocks)
+	}
+}
+
+func TestHandleUserSellItemRejectsGoldLimit(t *testing.T) {
+	s := newTestServer(t)
+	entity := testGuideNPC()
+	ch, err := s.world.CreateCharacterWithAppearance("test", "gold-limit-sell", "warrior", 0, 0, entity.MapID, entity.X, entity.Y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.Gold = s.world.Gameplay().Item.MaxGold
+	ch.BagItems = []storage.UserItem{{ItemID: testHPItemID, MakeIndex: 77}}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	activeClient := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleUserSellItem(server, &ch, activeClient, mir176.Command{Ident: mir176.CMUserSellItem, Recog: s.world.NPCActorID("guide"), Param: 77}, WireString(t, testHPItemID))
+	}()
+	cmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode failure frame error = %v", err)
+	}
+	if cmd.Ident != mir176.SMUserSellItemFail {
+		t.Fatalf("ident = %d, want SMUserSellItemFail (%d)", cmd.Ident, mir176.SMUserSellItemFail)
+	}
+	<-done
+	if len(ch.BagItems) != 1 || ch.Gold != s.world.Gameplay().Item.MaxGold {
+		t.Fatalf("character after rejected sell = %+v, want item and unchanged gold", ch)
 	}
 }
 
@@ -12436,10 +14110,10 @@ func TestHandleUserRepairItemNormalRepairReducesMaxDurability(t *testing.T) {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
 	ch.Gold = 100000
-	ch.BagItems = []storage.UserItem{{ItemID: testWeaponID, MakeIndex: 77, Dura: 30, DuraMax: 60}}
+	ch.BagItems = []storage.UserItem{{ItemID: testWeaponID, MakeIndex: 77, Dura: 2000, DuraMax: 4000}}
 	if entry, item, ok := merchantBagItemByMakeIndex(ch, 77, testWeaponID, s.world); !ok {
 		t.Fatalf("merchantBagItemByMakeIndex() failed for %s", testWeaponID)
-	} else if price := merchantRepairPrice(item, entry, false, s.world.Gameplay().Castle.SuperRepairPriceRate); price <= 0 {
+	} else if price := merchantRepairPrice(item, entry, entity.Merchant.PriceRate, false, s.world.Gameplay().Castle.SuperRepairPriceRate); price <= 0 {
 		t.Fatalf("repair price = %d, item=%+v entry=%+v", price, item, entry)
 	}
 	server, client := net.Pipe()
@@ -12462,25 +14136,39 @@ func TestHandleUserRepairItemNormalRepairReducesMaxDurability(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decodeMessageLikeClient() error = %v", err)
 	}
-	goldCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
-	if err != nil {
-		t.Fatalf("decodeMessageLikeClient() gold error = %v", err)
-	}
 	<-done
 	if cmd.Ident != mir176.SMUserRepairItemOK {
 		t.Fatalf("ident = %d, want SMUserRepairItemOK (%d)", cmd.Ident, mir176.SMUserRepairItemOK)
 	}
-	if goldCmd.Ident != mir176.SMGoldChanged {
-		t.Fatalf("gold ident = %d, want SMGoldChanged (%d)", goldCmd.Ident, mir176.SMGoldChanged)
+	if cmd.Recog != int32(ch.Gold) || cmd.Param != 3934 || cmd.Tag != 3934 {
+		t.Fatalf("repair fields = recog:%d param:%d tag:%d, want gold:%d and durability 3934", cmd.Recog, cmd.Param, cmd.Tag, ch.Gold)
 	}
-	if got, want := ch.BagItems[0].DuraMax, uint16(59); got != want {
+	if got, want := ch.BagItems[0].DuraMax, uint16(3934); got != want {
 		t.Fatalf("duraMax = %d, want %d", got, want)
 	}
-	if got, want := ch.BagItems[0].Dura, uint16(59); got != want {
+	if got, want := ch.BagItems[0].Dura, uint16(3934); got != want {
 		t.Fatalf("dura = %d, want %d", got, want)
 	}
 	if ch.Gold >= 100000 {
 		t.Fatalf("gold = %d, want reduced", ch.Gold)
+	}
+}
+
+func TestMerchantUserItemPriceMatchesReferenceForOverDurableMine(t *testing.T) {
+	item := data.StdItem{Price: 100, StdMode: 43, DuraMax: 100}
+	entry := storage.UserItem{Dura: 11000, DuraMax: 5000}
+
+	if got, want := merchantUserItemPrice(item, entry), 9135; got != want {
+		t.Fatalf("merchantUserItemPrice() = %d, want %d", got, want)
+	}
+}
+
+func TestMerchantUserItemPriceUsesReferenceIntegerScaling(t *testing.T) {
+	item := data.StdItem{Price: 101, StdMode: 7, DuraMax: 100}
+	entry := storage.UserItem{Dura: 50, DuraMax: 100}
+	entry.Desc[0] = 7
+	if got, want := merchantUserItemPrice(item, entry), 105; got != want {
+		t.Fatalf("merchantUserItemPrice() = %d, want %d", got, want)
 	}
 }
 
@@ -12493,10 +14181,10 @@ func TestHandleUserRepairItemSpecialRepairKeepsMaxDurability(t *testing.T) {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
 	ch.Gold = 100000
-	ch.BagItems = []storage.UserItem{{ItemID: testWeaponID, MakeIndex: 77, Dura: 30, DuraMax: 60}}
+	ch.BagItems = []storage.UserItem{{ItemID: testWeaponID, MakeIndex: 77, Dura: 2000, DuraMax: 4000}}
 	if entry, item, ok := merchantBagItemByMakeIndex(ch, 77, testWeaponID, s.world); !ok {
 		t.Fatalf("merchantBagItemByMakeIndex() failed for %s", testWeaponID)
-	} else if price := merchantRepairPrice(item, entry, true, s.world.Gameplay().Castle.SuperRepairPriceRate); price <= 0 {
+	} else if price := merchantRepairPrice(item, entry, entity.Merchant.PriceRate, true, s.world.Gameplay().Castle.SuperRepairPriceRate); price <= 0 {
 		t.Fatalf("special repair price = %d, item=%+v entry=%+v", price, item, entry)
 	}
 	server, client := net.Pipe()
@@ -12522,21 +14210,14 @@ func TestHandleUserRepairItemSpecialRepairKeepsMaxDurability(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decodeMessageLikeClient() error = %v", err)
 	}
-	goldCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
-	if err != nil {
-		t.Fatalf("decodeMessageLikeClient() gold error = %v", err)
-	}
 	<-done
 	if cmd.Ident != mir176.SMUserRepairItemOK {
 		t.Fatalf("ident = %d, want SMUserRepairItemOK (%d)", cmd.Ident, mir176.SMUserRepairItemOK)
 	}
-	if goldCmd.Ident != mir176.SMGoldChanged {
-		t.Fatalf("gold ident = %d, want SMGoldChanged (%d)", goldCmd.Ident, mir176.SMGoldChanged)
-	}
-	if got, want := ch.BagItems[0].DuraMax, uint16(60); got != want {
+	if got, want := ch.BagItems[0].DuraMax, uint16(4000); got != want {
 		t.Fatalf("duraMax = %d, want %d", got, want)
 	}
-	if got, want := ch.BagItems[0].Dura, uint16(60); got != want {
+	if got, want := ch.BagItems[0].Dura, uint16(4000); got != want {
 		t.Fatalf("dura = %d, want %d", got, want)
 	}
 	if ch.Gold >= 100000 {
@@ -12572,11 +14253,21 @@ func TestHandleMerchantDlgSelectOpensStorageWindow(t *testing.T) {
 	if cmd.Ident != mir176.SMSendUserStorageItem {
 		t.Fatalf("ident = %d, want SMSendUserStorageItem (%d)", cmd.Ident, mir176.SMSendUserStorageItem)
 	}
-	if cmd.Recog != 0 {
-		t.Fatalf("recog = %d, want 0", cmd.Recog)
+	if cmd.Recog != s.world.NPCActorID("guide") || cmd.Param != 0 {
+		t.Fatalf("numeric fields = recog:%d param:%d, want merchant handle and zero param", cmd.Recog, cmd.Param)
 	}
-	if cmd.Param != uint16(s.world.NPCActorID("guide")) {
-		t.Fatalf("merchant id = %d, want %d", cmd.Param, s.world.NPCActorID("guide"))
+}
+
+func TestHandleWarehouseMerchantDlgSelectRequiresStorageCapability(t *testing.T) {
+	s := newTestServer(t)
+	entity := testGuideNPC()
+	entity.Merchant.Capabilities.Storage = false
+	ch := storage.Character{}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	if handled := s.handleWarehouseMerchantDlgSelect(server, &ch, entity, "@mbind"); handled {
+		t.Fatal("handleWarehouseMerchantDlgSelect() handled non-storage merchant")
 	}
 }
 
@@ -12630,6 +14321,7 @@ func TestHandleMerchantDlgSelectOpensWarehouseBindMenu(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
+	ch.X, ch.Y = 301, 257
 	server, client := net.Pipe()
 	defer server.Close()
 	defer client.Close()
@@ -12657,6 +14349,25 @@ func TestHandleMerchantDlgSelectOpensWarehouseBindMenu(t *testing.T) {
 	got := DecodeString(text)
 	if !strings.Contains(got, "用金币<交换/@changeGold>金条") {
 		t.Fatalf("message = %q, want warehouse bind menu", got)
+	}
+}
+
+func TestResolveMerchantEntityRejectsStaleActiveNPCFallback(t *testing.T) {
+	s := newTestServer(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "stale-npc", "warrior", 0, 0, testMapID, 10, 10)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	activeClient := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+	activeClient.mu.Lock()
+	activeClient.activeNPCID = "guide"
+	activeClient.mu.Unlock()
+	if _, ok := s.resolveMerchantEntity(activeClient, mir176.Command{Recog: 0}); ok {
+		t.Fatal("resolveMerchantEntity() accepted stale active NPC for invalid actor")
 	}
 }
 
@@ -12688,8 +14399,8 @@ func TestHandleMerchantDlgSelectOpensMakeDrugList(t *testing.T) {
 	if cmd.Ident != mir176.SMSendUserMakeDrugItemList {
 		t.Fatalf("ident = %d, want SMSendUserMakeDrugItemList (%d)", cmd.Ident, mir176.SMSendUserMakeDrugItemList)
 	}
-	if cmd.Param != uint16(s.world.NPCActorID("maker")) {
-		t.Fatalf("merchant id = %d, want %d", cmd.Param, s.world.NPCActorID("maker"))
+	if cmd.Recog != s.world.NPCActorID("maker") || cmd.Param != 0 || cmd.Series != 0 {
+		t.Fatalf("numeric fields = recog:%d param:%d series:%d, want merchant handle and zero remaining fields", cmd.Recog, cmd.Param, cmd.Series)
 	}
 	if len(body) == 0 {
 		t.Fatal("expected make drug list body")
@@ -12704,6 +14415,7 @@ func TestHandleMerchantDlgSelectExchangesGoldToGoldBar(t *testing.T) {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
 	ch.Gold = 1002000
+	ch.X, ch.Y = 301, 257
 	ch.BagItems = nil
 	server, client := net.Pipe()
 	defer server.Close()
@@ -12769,6 +14481,7 @@ func TestHandleMerchantDlgSelectBundlesScrolls(t *testing.T) {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
 	ch.Gold = 100
+	ch.X, ch.Y = 301, 257
 	ch.BagItems = []storage.UserItem{
 		{ItemID: "回城卷", MakeIndex: 1},
 		{ItemID: "回城卷", MakeIndex: 2},
@@ -12878,6 +14591,151 @@ func TestHandleMerchantDlgSelectTeleportsFromTeleporterNpc(t *testing.T) {
 	}
 }
 
+func TestHandleUserBuyItemRejectsDuringDeal(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "buyer-during-deal", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.Gold = 10000
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	activeClient := s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+	activeClient.mu.Lock()
+	activeClient.dealPeerID = "other"
+	activeClient.mu.Unlock()
+	beforeGold := ch.Gold
+	beforeItems := len(ch.BagItems)
+	s.handleUserBuyItem(server, &ch, activeClient, mir176.Command{Ident: mir176.CMUserBuyItem, Recog: s.world.NPCActorID("guide")}, WireString(t, testHPItemID))
+	if ch.Gold != beforeGold {
+		t.Fatalf("gold changed during deal: got %d want %d", ch.Gold, beforeGold)
+	}
+	if len(ch.BagItems) != beforeItems {
+		t.Fatalf("bag changed during deal: got %d items want %d", len(ch.BagItems), beforeItems)
+	}
+}
+
+func TestHandleGuildBreakAllyUsesReferenceFailurePacket(t *testing.T) {
+	s := newTestServer(t)
+	ch := storage.Character{ID: "guild-break", Name: "GuildMaster", GuildID: "guild-a", GuildRank: 1}
+	if err := s.store.SaveGuild(storage.Guild{ID: "guild-a", Alliance: "guild-b"}); err != nil {
+		t.Fatalf("SaveGuild() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleGuildBreakAlly(server, &ch, WireString(t, "guild-c"))
+	}()
+	cmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode failure packet: %v", err)
+	}
+	if cmd.Ident != mir176.SMGuildMakeAllyFail || cmd.Recog != 0 {
+		t.Fatalf("failure packet = %+v, want make-ally failure with recog 0", cmd)
+	}
+	<-done
+}
+
+func TestHandleGuildAllyChecksTargetAuthBeforeMaster(t *testing.T) {
+	s := newTestServer(t)
+	active := storage.Character{ID: "guild-ally-active", Name: "ActiveMaster", GuildID: "guild-a", GuildRank: 1, MapID: "0", X: 10, Y: 10, Dir: 0}
+	target := storage.Character{ID: "guild-ally-target", Name: "TargetMember", GuildID: "guild-b", GuildRank: 2, MapID: "0", X: 10, Y: 9, Dir: 4}
+	if err := s.store.SaveGuild(storage.Guild{ID: "guild-a", EnableAuthAlly: true}); err != nil {
+		t.Fatalf("SaveGuild() error = %v", err)
+	}
+	if err := s.store.SaveGuild(storage.Guild{ID: "guild-b", EnableAuthAlly: false}); err != nil {
+		t.Fatalf("SaveGuild() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, active)
+	s.registerClient(client, target)
+	defer s.unregisterClient(server)
+	defer s.unregisterClient(client)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleGuildAlly(server, &active)
+	}()
+	cmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode failure packet: %v", err)
+	}
+	if cmd.Ident != mir176.SMGuildMakeAllyFail || cmd.Recog != -4 {
+		t.Fatalf("failure packet = %+v, want target-auth failure", cmd)
+	}
+	<-done
+}
+
+func TestGuildAlliancesCoexistAndBreakIndependently(t *testing.T) {
+	s := newTestServer(t)
+	for _, guild := range []storage.Guild{{ID: "guild-a"}, {ID: "guild-b"}, {ID: "guild-c"}} {
+		if err := s.store.SaveGuild(guild); err != nil {
+			t.Fatalf("SaveGuild() error = %v", err)
+		}
+	}
+	member, err := s.store.InsertCharacter(storage.Character{Account: "guild-account", Name: "guild-member", GuildID: "guild-a"})
+	if err != nil {
+		t.Fatalf("InsertCharacter() error = %v", err)
+	}
+	if !s.setGuildAlliance("guild-a", "guild-b") || !s.setGuildAlliance("guild-a", "guild-c") {
+		t.Fatal("setGuildAlliance() should allow multiple allies")
+	}
+	guild, _ := s.store.Guild("guild-a")
+	if !reflect.DeepEqual(guild.Alliances, []string{"guild-b", "guild-c"}) {
+		t.Fatalf("alliances = %v, want [guild-b guild-c]", guild.Alliances)
+	}
+	member, ok := s.store.Character(member.ID)
+	if !ok || !reflect.DeepEqual(member.GuildAllianceIDs, []string{"guild-b", "guild-c"}) {
+		t.Fatalf("offline member alliances = %v (found=%t), want [guild-b guild-c]", member.GuildAllianceIDs, ok)
+	}
+	if !s.removeGuildAlliance("guild-a", "guild-b") {
+		t.Fatal("removeGuildAlliance() failed")
+	}
+	guild, _ = s.store.Guild("guild-a")
+	if !reflect.DeepEqual(guild.Alliances, []string{"guild-c"}) {
+		t.Fatalf("alliances after break = %v, want [guild-c]", guild.Alliances)
+	}
+}
+
+func TestHandleOpenGuildDialogIncludesWarsAndAlliances(t *testing.T) {
+	s := newTestServer(t)
+	if err := s.store.SaveGuild(storage.Guild{ID: "guild-a", Notice: "notice", Wars: map[string]bool{"guild-z": true, "guild-b": true, "guild-off": false}, Alliances: []string{"guild-c", "guild-d"}}); err != nil {
+		t.Fatalf("SaveGuild() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleOpenGuildDialog(server, &storage.Character{GuildID: "guild-a", GuildRank: 1})
+	}()
+	cmd, text, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode guild dialog: %v", err)
+	}
+	if cmd.Ident != mir176.SMOpenGuildDialog {
+		t.Fatalf("command = %v, want guild dialog", cmd.Ident)
+	}
+	decodedBody, err := mir176.DecodePlain6Payload(text)
+	if err != nil {
+		t.Fatalf("decode guild dialog body: %v", err)
+	}
+	body := DecodeString(decodedBody)
+	if !strings.Contains(body, "<KillGuilds>\r\nguild-b\r\nguild-z\r\n<AllyGuilds>\r\nguild-c\r\nguild-d\r\n") {
+		t.Fatalf("guild dialog body = %q, missing ordered relationship lists", body)
+	}
+	<-done
+}
+
 func TestTeleporterTimeMessageUsesGreetingByHour(t *testing.T) {
 	got := teleporterTimeMessage(time.Date(2026, time.August, 23, 7, 5, 0, 0, time.Local), "Tester")
 	if !strings.Contains(got, "Tester 早上好！") {
@@ -12928,6 +14786,10 @@ func TestHandleUserMakeDrugItemConsumesMaterialsAndAddsItem(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decodeMessageLikeClient() del error = %v", err)
 	}
+	weightCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decodeMessageLikeClient() weight error = %v", err)
+	}
 	addCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
 		t.Fatalf("decodeMessageLikeClient() add error = %v", err)
@@ -12943,8 +14805,14 @@ func TestHandleUserMakeDrugItemConsumesMaterialsAndAddsItem(t *testing.T) {
 	if addCmd.Ident != mir176.SMAddItem {
 		t.Fatalf("add ident = %d, want SMAddItem (%d)", addCmd.Ident, mir176.SMAddItem)
 	}
+	if weightCmd.Ident != mir176.SMWeightChanged {
+		t.Fatalf("weight ident = %d, want SMWeightChanged (%d)", weightCmd.Ident, mir176.SMWeightChanged)
+	}
 	if okCmd.Ident != mir176.SMMakeDrugSuccess {
 		t.Fatalf("ok ident = %d, want SMMakeDrugSuccess (%d)", okCmd.Ident, mir176.SMMakeDrugSuccess)
+	}
+	if okCmd.Recog != 900 {
+		t.Fatalf("ok remaining gold = %d, want 900", okCmd.Recog)
 	}
 	if got := len(ch.BagItems); got != 1 {
 		t.Fatalf("bag items = %d, want 1", got)
@@ -12980,11 +14848,11 @@ func TestHandleUserStorageItemReturnsStorageOK(t *testing.T) {
 		defer close(done)
 		s.handleUserStorageItem(server, &ch, activeClient, mir176.Command{Ident: mir176.CMUserStorageItem, Recog: s.world.NPCActorID("guide"), Param: uint16(77)}, WireString(t, testHPItemID))
 	}()
-	cmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	weightCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
 		t.Fatalf("decodeMessageLikeClient() error = %v", err)
 	}
-	weightCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	cmd, _, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
 		t.Fatalf("decodeMessageLikeClient() weight error = %v", err)
 	}
@@ -13022,17 +14890,20 @@ func TestHandleUserTakeBackStorageItemReturnsTakeBackOK(t *testing.T) {
 		defer close(done)
 		s.handleUserTakeBackStorageItem(server, &ch, activeClient, mir176.Command{Ident: mir176.CMUserTakeBackStorageItem, Recog: s.world.NPCActorID("guide"), Param: uint16(77)}, WireString(t, testHPItemID))
 	}()
-	cmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	weightCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
-		t.Fatalf("decodeMessageLikeClient() error = %v", err)
+		t.Fatalf("decode weight error = %v", err)
+	}
+	if weightCmd.Ident != mir176.SMWeightChanged {
+		t.Fatalf("weight ident = %d, want SMWeightChanged (%d)", weightCmd.Ident, mir176.SMWeightChanged)
 	}
 	addCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
-		t.Fatalf("decodeMessageLikeClient() add error = %v", err)
+		t.Fatalf("decode add error = %v", err)
 	}
-	weightCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	cmd, _, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
-		t.Fatalf("decodeMessageLikeClient() weight error = %v", err)
+		t.Fatalf("decodeMessageLikeClient() add error = %v", err)
 	}
 	<-done
 	if cmd.Ident != mir176.SMTakeBackStorageItemOK {
@@ -13041,14 +14912,33 @@ func TestHandleUserTakeBackStorageItemReturnsTakeBackOK(t *testing.T) {
 	if addCmd.Ident != mir176.SMAddItem {
 		t.Fatalf("add ident = %d, want SMAddItem (%d)", addCmd.Ident, mir176.SMAddItem)
 	}
-	if weightCmd.Ident != mir176.SMWeightChanged {
-		t.Fatalf("weight ident = %d, want SMWeightChanged (%d)", weightCmd.Ident, mir176.SMWeightChanged)
-	}
 	if got := len(ch.BagItems); got != beforeBag+1 {
 		t.Fatalf("bag items = %d, want %d", got, beforeBag+1)
 	}
 	if got := len(ch.StorageItems); got != beforeStorage-1 {
 		t.Fatalf("storage items = %d, want %d", got, beforeStorage-1)
+	}
+}
+
+func TestMerchantWithinStorageRangeMatchesReferenceGate(t *testing.T) {
+	ch := storage.Character{MapID: testMapID, X: 100, Y: 100}
+	tests := []struct {
+		name   string
+		entity npc.Entity
+		want   bool
+	}{
+		{name: "same position", entity: npc.Entity{MapID: testMapID, X: 100, Y: 100}, want: true},
+		{name: "strictly inside", entity: npc.Entity{MapID: testMapID, X: 114, Y: 114}, want: true},
+		{name: "x boundary", entity: npc.Entity{MapID: testMapID, X: 115, Y: 100}, want: false},
+		{name: "y boundary", entity: npc.Entity{MapID: testMapID, X: 100, Y: 85}, want: false},
+		{name: "different map", entity: npc.Entity{MapID: "other", X: 100, Y: 100}, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := merchantWithinStorageRange(ch, tt.entity); got != tt.want {
+				t.Fatalf("merchantWithinStorageRange() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -13127,14 +15017,74 @@ func TestHandleSayBroadcastsToPlayersOnSameMap(t *testing.T) {
 	<-done
 }
 
-func TestHandleShoutBroadcastsYellowCryToAllPlayers(t *testing.T) {
+func TestHandleSayGroupUsesGroupMessageAndPrefix(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch1 := storage.Character{ID: "group-chat-1", Name: "tester1", MapID: mapID, X: x, Y: y, HP: 19, MaxHP: 19, GroupOwnerID: "group-chat"}
+	ch2 := storage.Character{ID: "group-chat-2", Name: "tester2", MapID: mapID, X: x, Y: y, HP: 19, MaxHP: 19, GroupOwnerID: "group-chat"}
+	server1, client1 := net.Pipe()
+	defer server1.Close()
+	defer client1.Close()
+	server2, client2 := net.Pipe()
+	defer server2.Close()
+	defer client2.Close()
+	s.registerClient(server1, ch1)
+	defer s.unregisterClient(server1)
+	s.registerClient(server2, ch2)
+	defer s.unregisterClient(server2)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleSay(server1, &ch1, []byte("!!hello"))
+	}()
+	for _, client := range []net.Conn{client1, client2} {
+		cmd, body, err := decodeMessageLikeClient(readFrame(t, client))
+		if err != nil {
+			t.Fatalf("decode group message = %v", err)
+		}
+		if cmd.Ident != mir176.SMGroupMessage || cmd.Param != makeWord(0xC4, 0xFF) {
+			t.Fatalf("group command = %+v, want SMGroupMessage and group colors", cmd)
+		}
+		text, err := mir176.DecodePlain6Payload(body)
+		if err != nil || DecodeString(text) != "〖组队〗tester1: hello" {
+			t.Fatalf("group text = %q, err=%v", DecodeString(text), err)
+		}
+	}
+	<-done
+}
+
+func TestHandleLetGuildTogglesRuntimeState(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch := storage.Character{ID: "letguild", Name: "letguild", MapID: mapID, X: x, Y: y}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, ch)
+	defer s.unregisterClient(server)
+
+	s.handleSay(server, &ch, []byte("@letguild"))
+	if !ch.AllowGuild {
+		t.Fatal("@letguild did not enable guild admission")
+	}
+	if !s.clientForConn(server).character().AllowGuild {
+		t.Fatal("@letguild did not synchronize client state")
+	}
+	s.handleSay(server, &ch, []byte("@letguild"))
+	if ch.AllowGuild {
+		t.Fatal("@letguild did not disable guild admission")
+	}
+}
+
+func TestHandleShoutBroadcastsYellowCryToNearbyPlayers(t *testing.T) {
 	s := newTestServer(t)
 	mapID, x, y := testDefaultSpawn(t)
 	ch1, err := s.world.CreateCharacterWithAppearance("test", "tester1", "warrior", 0, 0, mapID, x, y)
 	if err != nil {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
-	ch2, err := s.world.CreateCharacterWithAppearance("test", "tester2", "warrior", 0, 0, "1", 17, 12)
+	ch1.Level = 8
+	ch2, err := s.world.CreateCharacterWithAppearance("test", "tester2", "warrior", 0, 0, mapID, x+40, y)
 	if err != nil {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
@@ -13254,8 +15204,8 @@ func TestHandleMobCommandDecodesGBKMonsterName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode monster turn frame error = %v", err)
 	}
-	if turnCmd.Ident != mir176.SMTurn || int(turnCmd.Param) != x+1 || int(turnCmd.Tag) != y || turnCmd.Series != 4 {
-		t.Fatalf("monster turn = %+v, want SM_TURN at (%d,%d) dir 4", turnCmd, x+1, y)
+	if turnCmd.Ident != mir176.SMTurn || int(turnCmd.Param) != x+1 || int(turnCmd.Tag) != y || turnCmd.Series > 7 {
+		t.Fatalf("monster turn = %+v, want SM_TURN at (%d,%d) with direction 0..7", turnCmd, x+1, y)
 	}
 	assertMonsterTurnBody(t, turnBody, "白野猪/255", int32(19|112<<16))
 
@@ -13322,6 +15272,34 @@ func TestSendEnterWorldReturnsCharacter(t *testing.T) {
 	if got.Name != want.Name || got.MapID != want.MapID || got.X != want.X || got.Y != want.Y {
 		t.Fatalf("sendEnterWorld() = %+v, want %+v", got, want)
 	}
+	got, ok = s.sendEnterWorld(nil, RunLogin{Account: "test", CharName: "TESTER"})
+	if !ok || got.ID != want.ID {
+		t.Fatalf("case-insensitive sendEnterWorld() = %+v, %t; want character %q", got, ok, want.ID)
+	}
+}
+
+func TestRegisterClientReplacesExistingCharacterConnection(t *testing.T) {
+	s := newTestServer(t)
+	oldServer, oldClient := net.Pipe()
+	newServer, newClient := net.Pipe()
+	defer oldClient.Close()
+	defer newClient.Close()
+	character := storage.Character{ID: "reconnect-character", Name: "reconnect-character", MapID: testMapID, X: 10, Y: 10}
+	old := s.registerClient(oldServer, character)
+	current := s.registerClient(newServer, character)
+	defer s.unregisterClient(newServer)
+
+	if _, ok := s.ClientByCharacterID(character.ID); !ok {
+		t.Fatal("replacement client is not registered")
+	}
+	if got, ok := s.ClientByCharacterID(character.ID); !ok || got != current {
+		t.Fatalf("current client = %p, %t; want replacement %p", got, ok, current)
+	}
+	select {
+	case <-old.spellMessagesDone:
+	default:
+		t.Fatal("old client spell queue is still open")
+	}
 }
 
 func TestSendEnterWorldRevivesDeadCharacterAtHome(t *testing.T) {
@@ -13378,8 +15356,8 @@ func TestSendEnterWorldSendsNearbyMonsters(t *testing.T) {
 			t.Fatalf("decode frame error = %v", err)
 		}
 		if cmd.Ident == mir176.SMTurn && cmd.Recog >= 100000 {
-			if cmd.Series != 4 {
-				t.Fatalf("nearby monster SM_TURN series = %d, want 4", cmd.Series)
+			if cmd.Series > 7 {
+				t.Fatalf("nearby monster SM_TURN series = %d, want direction 0..7", cmd.Series)
 			}
 			assertMonsterTurnBody(t, body, "鹿/255", int32(11|161<<16))
 			found = true
@@ -13467,7 +15445,7 @@ func TestHandleTakeOnItemEquipsAndRefreshesAbility(t *testing.T) {
 	}
 	dc := binary.LittleEndian.Uint16(body[6:8])
 	if dc != 0x0603 {
-		t.Fatalf("DC in ability payload = %#x, want %#x", dc, uint16(0x0603))
+		t.Fatalf("DC in ability payload = %#x, want %#x", dc, uint32(0x0603))
 	}
 }
 
@@ -13526,6 +15504,13 @@ func TestHandleTakeOnItemSwapsPreviousItemBackToBag(t *testing.T) {
 		s.handleTakeOnItem(server, &ch, mir176.Command{Ident: mir176.CMTakeOnItem, Recog: 1, Param: world.SlotWeapon}, WireString(t, testWeaponID))
 	}()
 
+	weightCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode SM_WEIGHTCHANGED frame error = %v", err)
+	}
+	if weightCmd.Ident != mir176.SMWeightChanged {
+		t.Fatalf("first frame ident = %d, want SM_WEIGHTCHANGED (%d)", weightCmd.Ident, mir176.SMWeightChanged)
+	}
 	addCmd, addBody, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
 		t.Fatalf("decode SM_ADDITEM frame error = %v", err)
@@ -13606,6 +15591,32 @@ func TestHandleTakeOnItemRejectsUnknownItem(t *testing.T) {
 	}
 }
 
+func TestHandleTakeOnItemRejectsUnsupportedSlotWithReferenceCode(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleTakeOnItem(server, &ch, mir176.Command{Ident: mir176.CMTakeOnItem, Param: 13}, WireString(t, testWeaponID))
+	}()
+	cmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode frame error = %v", err)
+	}
+	if cmd.Ident != mir176.SMTakeOnFail || cmd.Recog != -1 {
+		t.Fatalf("failure command = %+v, want SM_TAKEON_FAIL with Recog=-1", cmd)
+	}
+	<-done
+}
+
 func TestHandleTakeOffItemUnequipsAndRefreshesAbility(t *testing.T) {
 	s := newTestServer(t)
 	mapID, x, y := testDefaultSpawn(t)
@@ -13625,6 +15636,13 @@ func TestHandleTakeOffItemUnequipsAndRefreshesAbility(t *testing.T) {
 		s.handleTakeOffItem(server, &ch, mir176.Command{Ident: mir176.CMTakeOffItem, Param: world.SlotWeapon}, WireString(t, testWeaponID))
 	}()
 
+	weightCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode SM_WEIGHTCHANGED frame error = %v", err)
+	}
+	if weightCmd.Ident != mir176.SMWeightChanged {
+		t.Fatalf("first frame ident = %d, want SM_WEIGHTCHANGED (%d)", weightCmd.Ident, mir176.SMWeightChanged)
+	}
 	addCmd, addBody, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
 		t.Fatalf("decode SM_ADDITEM frame error = %v", err)
@@ -13799,21 +15817,38 @@ func TestSendEnterWorldStateCarriesGoldInAbility(t *testing.T) {
 	if areaStateCmd.Recog != 0 {
 		t.Fatalf("SM_AREASTATE Recog = %d, want 0", areaStateCmd.Recog)
 	}
-	mapDescCmd, mapDescBody, err := decodeMessageLikeClient(readFrame(t, client))
-	if err != nil {
-		t.Fatalf("decode SM_MAPDESCRIPTION frame error = %v", err)
-	}
-	if mapDescCmd.Ident != mir176.SMMapDescription {
-		t.Fatalf("ninth frame ident = %d, want SM_MAPDESCRIPTION (%d)", mapDescCmd.Ident, mir176.SMMapDescription)
-	}
-	mapDescDecoded, err := mir176.DecodePlain6Payload(mapDescBody)
-	if err != nil {
-		t.Fatalf("DecodePlain6Payload(SM_MAPDESCRIPTION) error = %v", err)
-	}
-	if got := DecodeString(mapDescDecoded); got != s.world.MapName(ch.MapID) {
-		t.Fatalf("SM_MAPDESCRIPTION body = %q, want %q", got, s.world.MapName(ch.MapID))
-	}
 	_ = client.Close()
+	<-done
+}
+
+func TestSendEnterWorldStateSkipsUnsupportedServerConfig(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "server-config-login", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	server, clientConn := net.Pipe()
+	defer server.Close()
+	defer clientConn.Close()
+	state := s.registerClient(server, ch)
+	state.softVersion = 1
+	done := make(chan struct{})
+	go func() {
+		s.sendEnterWorldState(server, ch)
+		close(done)
+	}()
+	want := []uint16{mir176.SMNewMap, mir176.SMChangeLight, mir176.SMLogon, mir176.SMFeatureChanged}
+	for i, ident := range want {
+		cmd, _, err := decodeMessageLikeClient(readFrame(t, clientConn))
+		if err != nil {
+			t.Fatalf("decode login frame %d: %v", i, err)
+		}
+		if cmd.Ident != ident {
+			t.Fatalf("login frame %d ident = %d, want %d", i, cmd.Ident, ident)
+		}
+	}
+	_ = clientConn.Close()
 	<-done
 }
 
@@ -13894,20 +15929,6 @@ func TestSendSpaceMoveStateSendsMapResetAndShow(t *testing.T) {
 	}
 	if areaCmd.Ident != mir176.SMAreaState {
 		t.Fatalf("fourth frame ident = %d, want SM_AREASTATE (%d)", areaCmd.Ident, mir176.SMAreaState)
-	}
-	mapDescCmd, mapDescBody, err := decodeMessageLikeClient(readFrame(t, client))
-	if err != nil {
-		t.Fatalf("decode SM_MAPDESCRIPTION frame error = %v", err)
-	}
-	if mapDescCmd.Ident != mir176.SMMapDescription {
-		t.Fatalf("fifth frame ident = %d, want SM_MAPDESCRIPTION (%d)", mapDescCmd.Ident, mir176.SMMapDescription)
-	}
-	mapDescDecoded, err := mir176.DecodePlain6Payload(mapDescBody)
-	if err != nil {
-		t.Fatalf("DecodePlain6Payload(SM_MAPDESCRIPTION) error = %v", err)
-	}
-	if got := DecodeString(mapDescDecoded); got != s.world.MapName(ch.MapID) {
-		t.Fatalf("SM_MAPDESCRIPTION body = %q, want %q", got, s.world.MapName(ch.MapID))
 	}
 	showCmd, showBody, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
@@ -14007,20 +16028,12 @@ func TestSendInitialLoginStateMatchesMirbetaOrder(t *testing.T) {
 		t.Fatalf("SM_SENDUSEITEMS body = %q, want weapon slot entry", useItemsBody)
 	}
 
-	bagCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
-	if err != nil {
-		t.Fatalf("decode SM_BAGITEMS frame error = %v", err)
-	}
-	if bagCmd.Ident != mir176.SMBagItems {
-		t.Fatalf("sixth frame ident = %d, want SM_BAGITEMS (%d)", bagCmd.Ident, mir176.SMBagItems)
-	}
-
 	useMagicCmd, useMagicBody, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
 		t.Fatalf("decode SM_SENDMYMAGIC frame error = %v", err)
 	}
 	if useMagicCmd.Ident != mir176.SMSendMyMagic {
-		t.Fatalf("seventh frame ident = %d, want SM_SENDMYMAGIC (%d)", useMagicCmd.Ident, mir176.SMSendMyMagic)
+		t.Fatalf("sixth frame ident = %d, want SM_SENDMYMAGIC (%d)", useMagicCmd.Ident, mir176.SMSendMyMagic)
 	}
 	if useMagicCmd.Series != 1 {
 		t.Fatalf("SM_SENDMYMAGIC Series = %d, want 1", useMagicCmd.Series)
@@ -14378,7 +16391,7 @@ func TestSendLevelUpRefreshesLevelExpAndAbilities(t *testing.T) {
 	if got := int(abilityDecoded[0]); got != ch.Level {
 		t.Fatalf("SM_ABILITY level = %d, want %d", got, ch.Level)
 	}
-	if got := binary.LittleEndian.Uint16(abilityDecoded[12:14]); got != uint16(stats.HP) {
+	if got := binary.LittleEndian.Uint16(abilityDecoded[22:24]); got != uint16(stats.HP) {
 		t.Fatalf("SM_ABILITY HP = %d, want %d", got, stats.HP)
 	}
 
@@ -14465,6 +16478,72 @@ func TestHandleQueryUserNameRepliesWithNameOrGhost(t *testing.T) {
 		}
 		<-done
 	})
+
+	t.Run("ghost target", func(t *testing.T) {
+		ch.Ghost = true
+		defer func() { ch.Ghost = false }()
+		server, client := net.Pipe()
+		defer server.Close()
+		defer client.Close()
+		ghost := ch
+		ghost.Ghost = true
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			s.handleQueryUserName(server, &ch, mir176.Command{Ident: mir176.CMQueryUserName, Recog: world.CharacterActorID(ghost), Param: uint16(ghost.X), Tag: uint16(ghost.Y)})
+		}()
+		cmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+		if err != nil {
+			t.Fatalf("decode ghost target reply error = %v", err)
+		}
+		if cmd.Ident != mir176.SMGhost {
+			t.Fatalf("ghost target reply ident = %d, want SM_GHOST (%d)", cmd.Ident, mir176.SMGhost)
+		}
+		<-done
+	})
+
+	t.Run("monster", func(t *testing.T) {
+		spawned, err := s.world.SpawnMonsterByNameAt(mapID, x+1, y, "鸡", 1)
+		if err != nil || len(spawned.Monsters) != 1 {
+			t.Fatalf("SpawnMonsterByNameAt() = %+v, %v", spawned.Monsters, err)
+		}
+		monster := spawned.Monsters[0]
+		server, client := net.Pipe()
+		defer server.Close()
+		defer client.Close()
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			s.handleQueryUserName(server, &ch, mir176.Command{Ident: mir176.CMQueryUserName, Recog: world.MonsterActorID(monster), Param: uint16(monster.X), Tag: uint16(monster.Y)})
+		}()
+		cmd, body, err := decodeMessageLikeClient(readFrame(t, client))
+		if err != nil {
+			t.Fatalf("decode monster reply error = %v", err)
+		}
+		decoded, err := mir176.DecodePlain6Payload(body)
+		if err != nil {
+			t.Fatalf("DecodePlain6Payload() error = %v", err)
+		}
+		if cmd.Ident != mir176.SMUserName || cmd.Recog != world.MonsterActorID(monster) || cmd.Param != world.MonsterNameColor(monster) || DecodeString(decoded) != world.MonsterDisplayName(monster) {
+			t.Fatalf("monster reply = %+v body=%q", cmd, DecodeString(decoded))
+		}
+		<-done
+	})
+
+	t.Run("unknown monster is silent", func(t *testing.T) {
+		server, client := net.Pipe()
+		defer server.Close()
+		defer client.Close()
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			s.handleQueryUserName(server, &ch, mir176.Command{Ident: mir176.CMQueryUserName, Recog: 100000, Param: uint16(x), Tag: uint16(y)})
+		}()
+		if frame, ok := readFrameWithTimeout(t, client, 100*time.Millisecond); ok {
+			t.Fatalf("unknown monster received reply: %x", frame)
+		}
+		<-done
+	})
 }
 
 func TestHandleQueryUserStateRepliesWithState(t *testing.T) {
@@ -14505,11 +16584,11 @@ func TestHandleQueryUserStateRepliesWithState(t *testing.T) {
 	if got := DecodeString(decoded[5 : 5+nameLen]); got != ch.Name {
 		t.Fatalf("user name = %q, want %q", got, ch.Name)
 	}
-	if got := binary.LittleEndian.Uint32(decoded[20:24]); got != 0x2F {
+	if got := binary.LittleEndian.Uint16(decoded[54:56]); got != 0x2F {
 		t.Fatalf("name color = %d, want 0x2f", got)
 	}
 	itemBodyLen := len(itemBodyForEquipped(ch, data.StdItem{}, [14]byte{}, 0, 0, 0))
-	weaponSlotOffset := 60 + itemBodyLen*world.SlotWeapon
+	weaponSlotOffset := 56 + itemBodyLen*world.SlotWeapon
 	weaponBody := decoded[weaponSlotOffset:]
 	if len(weaponBody) == 0 || int(weaponBody[0]) <= 0 {
 		t.Fatalf("weapon slot body missing: %v", weaponBody)
@@ -14517,6 +16596,9 @@ func TestHandleQueryUserStateRepliesWithState(t *testing.T) {
 	weaponNameLen := int(weaponBody[0])
 	if got := DecodeString(weaponBody[1 : 1+weaponNameLen]); got != testWeaponID {
 		t.Fatalf("weapon slot name = %q, want %q", got, testWeaponID)
+	}
+	if got, gotMax := decodeClientItemDura(weaponBody); got != 0 || gotMax != 0 {
+		t.Fatalf("user state weapon durability = %d/%d, want raw zero values", got, gotMax)
 	}
 	<-done
 }
@@ -14677,10 +16759,6 @@ func TestHandleDropItemBroadcastsAppearAndRepliesSuccess(t *testing.T) {
 	if !found {
 		t.Fatalf("expected dropped %s on the ground, got %+v", testWeaponID, drops)
 	}
-	stats := s.world.AbilityStats(ch)
-	if weightCmd.Recog != int32(stats.Weight) || weightCmd.Param != uint16(stats.WearWeight) || weightCmd.Tag != uint16(stats.HandWeight) {
-		t.Fatalf("SM_WEIGHTCHANGED = %+v, want weight=%d wear=%d hand=%d", weightCmd, stats.Weight, stats.WearWeight, stats.HandWeight)
-	}
 }
 
 func TestHandleDropItemRejectsMismatchedItemName(t *testing.T) {
@@ -14750,32 +16828,32 @@ func TestHandlePickupHidesGroundItem(t *testing.T) {
 		s.handlePickup(server, &ch, mir176.Command{Ident: mir176.CMPickup, Param: uint16(drop.X), Tag: uint16(drop.Y)})
 	}()
 
+	weightCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode pickup weight frame error = %v", err)
+	}
+	if weightCmd.Ident != mir176.SMItemHide {
+		t.Fatalf("first frame ident = %d, want SM_ITEMHIDE (%d)", weightCmd.Ident, mir176.SMItemHide)
+	}
 	hideCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
 		t.Fatalf("decode pickup hide frame error = %v", err)
 	}
-	if hideCmd.Ident != mir176.SMItemHide {
-		t.Fatalf("first frame ident = %d, want SM_ITEMHIDE (%d)", hideCmd.Ident, mir176.SMItemHide)
+	if hideCmd.Ident != mir176.SMWeightChanged {
+		t.Fatalf("second frame ident = %d, want SM_WEIGHTCHANGED (%d)", hideCmd.Ident, mir176.SMWeightChanged)
 	}
 	addCmd, addBody, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
 		t.Fatalf("decode pickup add item frame error = %v", err)
 	}
 	if addCmd.Ident != mir176.SMAddItem {
-		t.Fatalf("second frame ident = %d, want SM_ADDITEM (%d)", addCmd.Ident, mir176.SMAddItem)
+		t.Fatalf("first frame ident = %d, want SM_ADDITEM (%d)", addCmd.Ident, mir176.SMAddItem)
 	}
 	if got := decodeClientItemName(addBody); got != testWeaponID {
 		t.Fatalf("pickup add item name = %q, want %q", got, testWeaponID)
 	}
 	if got := decodeClientItemMakeIndex(addBody); got != drop.MakeIndex {
 		t.Fatalf("pickup add item makeindex = %d, want %d", got, drop.MakeIndex)
-	}
-	weightCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
-	if err != nil {
-		t.Fatalf("decode pickup weight frame error = %v", err)
-	}
-	if weightCmd.Ident != mir176.SMWeightChanged {
-		t.Fatalf("third frame ident = %d, want SM_WEIGHTCHANGED (%d)", weightCmd.Ident, mir176.SMWeightChanged)
 	}
 	<-done
 	if drop.ID == "" {
@@ -14799,10 +16877,30 @@ func TestHandlePickupHidesGroundItem(t *testing.T) {
 	if !found {
 		t.Fatalf("expected %s in bag after pickup, got %+v", testWeaponID, ch.BagItems)
 	}
-	stats := s.world.AbilityStats(ch)
-	if weightCmd.Recog != int32(stats.Weight) || weightCmd.Param != uint16(stats.WearWeight) || weightCmd.Tag != uint16(stats.HandWeight) {
-		t.Fatalf("SM_WEIGHTCHANGED = %+v, want weight=%d wear=%d hand=%d", weightCmd, stats.Weight, stats.WearWeight, stats.HandWeight)
+}
+
+func TestHandlePickupRejectsMismatchedCoordinates(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
 	}
+	_, drop, err := s.world.DropItemCountByBagIndex(ch, 0, testWeaponID)
+	if err != nil {
+		t.Fatalf("DropItem() error = %v", err)
+	}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.handlePickup(server, &ch, mir176.Command{Ident: mir176.CMPickup, Param: uint16(drop.X + 1), Tag: uint16(drop.Y)})
+	_, drops := s.world.SnapshotAround(ch.MapID, 0, 0, 99999)
+	for _, candidate := range drops {
+		if candidate.ID == drop.ID {
+			return
+		}
+	}
+	t.Fatalf("drop %s was picked up from mismatched coordinates", drop.ID)
 }
 
 func TestHandlePickupSendsOneAddPerPotionInstance(t *testing.T) {
@@ -14835,32 +16933,32 @@ func TestHandlePickupSendsOneAddPerPotionInstance(t *testing.T) {
 		s.handlePickup(server, &ch, mir176.Command{Ident: mir176.CMPickup, Param: uint16(first.X), Tag: uint16(first.Y)})
 	}()
 
+	weightCmd1, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode first pickup weight frame error = %v", err)
+	}
+	if weightCmd1.Ident != mir176.SMItemHide {
+		t.Fatalf("first frame ident = %d, want SM_ITEMHIDE (%d)", weightCmd1.Ident, mir176.SMItemHide)
+	}
 	hideCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
 		t.Fatalf("decode first pickup hide frame error = %v", err)
 	}
-	if hideCmd.Ident != mir176.SMItemHide {
-		t.Fatalf("first frame ident = %d, want SM_ITEMHIDE (%d)", hideCmd.Ident, mir176.SMItemHide)
+	if hideCmd.Ident != mir176.SMWeightChanged {
+		t.Fatalf("second frame ident = %d, want SM_WEIGHTCHANGED (%d)", hideCmd.Ident, mir176.SMWeightChanged)
 	}
 	addCmd1, addBody1, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
 		t.Fatalf("decode first pickup add frame error = %v", err)
 	}
 	if addCmd1.Ident != mir176.SMAddItem {
-		t.Fatalf("second frame ident = %d, want SM_ADDITEM (%d)", addCmd1.Ident, mir176.SMAddItem)
+		t.Fatalf("third frame ident = %d, want SM_ADDITEM (%d)", addCmd1.Ident, mir176.SMAddItem)
 	}
 	if got := decodeClientItemName(addBody1); got != testHPItemID {
 		t.Fatalf("first pickup add item name = %q, want %q", got, testHPItemID)
 	}
 	if got := decodeClientItemMakeIndex(addBody1); got != 501 {
 		t.Fatalf("first pickup add item makeindex = %d, want 501", got)
-	}
-	weightCmd1, _, err := decodeMessageLikeClient(readFrame(t, client))
-	if err != nil {
-		t.Fatalf("decode first pickup weight frame error = %v", err)
-	}
-	if weightCmd1.Ident != mir176.SMWeightChanged {
-		t.Fatalf("third frame ident = %d, want SM_WEIGHTCHANGED (%d)", weightCmd1.Ident, mir176.SMWeightChanged)
 	}
 	<-done
 
@@ -14871,32 +16969,32 @@ func TestHandlePickupSendsOneAddPerPotionInstance(t *testing.T) {
 		s.handlePickup(server, &ch, mir176.Command{Ident: mir176.CMPickup, Param: uint16(second.X), Tag: uint16(second.Y)})
 	}()
 
+	weightCmd2, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode second pickup weight frame error = %v", err)
+	}
+	if weightCmd2.Ident != mir176.SMItemHide {
+		t.Fatalf("first frame ident = %d, want SM_ITEMHIDE (%d)", weightCmd2.Ident, mir176.SMItemHide)
+	}
 	hideCmd2, _, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
 		t.Fatalf("decode second pickup hide frame error = %v", err)
 	}
-	if hideCmd2.Ident != mir176.SMItemHide {
-		t.Fatalf("first frame ident = %d, want SM_ITEMHIDE (%d)", hideCmd2.Ident, mir176.SMItemHide)
+	if hideCmd2.Ident != mir176.SMWeightChanged {
+		t.Fatalf("second frame ident = %d, want SM_WEIGHTCHANGED (%d)", hideCmd2.Ident, mir176.SMWeightChanged)
 	}
 	addCmd2, addBody2, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
 		t.Fatalf("decode second pickup add frame error = %v", err)
 	}
 	if addCmd2.Ident != mir176.SMAddItem {
-		t.Fatalf("second frame ident = %d, want SM_ADDITEM (%d)", addCmd2.Ident, mir176.SMAddItem)
+		t.Fatalf("third frame ident = %d, want SM_ADDITEM (%d)", addCmd2.Ident, mir176.SMAddItem)
 	}
 	if got := decodeClientItemName(addBody2); got != testHPItemID {
 		t.Fatalf("second pickup add item name = %q, want %q", got, testHPItemID)
 	}
 	if got := decodeClientItemMakeIndex(addBody2); got != 502 {
 		t.Fatalf("second pickup add item makeindex = %d, want 502", got)
-	}
-	weightCmd2, _, err := decodeMessageLikeClient(readFrame(t, client))
-	if err != nil {
-		t.Fatalf("decode second pickup weight frame error = %v", err)
-	}
-	if weightCmd2.Ident != mir176.SMWeightChanged {
-		t.Fatalf("third frame ident = %d, want SM_WEIGHTCHANGED (%d)", weightCmd2.Ident, mir176.SMWeightChanged)
 	}
 	<-done2
 
@@ -14905,6 +17003,36 @@ func TestHandlePickupSendsOneAddPerPotionInstance(t *testing.T) {
 	}
 	if ch.BagItems[0].MakeIndex == ch.BagItems[1].MakeIndex {
 		t.Fatalf("bag makeindexes = [%d %d], want distinct identities", ch.BagItems[0].MakeIndex, ch.BagItems[1].MakeIndex)
+	}
+}
+
+func TestHandleEatItemRejectsDeadCharacter(t *testing.T) {
+	s := newTestServer(t)
+	mapID, x, y := testDefaultSpawn(t)
+	ch, err := s.world.CreateCharacterWithAppearance("test", "tester", "warrior", 0, 0, mapID, x, y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	ch.HP = 0
+	ch.BagItems = []storage.UserItem{{ItemID: testInstantHPItemID, MakeIndex: 200}}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleEatItem(server, &ch, mir176.Command{Ident: mir176.CMEat, Recog: 200}, nil)
+	}()
+	cmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode eat failure frame error = %v", err)
+	}
+	if cmd.Ident != mir176.SMEatFail {
+		t.Fatalf("eat failure ident = %d, want SM_EAT_FAIL (%d)", cmd.Ident, mir176.SMEatFail)
+	}
+	<-done
+	if len(ch.BagItems) != 1 {
+		t.Fatalf("dead character bag length = %d, want 1", len(ch.BagItems))
 	}
 }
 
@@ -15004,19 +17132,26 @@ func TestHandleEatItemLearningBookRefreshesMagicList(t *testing.T) {
 	if delCmd.Ident != mir176.SMDelItems {
 		t.Fatalf("first frame ident = %d, want SMDelItems (%d)", delCmd.Ident, mir176.SMDelItems)
 	}
+	magicCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
+	if err != nil {
+		t.Fatalf("decode magic frame error = %v", err)
+	}
+	if magicCmd.Ident != mir176.SMAddMagic {
+		t.Fatalf("second frame ident = %d, want SMAddMagic (%d)", magicCmd.Ident, mir176.SMAddMagic)
+	}
 	weightCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
 		t.Fatalf("decode weight frame error = %v", err)
 	}
 	if weightCmd.Ident != mir176.SMWeightChanged {
-		t.Fatalf("second frame ident = %d, want SM_WEIGHTCHANGED (%d)", weightCmd.Ident, mir176.SMWeightChanged)
+		t.Fatalf("third frame ident = %d, want SM_WEIGHTCHANGED (%d)", weightCmd.Ident, mir176.SMWeightChanged)
 	}
 	eatCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
 		t.Fatalf("decode eat frame error = %v", err)
 	}
 	if eatCmd.Ident != mir176.SMEatOK {
-		t.Fatalf("third frame ident = %d, want SM_EAT_OK (%d)", eatCmd.Ident, mir176.SMEatOK)
+		t.Fatalf("fourth frame ident = %d, want SM_EAT_OK (%d)", eatCmd.Ident, mir176.SMEatOK)
 	}
 	<-done
 	if !ch.Skills.Has("火球术") {
@@ -15062,6 +17197,45 @@ func TestApplyWorldTickSendsHealthRefreshForQueuedRecovery(t *testing.T) {
 	}
 	if healthCmd.Recog != world.CharacterActorID(updated) || healthCmd.Param != 15 || healthCmd.Tag != 10 {
 		t.Fatalf("health refresh = %+v, want actor=%d hp=15 mp=10", healthCmd, world.CharacterActorID(updated))
+	}
+	<-done
+}
+
+func TestApplyWorldTickDoesNotDuplicateRevivalHealthRefresh(t *testing.T) {
+	s := newTestServer(t)
+	dead, err := s.world.CreateCharacterWithAppearance("test", "revival-target", "warrior", 0, 0, "D12", 0, 0)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	dead.HP = 0
+	revived := dead
+	revived.HP = revived.MaxHP
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s.registerClient(server, dead)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.applyWorldTick(world.TickResult{
+			Characters: []storage.Character{revived},
+			CharacterRevivals: []world.CharacterRevival{{
+				Character: revived,
+			}},
+		}, time.Now())
+	}()
+
+	count := 0
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if _, ok := readFrameWithTimeout(t, client, 100*time.Millisecond); !ok {
+			break
+		}
+		count++
+	}
+	if count != 2 {
+		t.Fatalf("revival health frame count = %d, want direct and visible refresh only", count)
 	}
 	<-done
 }
@@ -15447,7 +17621,7 @@ func TestApplyWorldTickSendsOrderedCharacterMagicHitOnce(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode character magic struck frame error = %v", err)
 	}
-	if struck.Ident != mir176.SMStruck || struck.Recog != world.CharacterActorID(target) || struck.Series != uint16(hit.Damage) {
+	if struck.Ident != mir176.SMStruck || struck.Recog != world.CharacterActorID(caster) || struck.Series != uint16(hit.Damage) {
 		t.Fatalf("character magic struck frame = %+v, want one target hit", struck)
 	}
 	assertMessageBodyWL(t, body, s.world.HumanFeatureForCharacter(target), s.world.CharacterStatus(target), world.CharacterActorID(caster), 1)
@@ -15501,8 +17675,8 @@ func TestApplyWorldTickSendsMonsterActionBeforeCharacterHit(t *testing.T) {
 			t.Fatalf("decode character hit frame error = %v", err)
 		}
 		if frame.Ident == mir176.SMStruck {
-			if frame.Recog != world.CharacterActorID(target) {
-				t.Fatalf("character hit frame = %+v, want target", frame)
+			if frame.Recog != world.MonsterActorID(world.Monster{ID: action.MonsterID}) {
+				t.Fatalf("character hit frame = %+v, want attacker", frame)
 			}
 			break
 		}
@@ -15576,7 +17750,10 @@ func TestGasMonsterTickReachesNetworkInActionThenStruckOrder(t *testing.T) {
 		if cmd.Ident == mir176.SMHit && cmd.Recog == world.MonsterActorID(spawned.Monsters[0]) {
 			seenAction = true
 		}
-		if cmd.Ident == mir176.SMStruck && cmd.Recog == world.CharacterActorID(target) {
+		if cmd.Ident == mir176.SMStruck {
+			if cmd.Recog != world.MonsterActorID(spawned.Monsters[0]) {
+				t.Fatalf("楔蛾 SM_STRUCK attacker = %d, want %d", cmd.Recog, world.MonsterActorID(spawned.Monsters[0]))
+			}
 			if !seenAction {
 				t.Fatalf("楔蛾 SM_STRUCK arrived before SM_HIT")
 			}
@@ -15754,7 +17931,7 @@ func TestArcherMonsterTickReachesNetworkAction(t *testing.T) {
 			target = tick.Characters[0]
 		}
 		for _, action := range tick.MonsterActions {
-			if action.MonsterID == spawned.Monsters[0].ID && action.Kind == world.MonsterActionHit {
+			if action.MonsterID == spawned.Monsters[0].ID && action.Kind == world.MonsterActionFlyAxe {
 				found = true
 				break
 			}
@@ -15779,7 +17956,7 @@ func TestArcherMonsterTickReachesNetworkAction(t *testing.T) {
 		if err != nil {
 			t.Fatalf("decode 弓箭护卫 network frame error = %v", err)
 		}
-		if cmd.Ident == mir176.SMHit && cmd.Recog == world.MonsterActorID(spawned.Monsters[0]) {
+		if cmd.Ident == mir176.SMFlyAxe && cmd.Recog == world.MonsterActorID(spawned.Monsters[0]) {
 			seen = true
 			break
 		}
@@ -15883,7 +18060,7 @@ func TestHolyLandMageTickReachesNetworkAction(t *testing.T) {
 			target = tick.Characters[0]
 		}
 		for _, action := range tick.MonsterActions {
-			if action.MonsterID != spawned.Monsters[0].ID || action.Kind != world.MonsterActionHit {
+			if action.MonsterID != spawned.Monsters[0].ID || action.Kind != world.MonsterActionLighting {
 				continue
 			}
 			done := make(chan struct{})
@@ -15894,7 +18071,7 @@ func TestHolyLandMageTickReachesNetworkAction(t *testing.T) {
 				if decodeErr != nil {
 					t.Fatalf("decode 圣域法师 network frame error = %v", decodeErr)
 				}
-				if cmd.Ident == mir176.SMHit && cmd.Recog == world.MonsterActorID(spawned.Monsters[0]) {
+				if cmd.Ident == mir176.SMLighting && cmd.Recog == world.MonsterActorID(spawned.Monsters[0]) {
 					<-done
 					return
 				}
@@ -16402,13 +18579,6 @@ func TestHandleUserCommandMakeSendsAddItemFrames(t *testing.T) {
 	} else if got == firstMakeIndex {
 		t.Fatalf("add item makeindexes duplicated: %d", got)
 	}
-	weightCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
-	if err != nil {
-		t.Fatalf("decode weight frame error = %v", err)
-	}
-	if weightCmd.Ident != mir176.SMWeightChanged {
-		t.Fatalf("weight frame ident = %d, want SM_WEIGHTCHANGED (%d)", weightCmd.Ident, mir176.SMWeightChanged)
-	}
 	<-done
 	if got := len(ch.BagItems); got != before+2 {
 		t.Fatalf("bag items len = %d, want %d", got, before+2)
@@ -16445,7 +18615,6 @@ func TestHandleUserCommandMakeWeaponCarriesDurability(t *testing.T) {
 	if dura == 0 || duraMax == 0 {
 		t.Fatalf("weapon durability = %d/%d, want non-zero", dura, duraMax)
 	}
-	_ = readFrame(t, client)
 	<-done
 }
 
@@ -16479,7 +18648,6 @@ func TestHandleUserCommandMakeDragonSlayerCarriesDurability(t *testing.T) {
 	if dura == 0 || duraMax == 0 {
 		t.Fatalf("dragon slayer durability = %d/%d, want non-zero", dura, duraMax)
 	}
-	_ = readFrame(t, client)
 	<-done
 }
 
@@ -16501,13 +18669,6 @@ func TestHandleEatItemUnpacksBundleAndRefreshesWeight(t *testing.T) {
 		s.handleEatItem(server, &ch, mir176.Command{Ident: mir176.CMEat, Recog: 300}, nil)
 	}()
 
-	delCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
-	if err != nil {
-		t.Fatalf("decode del frame error = %v", err)
-	}
-	if delCmd.Ident != mir176.SMDelItems {
-		t.Fatalf("first frame ident = %d, want SMDelItems (%d)", delCmd.Ident, mir176.SMDelItems)
-	}
 	seen := map[int32]struct{}{}
 	for i := 0; i < 6; i++ {
 		addCmd, addBody, err := decodeMessageLikeClient(readFrame(t, client))
@@ -16533,7 +18694,7 @@ func TestHandleEatItemUnpacksBundleAndRefreshesWeight(t *testing.T) {
 		t.Fatalf("decode weight frame error = %v", err)
 	}
 	if weightCmd.Ident != mir176.SMWeightChanged {
-		t.Fatalf("final weight frame ident = %d, want SM_WEIGHTCHANGED (%d)", weightCmd.Ident, mir176.SMWeightChanged)
+		t.Fatalf("weight frame ident = %d, want SM_WEIGHTCHANGED (%d)", weightCmd.Ident, mir176.SMWeightChanged)
 	}
 	eatCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
@@ -16562,7 +18723,6 @@ func TestHandleEatItemShape12RefreshesAbilityBeforeWeight(t *testing.T) {
 	bundle.Items["apple-like"] = data.StdItem{
 		ID:      "apple-like",
 		Name:    "apple-like",
-		Kind:    "consumable",
 		StdMode: 3,
 		Shape:   12,
 		Stats: data.StdItemStats{
@@ -16606,7 +18766,7 @@ func TestHandleEatItemShape12RefreshesAbilityBeforeWeight(t *testing.T) {
 		t.Fatalf("decode ability frame error = %v", err)
 	}
 	if abilityCmd.Ident != mir176.SMAbility {
-		t.Fatalf("first frame ident = %d, want SM_ABILITY (%d)", abilityCmd.Ident, mir176.SMAbility)
+		t.Fatalf("second frame ident = %d, want SM_ABILITY (%d)", abilityCmd.Ident, mir176.SMAbility)
 	}
 	decodedAbility, err := mir176.DecodePlain6Payload(abilityBody)
 	if err != nil {
@@ -16618,7 +18778,6 @@ func TestHandleEatItemShape12RefreshesAbilityBeforeWeight(t *testing.T) {
 	if got := binary.LittleEndian.Uint16(decodedAbility[18:20]); got != uint16(baseStats.MaxMP+200) {
 		t.Fatalf("SM_ABILITY MaxMP = %d, want %d", got, baseStats.MaxMP+200)
 	}
-
 	weightCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
 		t.Fatalf("decode weight frame error = %v", err)
@@ -16647,7 +18806,6 @@ func TestHandleEatItemShape13SendsExperienceAndKeepsWeightOrder(t *testing.T) {
 	bundle.Items["exp-drug"] = data.StdItem{
 		ID:      "exp-drug",
 		Name:    "exp-drug",
-		Kind:    "consumable",
 		StdMode: 3,
 		Shape:   13,
 		DuraMax: 75,
@@ -16713,7 +18871,6 @@ func TestHandleEatItemShape13LevelsUpSendsMirbetaSequence(t *testing.T) {
 	bundle.Items["exp-drug-levelup"] = data.StdItem{
 		ID:      "exp-drug-levelup",
 		Name:    "exp-drug-levelup",
-		Kind:    "consumable",
 		StdMode: 3,
 		Shape:   13,
 		DuraMax: 150,
@@ -16907,6 +19064,10 @@ func TestHandleQueryBagItemsSendsNonEmptyBag(t *testing.T) {
 	if names[0] != testWeaponID || names[1] != testArmorID {
 		t.Fatalf("bag item names = %+v, want [%q %q]", names, testWeaponID, testArmorID)
 	}
+	parts := bytes.Split(body, []byte("/"))
+	if got, gotMax := decodeClientItemDura(parts[0]); got != 0 || gotMax != 0 {
+		t.Fatalf("query bag item durability = %d/%d, want raw zero values", got, gotMax)
+	}
 	if ch.BagItems[0].MakeIndex == 0 || ch.BagItems[1].MakeIndex == 0 {
 		t.Fatalf("character bag makeindexes = [%d %d], want non-zero indexes", ch.BagItems[0].MakeIndex, ch.BagItems[1].MakeIndex)
 	}
@@ -17042,20 +19203,6 @@ func TestHandleDelGroupMemberClearsGroupState(t *testing.T) {
 		s.handleDelGroupMember(ownerServer, &owner, WireString(t, member.Name))
 	}()
 
-	memberCancelCmd, _, err := decodeMessageLikeClient(readFrame(t, memberClient))
-	if err != nil {
-		t.Fatalf("decode member cancel frame error = %v", err)
-	}
-	if memberCancelCmd.Ident != mir176.SMGroupCancel {
-		t.Fatalf("member cancel ident = %d, want SM_GROUPCANCEL (%d)", memberCancelCmd.Ident, mir176.SMGroupCancel)
-	}
-	ownerCancelCmd, _, err := decodeMessageLikeClient(readFrame(t, ownerClient))
-	if err != nil {
-		t.Fatalf("decode owner cancel frame error = %v", err)
-	}
-	if ownerCancelCmd.Ident != mir176.SMGroupCancel {
-		t.Fatalf("owner cancel ident = %d, want SM_GROUPCANCEL (%d)", ownerCancelCmd.Ident, mir176.SMGroupCancel)
-	}
 	delOKCmd, delOKBody, err := decodeMessageLikeClient(readFrame(t, ownerClient))
 	if err != nil {
 		t.Fatalf("decode group del ok frame error = %v", err)
@@ -17069,6 +19216,21 @@ func TestHandleDelGroupMemberClearsGroupState(t *testing.T) {
 	}
 	if got := DecodeString(delOKDecoded); got != member.Name {
 		t.Fatalf("group delete body = %q, want %q", got, member.Name)
+	}
+
+	memberCancelCmd, _, err := decodeMessageLikeClient(readFrame(t, memberClient))
+	if err != nil {
+		t.Fatalf("decode member cancel frame error = %v", err)
+	}
+	if memberCancelCmd.Ident != mir176.SMGroupCancel {
+		t.Fatalf("member cancel ident = %d, want SM_GROUPCANCEL (%d)", memberCancelCmd.Ident, mir176.SMGroupCancel)
+	}
+	ownerCancelCmd, _, err := decodeMessageLikeClient(readFrame(t, ownerClient))
+	if err != nil {
+		t.Fatalf("decode owner cancel frame error = %v", err)
+	}
+	if ownerCancelCmd.Ident != mir176.SMGroupCancel {
+		t.Fatalf("owner cancel ident = %d, want SM_GROUPCANCEL (%d)", ownerCancelCmd.Ident, mir176.SMGroupCancel)
 	}
 	storedOwner, ok := s.store.Character(owner.ID)
 	if !ok {
@@ -17202,7 +19364,7 @@ func TestEquippedItemsBodyCarriesEquippedMakeIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
-	ch.BagItems = []storage.UserItem{{ItemID: testWeaponID, MakeIndex: 7}}
+	ch.BagItems = []storage.UserItem{{ItemID: testWeaponID, MakeIndex: 7, Dura: 50, DuraMax: 100}}
 	ch, err = s.world.EquipItemByBagIndex(ch, world.SlotWeapon, 7, testWeaponID)
 	if err != nil {
 		t.Fatalf("EquipItemByBagIndex() error = %v", err)
@@ -17232,7 +19394,7 @@ func TestEquippedItemsBodyCarriesEquippedDurability(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateCharacter() error = %v", err)
 	}
-	ch.BagItems = []storage.UserItem{{ItemID: testWeaponID, MakeIndex: 7}}
+	ch.BagItems = []storage.UserItem{{ItemID: testWeaponID, MakeIndex: 7, Dura: 50, DuraMax: 100}}
 	ch, err = s.world.EquipItemByBagIndex(ch, world.SlotWeapon, 7, testWeaponID)
 	if err != nil {
 		t.Fatalf("EquipItemByBagIndex() error = %v", err)
@@ -17247,8 +19409,8 @@ func TestEquippedItemsBodyCarriesEquippedDurability(t *testing.T) {
 		t.Fatalf("DecodePlain6Payload() error = %v", err)
 	}
 	dura, duraMax := decodeClientItemDura(parts[1])
-	if dura == 0 || duraMax == 0 {
-		t.Fatalf("equipped durability = %d/%d, want non-zero values", dura, duraMax)
+	if dura != 50 || duraMax != 100 {
+		t.Fatalf("equipped durability = %d/%d, want 50/100", dura, duraMax)
 	}
 }
 

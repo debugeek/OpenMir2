@@ -1,7 +1,6 @@
 {
   "id": "重盔甲(男)",
   "name": "重盔甲(男)",
-  "kind": "armor",
   "weight": 23,
   "stats": {
     "min_attack": 0,
@@ -21,6 +20,6 @@
   "dura_max": 25000,
   "need_level": 22,
   "price": 12000,
-  "stock": 20,
-  "color": 251
+  "need": 0,
+  "ani_count": 0
 }

@@ -38,12 +38,16 @@ func monsterTraceState(mon *Monster) MonsterTraceState {
 		AdminMode:         mon.AdminMode,
 		WalkWaitLocked:    mon.WalkWaitLocked,
 		WalkCount:         mon.WalkCount,
+		DupMode:           mon.DupMode,
 	}
 	if !mon.LastWalkAt.IsZero() {
 		state.LastWalkAtMS = mon.LastWalkAt.UnixMilli()
 	}
 	if !mon.WalkWaitTick.IsZero() {
 		state.WalkWaitTickMS = mon.WalkWaitTick.UnixMilli()
+	}
+	if !mon.ThinkAt.IsZero() {
+		state.ThinkAtMS = mon.ThinkAt.UnixMilli()
 	}
 	return state
 }
@@ -73,7 +77,19 @@ func monsterTraceDecision(trace *MonsterTickTrace) string {
 
 func (w *World) playerAtLocked(players map[string]storage.Character, mapID string, x, y int) bool {
 	for _, ch := range players {
-		if ch.MapID == mapID && ch.HP > 0 && !ch.AdminMode && ch.X == x && ch.Y == y {
+		if ch.MapID == mapID && ch.HP > 0 && !ch.ObserverMode && ch.X == x && ch.Y == y {
+			return true
+		}
+	}
+	return false
+}
+
+func (w *World) movingObjectAtLocked(players map[string]storage.Character, mapID string, x, y int, exceptID string) bool {
+	if w.monsterAtLocked(mapID, x, y, exceptID) || w.playerAtLocked(players, mapID, x, y) {
+		return true
+	}
+	for _, entity := range w.data.NPCs.Entities {
+		if entity.MapID == mapID && entity.X == x && entity.Y == y {
 			return true
 		}
 	}
@@ -94,6 +110,47 @@ func (w *World) monsterAtLockedWithRun(mapID string, x, y int, exceptID string, 
 	}
 	mon := w.monsters[id]
 	return mon != nil && mon.Alive && !mon.FixedHideMode && !mon.AdminMode
+}
+
+func (w *World) thinkMonsterLocked(mon *Monster, players map[string]storage.Character, now time.Time) bool {
+	if !mon.ThinkAt.IsZero() && now.Sub(mon.ThinkAt) <= 3*time.Second {
+		return false
+	}
+	mon.ThinkAt = now
+	w.clearInvalidMonsterTargetLocked(mon, players, now)
+	count := 0
+	for _, other := range w.monsters {
+		if other != nil && other.Alive && !other.FixedHideMode && !other.AdminMode && other.MapID == mon.MapID && other.X == mon.X && other.Y == mon.Y {
+			count++
+		}
+	}
+	for _, player := range players {
+		if player.HP > 0 && !player.AdminMode && player.MapID == mon.MapID && player.X == mon.X && player.Y == mon.Y {
+			count++
+		}
+	}
+	for _, entity := range w.data.NPCs.Entities {
+		if entity.MapID == mon.MapID && entity.X == mon.X && entity.Y == mon.Y {
+			count++
+		}
+	}
+	if count >= 2 {
+		mon.DupMode = true
+	}
+	if !mon.DupMode {
+		return false
+	}
+	dir := w.monsterTraceIntn("think.dup_direction", len(dirOffsets))
+	mon.Dir = dir
+	off := dirOffsets[dir]
+	nx, ny := mon.X+off[0], mon.Y+off[1]
+	mp, ok := w.data.Maps[mon.MapID]
+	if !ok || !mp.Walkable(nx, ny) || w.movingObjectAtLocked(players, mon.MapID, nx, ny, mon.ID) {
+		return false
+	}
+	w.moveMonsterLocked(mon, nx, ny)
+	mon.DupMode = false
+	return true
 }
 
 func (w *World) monsterAtPointLocked(mapID string, x, y, radius int) *Monster {
@@ -144,6 +201,9 @@ func (w *World) removeMonsterLocked(mon *Monster, adjustSpawn bool) {
 	}
 	w.vacateMonsterLocked(mon)
 	mon.Alive = false
+	mon.DeathAt = w.monsterActionTimeLocked()
+	mon.GhostAt = time.Time{}
+	mon.Ghost = false
 	mon.TargetCharacterID = ""
 	mon.PendingDeath = false
 	mon.DeathHitterID = ""
@@ -171,6 +231,28 @@ func (w *World) removeMonsterLocked(mon *Monster, adjustSpawn bool) {
 	}
 }
 
+func (w *World) killAnimalLocked(mon *Monster) {
+	if mon == nil || !mon.Alive {
+		return
+	}
+	w.vacateMonsterLocked(mon)
+	mon.Alive = false
+	mon.DeathAt = w.monsterActionTimeLocked()
+	mon.GhostAt = time.Time{}
+	mon.Ghost = false
+	state := w.spawnStateForLocked(mon.Spawn)
+	if state.activeCount > 0 {
+		state.activeCount--
+	}
+	mon.PendingDeath = false
+	mon.DeathHitterID = ""
+	mon.TargetCharacterID = ""
+	mon.TargetFocusAt = time.Time{}
+	mon.NextSearchAt = time.Time{}
+	mon.RunAwayMode = false
+	mon.RunAwayUntil = time.Time{}
+}
+
 func (w *World) scheduleMonsterRespawnLocked(mon *Monster, now time.Time) {
 	if mon.Race == 96 && mon.ZilkinKillCount > 0 {
 		mon.ZilkinRebirth = true
@@ -178,9 +260,13 @@ func (w *World) scheduleMonsterRespawnLocked(mon *Monster, now time.Time) {
 		mon.ZilkinKillCount--
 		return
 	}
-	if mon.Spawn.RespawnSeconds > 0 {
-		mon.RespawnAt = now.Add(time.Duration(mon.Spawn.RespawnSeconds) * time.Second)
+}
+
+func (w *World) monsterActionTimeLocked() time.Time {
+	if !w.actionNow.IsZero() {
+		return w.actionNow
 	}
+	return time.Now()
 }
 
 func (w *World) setMonsterLastHitterLocked(mon *Monster, attackerID string) {
@@ -259,6 +345,9 @@ func (w *World) decayMonsterMeatQualityLocked(mon *Monster, magicDamage int) {
 func (w *World) monsterStruckByCharacterLocked(mon *Monster, caster storage.Character, players []storage.Character, now time.Time) {
 	if mon == nil {
 		return
+	}
+	if _, ok := w.characterByIDLocked(players, caster.ID); !ok {
+		players = append(players, caster)
 	}
 	if mon.TargetCharacterID == "" {
 		if w.isProperMonsterTargetLocked(caster, players, mon) {

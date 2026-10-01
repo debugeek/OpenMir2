@@ -59,31 +59,46 @@ func applyStdMode3Use(w *World, ch storage.Character, entry storage.UserItem, it
 			Now:      now,
 		})
 		return ch, "", 0, abilityChanged, nil
-	case 13:
-		return gainExperienceLocked(w, ch, item.DuraMax)
 	case 4, 9, 10:
 		return ch, "", 0, false, fmt.Errorf("item %s cannot be used", item.ID)
+	case 13:
+		return gainExperienceLocked(w, ch, item.DuraMax)
 	default:
 		return ch, "", 0, false, fmt.Errorf("item %s cannot be used", item.ID)
 	}
 }
 
-func (w *World) useBlessingOilLocked(ch *storage.Character) error {
+func (w *World) useBlessingOilLocked(ch *storage.Character) (bool, error) {
 	weapon, ok := w.equippedItemLocked(*ch, SlotWeapon)
 	if !ok {
-		return fmt.Errorf("item 祝福油 cannot be used")
+		return false, fmt.Errorf("item 祝福油 cannot be used")
 	}
 	desc := weapon.Desc
-	if desc[4] > 0 {
+	item, ok := w.data.Items[weapon.ItemID]
+	if !ok {
+		return false, fmt.Errorf("item 祝福油 cannot be used")
+	}
+	nRand := abs(int(item.Stats.DcMax)-int(item.Stats.DcMin)) / 5
+	if w.rand.Intn(20) == 1 {
+		if desc[3] > 0 {
+			desc[3]--
+		} else if desc[4] < 10 {
+			desc[4]++
+		}
+	} else if desc[4] > 0 {
 		desc[4]--
-	} else if desc[3] < 7 {
+	} else if desc[3] < 1 {
+		desc[3]++
+	} else if desc[3] < 3 && w.rand.Intn(nRand+6) == 1 {
+		desc[3]++
+	} else if desc[3] < 7 && w.rand.Intn(nRand*10+30) == 1 {
 		desc[3]++
 	} else {
-		return fmt.Errorf("item 祝福油 cannot be used")
+		return true, nil
 	}
 	weapon.Desc = desc
 	w.setEquippedItemLocked(ch, SlotWeapon, weapon)
-	return nil
+	return true, nil
 }
 
 func (w *World) repairWeaponLocked(ch *storage.Character, super bool) error {
@@ -91,39 +106,26 @@ func (w *World) repairWeaponLocked(ch *storage.Character, super bool) error {
 	if !ok {
 		return fmt.Errorf("item %s cannot be used", map[bool]string{true: "战神油", false: "修复油"}[super])
 	}
-	itemID := weapon.ItemID
-	item, ok := w.data.Items[itemID]
-	if !ok {
-		return fmt.Errorf("item %s cannot be used", map[bool]string{true: "战神油", false: "修复油"}[super])
-	}
-	maxDura := itemDuraMax(item)
-	if maxDura == 0 {
-		maxDura = 1000
-	}
-	current := weapon.Dura
-	if current == 0 {
-		current = maxDura
+	if weapon.DuraMax == 0 {
+		item, ok := w.data.Items[weapon.ItemID]
+		if !ok {
+			return fmt.Errorf("item %s cannot be used", map[bool]string{true: "战神油", false: "修复油"}[super])
+		}
+		weapon.DuraMax = itemDuraMax(item)
 	}
 	if super {
-		if current >= maxDura {
-			return fmt.Errorf("item %s cannot be used", "战神油")
-		}
-		current = maxDura
+		weapon.Dura = weapon.DuraMax
 	} else {
-		if current >= maxDura {
+		if weapon.DuraMax <= weapon.Dura {
 			return fmt.Errorf("item %s cannot be used", "修复油")
 		}
-		missing := int(maxDura - current)
-		delta := missing / 2
+		weapon.DuraMax -= (weapon.DuraMax - weapon.Dura) / 30
+		delta := minInt(5000, int(weapon.DuraMax-weapon.Dura))
 		if delta <= 0 {
-			delta = 1
+			return fmt.Errorf("item %s cannot be used", "修复油")
 		}
-		current += uint16(delta)
-		if current > maxDura {
-			current = maxDura
-		}
+		weapon.Dura += uint16(delta)
 	}
-	weapon.Dura = current
 	w.setEquippedItemLocked(ch, SlotWeapon, weapon)
 	return nil
 }

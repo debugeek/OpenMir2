@@ -1,3 +1,25 @@
 {
-  "kind": "accessory"
+  "id": "狂风戒指",
+  "name": "狂风戒指",
+  "weight": 1,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 1,
+    "defense": 1,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "std_mode": 23,
+  "looks": 162,
+  "dura_max": 5000,
+  "need_level": 16,
+  "price": 20000,
+  "shape": 0,
+  "need": 0,
+  "ani_count": 0
 }

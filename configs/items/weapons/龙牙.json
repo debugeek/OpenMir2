@@ -1,7 +1,6 @@
 {
   "id": "龙牙",
   "name": "龙牙",
-  "kind": "weapon",
   "weight": 25,
   "stats": {
     "min_attack": 10,
@@ -22,6 +21,5 @@
   "need": 2,
   "need_level": 28,
   "price": 85000,
-  "stock": 5,
-  "color": 251
+  "ani_count": 0
 }

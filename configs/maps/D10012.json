@@ -19,6 +19,9 @@
       "to_y": 268
     }
   ],
+  "doors": [
+    {"x": 289, "y": 75, "group": 36996171}
+  ],
   "monster_spawns": [
     {
       "monster_id": "月魔蜘蛛",

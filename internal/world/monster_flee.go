@@ -14,12 +14,12 @@ func (w *World) retreatFromTargetLocked(mon *Monster, target storage.Character) 
 		return MonsterAction{}, false
 	}
 	dir := direction(target.X, target.Y, mon.X, mon.Y)
+	mon.Dir = dir
 	off := dirOffsets[dir]
 	x, y := mon.X+off[0], mon.Y+off[1]
-	if !mp.Walkable(x, y) || w.monsterAtLocked(mon.MapID, x, y, mon.ID) {
+	if !mp.Walkable(x, y) || w.movingObjectAtLocked(nil, mon.MapID, x, y, mon.ID) {
 		return MonsterAction{}, false
 	}
 	w.moveMonsterLocked(mon, x, y)
-	mon.Dir = dir
 	return w.monsterActionLocked(mon, MonsterActionWalk), true
 }

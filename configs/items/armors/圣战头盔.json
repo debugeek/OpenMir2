@@ -1,7 +1,6 @@
 {
   "id": "圣战头盔",
   "name": "圣战头盔",
-  "kind": "misc",
   "weight": 20,
   "stats": {
     "min_attack": 0,
@@ -21,6 +20,6 @@
   "need": 1,
   "need_level": 40,
   "price": 20000,
-  "stock": 5,
-  "color": 251
+  "shape": 0,
+  "ani_count": 0
 }

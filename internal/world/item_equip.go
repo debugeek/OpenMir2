@@ -2,6 +2,7 @@ package world
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"openmir2/internal/storage"
@@ -57,11 +58,36 @@ func (w *World) EquipItemByBagIndexWithResult(ch storage.Character, slot int, ba
 	return updated, result, w.store.SaveCharacter(updated)
 }
 
+func (w *World) resolveItemIDLocked(itemName string) (string, bool) {
+	if _, ok := w.data.Items[itemName]; ok {
+		return itemName, true
+	}
+	for id, item := range w.data.Items {
+		if strings.EqualFold(id, itemName) || strings.EqualFold(item.Name, itemName) {
+			return id, true
+		}
+	}
+	return "", false
+}
+
+func (w *World) itemNameMatchesLocked(itemID, itemName string) bool {
+	item, ok := w.data.Items[itemID]
+	if !ok {
+		return false
+	}
+	return strings.EqualFold(itemID, itemName) || strings.EqualFold(item.Name, itemName)
+}
+
 func (w *World) equipItemLocked(ch storage.Character, slot int, bagIndex int, itemID string) (storage.Character, EquipResult, error) {
 	before := ch
 	if slot < 0 || slot >= useSlotCount {
 		return ch, EquipResult{}, fmt.Errorf("unsupported equip slot %d", slot)
 	}
+	resolvedItemID, ok := w.resolveItemIDLocked(itemID)
+	if !ok {
+		return ch, EquipResult{}, fmt.Errorf("item %s not found", itemID)
+	}
+	itemID = resolvedItemID
 	item, ok := w.data.Items[itemID]
 	if !ok {
 		return ch, EquipResult{}, fmt.Errorf("item %s not found", itemID)
@@ -84,22 +110,10 @@ func (w *World) equipItemLocked(ch storage.Character, slot int, bagIndex int, it
 		currentDuraMax = itemDuraMax(item)
 	}
 	currentDura := entry.Dura
-	if currentDura == 0 {
-		currentDura = currentDuraMax
-	}
 	if item.StdMode == 15 || item.StdMode == 19 || item.StdMode == 20 || item.StdMode == 21 || item.StdMode == 22 || item.StdMode == 23 || item.StdMode == 24 || item.StdMode == 26 {
 		if entryDesc[8] != 0 {
 			entryDesc[8] = 0
 		}
-	}
-	addWeight := -item.Weight
-	if hasPrevious {
-		if prevItem, ok := w.data.Items[previous.ItemID]; ok {
-			addWeight += prevItem.Weight
-		}
-	}
-	if !w.canCarryWeightLocked(ch, addWeight) {
-		return ch, EquipResult{}, fmt.Errorf("item %s is too heavy", itemID)
 	}
 	updated := storage.UserItem{
 		ItemID:    itemID,
@@ -165,7 +179,7 @@ func (w *World) unequipItemLocked(ch storage.Character, slot, requestedIndex int
 	if !ok {
 		return ch, UnequipResult{}, fmt.Errorf("slot %d is empty", slot)
 	}
-	if itemID != "" && wornItem.ItemID != itemID {
+	if itemID != "" && !w.itemNameMatchesLocked(wornItem.ItemID, itemID) {
 		return ch, UnequipResult{}, fmt.Errorf("item %s not in slot %d", itemID, slot)
 	}
 	if requestedIndex > 0 && wornItem.MakeIndex != int32(requestedIndex) {
@@ -175,18 +189,12 @@ func (w *World) unequipItemLocked(ch storage.Character, slot, requestedIndex int
 	if !ok {
 		return ch, UnequipResult{}, fmt.Errorf("item %s not found", wornItem.ItemID)
 	}
-	if !w.canCarryWeightLocked(ch, item.Weight) {
-		return ch, UnequipResult{}, fmt.Errorf("item %s is too heavy", wornItem.ItemID)
-	}
 	if !w.canCarryBagItemsLocked(ch, 1) {
 		return ch, UnequipResult{}, fmt.Errorf("bag is full")
 	}
 	bagItem := wornItem
 	if bagItem.DuraMax == 0 {
 		bagItem.DuraMax = itemDuraMax(item)
-	}
-	if bagItem.Dura == 0 {
-		bagItem.Dura = bagItem.DuraMax
 	}
 	w.deleteEquippedItemLocked(&ch, slot)
 	w.applyStealthRingStateLocked(&ch, time.Now())

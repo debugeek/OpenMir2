@@ -19,6 +19,10 @@
       "to_y": 29
     }
   ],
+  "doors": [
+    {"x": 29, "y": 81, "group": 33584209},
+    {"x": 30, "y": 81, "group": 36708445}
+  ],
   "monster_spawns": [
     {
       "monster_id": "白野猪",

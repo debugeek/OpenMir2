@@ -33,6 +33,9 @@
       "to_y": 105
     }
   ],
+  "doors": [
+    {"x": 156, "y": 369, "group": 32645473}
+  ],
   "monster_spawns": [
     {
       "monster_id": "山洞蝙蝠",

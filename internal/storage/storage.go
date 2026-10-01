@@ -20,12 +20,46 @@ type Store struct {
 type database struct {
 	Accounts   map[string]Account   `json:"accounts"`
 	Characters map[string]Character `json:"characters"`
+	Guilds     map[string]Guild     `json:"guilds,omitempty"`
+	Castles    map[string]Castle    `json:"castles,omitempty"`
 	NextID     int                  `json:"next_id"`
 }
 
 type Account struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+}
+
+type Guild struct {
+	ID             string          `json:"id"`
+	Notice         string          `json:"notice,omitempty"`
+	Ranks          []GuildRank     `json:"ranks,omitempty"`
+	Alliance       string          `json:"alliance,omitempty"`
+	Alliances      []string        `json:"alliances,omitempty"`
+	Wars           map[string]bool `json:"wars,omitempty"`
+	EnableAuthAlly bool            `json:"-"`
+}
+
+type GuildRank struct {
+	Number  int      `json:"number"`
+	Name    string   `json:"name"`
+	Members []string `json:"members,omitempty"`
+}
+
+type Castle struct {
+	ID            string           `json:"id"`
+	OwnerGuildID  string           `json:"owner_guild_id,omitempty"`
+	Gold          int              `json:"gold,omitempty"`
+	TodayIncome   int              `json:"today_income,omitempty"`
+	UnderWar      bool             `json:"under_war,omitempty"`
+	MainDoorOpen  bool             `json:"main_door_open,omitempty"`
+	MainDoorHP    int              `json:"main_door_hp,omitempty"`
+	MainDoorHitAt int64            `json:"main_door_hit_at,omitempty"`
+	WallHP        [3]int           `json:"wall_hp,omitempty"`
+	WallHitAt     [3]int64         `json:"wall_hit_at,omitempty"`
+	GuardSlots    [4]string        `json:"guard_slots,omitempty"`
+	ArcherSlots   [12]string       `json:"archer_slots,omitempty"`
+	Attackers     map[string]int64 `json:"attackers,omitempty"`
 }
 
 type Character struct {
@@ -39,6 +73,8 @@ type Character struct {
 	Experience          int                 `json:"experience"`
 	ExperienceMultiple  int                 `json:"experience_multiple,omitempty"`
 	ExperienceRate      int                 `json:"experience_rate,omitempty"`
+	BodyLuck            float64             `json:"body_luck,omitempty"`
+	BodyLuckLevel       int                 `json:"body_luck_level,omitempty"`
 	HomeMap             string              `json:"home_map,omitempty"`
 	HomeX               int                 `json:"home_x,omitempty"`
 	HomeY               int                 `json:"home_y,omitempty"`
@@ -70,6 +106,8 @@ type Character struct {
 	PremiumPoint        int                 `json:"game_point,omitempty"`
 	AttackMode          int                 `json:"attack_mode,omitempty"`
 	AdminMode           bool                `json:"-"`
+	ObserverMode        bool                `json:"-"`
+	Ghost               bool                `json:"-"`
 	StoneMode           bool                `json:"-"`
 	PKPoint             int                 `json:"pk_point,omitempty"`
 	PKFlag              bool                `json:"-"`
@@ -87,6 +125,7 @@ type Character struct {
 	ThrustingDisabled   bool                `json:"-"`
 	HalfMoonDisabled    bool                `json:"-"`
 	BonusPoint          int                 `json:"bonus_point,omitempty"`
+	CreditPoint         int                 `json:"credit_point,omitempty"`
 	BonusAbil           BonusAbility        `json:"bonus_abil,omitempty"`
 	ExtraAbil           [7]uint16           `json:"extra_abil,omitempty"`
 	ExtraAbilTimes      [7]int64            `json:"extra_abil_times,omitempty"`
@@ -96,10 +135,17 @@ type Character struct {
 	Skills              SkillStates         `json:"skills,omitempty"`
 	GroupOwnerID        string              `json:"group_owner_id,omitempty"`
 	AllowGroup          bool                `json:"allow_group,omitempty"`
+	AllowGroupRecall    bool                `json:"allow_group_recall,omitempty"`
+	GroupRecallUntil    int64               `json:"group_recall_until,omitempty"`
 	GroupMembers        []string            `json:"group_members,omitempty"`
 	GuildID             string              `json:"guild_id,omitempty"`
+	GuildRank           int                 `json:"guild_rank,omitempty"`
+	GuildRankName       string              `json:"guild_rank_name,omitempty"`
+	GuildNotice         string              `json:"guild_notice,omitempty"`
 	GuildAllianceID     string              `json:"guild_alliance_id,omitempty"`
+	GuildAllianceIDs    []string            `json:"guild_alliance_ids,omitempty"`
 	GuildWarArea        bool                `json:"guild_war_area,omitempty"`
+	AllowGuild          bool                `json:"-"`
 	WeaponUpgrade       *WeaponUpgradeState `json:"weapon_upgrade,omitempty"`
 	DefenceUpUntil      int64               `json:"defence_up_until,omitempty"`
 	MagDefenceUpUntil   int64               `json:"mag_defence_up_until,omitempty"`
@@ -228,6 +274,7 @@ func (ch *Character) UnmarshalJSON(data []byte) error {
 
 type WeaponUpgradeState struct {
 	Item      UserItem `json:"item"`
+	NPCID     string   `json:"npc_id,omitempty"`
 	StartedAt int64    `json:"started_at,omitempty"`
 	BonusDC   byte     `json:"bonus_dc,omitempty"`
 	BonusMC   byte     `json:"bonus_mc,omitempty"`
@@ -350,6 +397,8 @@ func Open(path string) (*Store, error) {
 		s.db = database{
 			Accounts:   map[string]Account{},
 			Characters: map[string]Character{},
+			Guilds:     map[string]Guild{},
+			Castles:    map[string]Castle{},
 			NextID:     1,
 		}
 		s.ensureDefaultAccounts()
@@ -370,6 +419,12 @@ func Open(path string) (*Store, error) {
 	if s.db.Characters == nil {
 		s.db.Characters = map[string]Character{}
 	}
+	if s.db.Guilds == nil {
+		s.db.Guilds = map[string]Guild{}
+	}
+	if s.db.Castles == nil {
+		s.db.Castles = map[string]Castle{}
+	}
 	if s.db.NextID == 0 {
 		s.db.NextID = 1
 	}
@@ -379,6 +434,113 @@ func Open(path string) (*Store, error) {
 		}
 	}
 	return s, nil
+}
+
+func (s *Store) Castle(id string) (Castle, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	castle, ok := s.db.Castles[id]
+	return castle, ok
+}
+
+func (s *Store) SaveCastle(castle Castle) error {
+	if castle.ID == "" {
+		return errors.New("castle id is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.db.Castles == nil {
+		s.db.Castles = map[string]Castle{}
+	}
+	s.db.Castles[castle.ID] = castle
+	return s.saveLocked()
+}
+
+func (s *Store) Guild(id string) (Guild, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	guild, ok := s.db.Guilds[id]
+	return guild, ok
+}
+
+func (s *Store) SaveGuild(guild Guild) error {
+	if guild.ID == "" {
+		return errors.New("guild id is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.db.Guilds == nil {
+		s.db.Guilds = map[string]Guild{}
+	}
+	s.db.Guilds[guild.ID] = guild
+	return s.saveLocked()
+}
+
+func (s *Store) AddGuildWar(guildID, targetID string) error {
+	if guildID == "" || targetID == "" || guildID == targetID {
+		return errors.New("invalid guild war")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	guild, ok := s.db.Guilds[guildID]
+	if !ok {
+		return errors.New("guild not found")
+	}
+	target, ok := s.db.Guilds[targetID]
+	if !ok {
+		return errors.New("target guild not found")
+	}
+	if guild.Wars == nil {
+		guild.Wars = map[string]bool{}
+	}
+	if target.Wars == nil {
+		target.Wars = map[string]bool{}
+	}
+	if guild.Wars[targetID] || target.Wars[guildID] {
+		return errors.New("guild war already exists")
+	}
+	guild.Wars[targetID] = true
+	target.Wars[guildID] = true
+	s.db.Guilds[guildID] = guild
+	s.db.Guilds[targetID] = target
+	return s.saveLocked()
+}
+
+func (s *Store) GuildAtWar(guildID, targetID string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	guild, ok := s.db.Guilds[guildID]
+	return ok && guild.Wars[targetID]
+}
+
+func (s *Store) DisbandGuild(id string) ([]Character, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if id == "" {
+		return nil, errors.New("guild id is required")
+	}
+	if _, ok := s.db.Guilds[id]; !ok {
+		return nil, errors.New("guild not found")
+	}
+	updated := make([]Character, 0)
+	for key, ch := range s.db.Characters {
+		if ch.GuildID != id {
+			continue
+		}
+		ch.GuildID = ""
+		ch.GuildRank = 0
+		ch.GuildRankName = ""
+		ch.GuildNotice = ""
+		ch.GuildAllianceID = ""
+		ch.GuildAllianceIDs = nil
+		s.db.Characters[key] = ch
+		updated = append(updated, ch)
+	}
+	delete(s.db.Guilds, id)
+	if err := s.saveLocked(); err != nil {
+		return nil, err
+	}
+	return updated, nil
 }
 
 func (s *Store) ensureDefaultAccounts() bool {
@@ -434,6 +596,28 @@ func (s *Store) Character(id string) (Character, bool) {
 	return ch, ok
 }
 
+func (s *Store) ExpireWeaponUpgrades(before time.Time) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cutoff := before.UnixMilli()
+	changed := make([]string, 0)
+	for id, ch := range s.db.Characters {
+		if ch.WeaponUpgrade == nil || ch.WeaponUpgrade.StartedAt <= 0 || ch.WeaponUpgrade.StartedAt > cutoff {
+			continue
+		}
+		ch.WeaponUpgrade = nil
+		s.db.Characters[id] = ch
+		changed = append(changed, id)
+	}
+	if len(changed) == 0 {
+		return nil, nil
+	}
+	if err := s.saveLocked(); err != nil {
+		return nil, err
+	}
+	return changed, nil
+}
+
 func (s *Store) SaveCharacter(ch Character) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -449,6 +633,108 @@ func (s *Store) SaveCharacter(ch Character) error {
 		return err
 	}
 	return nil
+}
+
+func (s *Store) UpdateGuildRanks(guildID string, ranks []GuildRank) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, ch := range s.db.Characters {
+		if ch.GuildID != guildID {
+			continue
+		}
+		ch.GuildRank = 0
+		ch.GuildRankName = ""
+		for _, rank := range ranks {
+			for _, member := range rank.Members {
+				if strings.EqualFold(member, ch.Name) {
+					ch.GuildRank = rank.Number
+					ch.GuildRankName = rank.Name
+				}
+			}
+		}
+		s.db.Characters[id] = ch
+	}
+	return s.saveLocked()
+}
+
+func (s *Store) UpdateGuildNotice(guildID, notice string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, ch := range s.db.Characters {
+		if ch.GuildID != guildID {
+			continue
+		}
+		ch.GuildNotice = notice
+		s.db.Characters[id] = ch
+	}
+	return s.saveLocked()
+}
+
+func (s *Store) UpdateGuildAlliance(guildID, allianceID string) error {
+	if allianceID == "" {
+		return s.UpdateGuildAlliances(guildID, nil)
+	}
+	return s.UpdateGuildAlliances(guildID, []string{allianceID})
+}
+
+func (s *Store) UpdateGuildAlliances(guildID string, alliances []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, ch := range s.db.Characters {
+		if ch.GuildID != guildID {
+			continue
+		}
+		ch.GuildAllianceIDs = append([]string(nil), alliances...)
+		ch.GuildAllianceID = ""
+		if len(alliances) > 0 {
+			ch.GuildAllianceID = alliances[0]
+		}
+		s.db.Characters[id] = ch
+	}
+	return s.saveLocked()
+}
+
+func (s *Store) RemoveGuildMember(guildID, name string) (Character, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	guild, ok := s.db.Guilds[guildID]
+	if !ok {
+		return Character{}, false, errors.New("guild not found")
+	}
+	found := false
+	for i := range guild.Ranks {
+		filtered := guild.Ranks[i].Members[:0]
+		for _, member := range guild.Ranks[i].Members {
+			if strings.EqualFold(member, name) {
+				found = true
+				continue
+			}
+			filtered = append(filtered, member)
+		}
+		guild.Ranks[i].Members = filtered
+	}
+	if !found {
+		return Character{}, false, nil
+	}
+	var updated Character
+	for id, ch := range s.db.Characters {
+		if ch.GuildID == guildID && strings.EqualFold(ch.Name, name) {
+			ch.GuildID = ""
+			ch.GuildRank = 0
+			ch.GuildRankName = ""
+			ch.GuildNotice = ""
+			ch.GuildAllianceID = ""
+			ch.GuildAllianceIDs = nil
+			s.db.Characters[id] = ch
+			updated = ch
+			break
+		}
+	}
+	s.db.Guilds[guildID] = guild
+	if err := s.saveLocked(); err != nil {
+		return Character{}, false, err
+	}
+	return updated, true, nil
 }
 
 func (s *Store) saveLocked() error {

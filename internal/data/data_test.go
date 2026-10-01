@@ -10,10 +10,10 @@ func TestLoadConfigsReadsRuntimeConfigs(t *testing.T) {
 	if _, ok := b.Items["木剑"]; !ok {
 		t.Fatalf("expected 木剑 item in runtime configs")
 	}
-	if item := b.Items["回城卷"]; item.Kind != "consumable" || item.StdMode != 3 {
+	if item := b.Items["回城卷"]; item.StdMode != 3 {
 		t.Fatalf("expected 回城卷 metadata from reference, got %+v", item)
 	}
-	if item := b.Items["金创药(小量)"]; item.Kind != "consumable" {
+	if item := b.Items["金创药(小量)"]; item.Looks != 398 {
 		t.Fatalf("expected 金创药(小量) metadata from reference, got %+v", item)
 	}
 	if item := b.Items["金手镯"]; item.StdMode != 26 || item.Looks != 207 {
@@ -36,6 +36,11 @@ func TestLoadConfigsReadsRuntimeConfigs(t *testing.T) {
 	}
 	if len(b.Maps["0"].Spawns) == 0 {
 		t.Fatalf("expected map 0 spawns in runtime configs")
+	}
+	for _, id := range []string{"R001", "Q004", "H007", "H106"} {
+		if !b.Maps[id].NeedHole {
+			t.Fatalf("expected %s to require an active dig-out event", id)
+		}
 	}
 	foundStartPoint := false
 	for _, mp := range b.Maps {

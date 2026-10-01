@@ -1,7 +1,6 @@
 {
   "id": "随机传送卷",
   "name": "随机传送卷",
-  "kind": "consumable",
   "weight": 1,
   "stats": {
     "min_attack": 0,
@@ -21,6 +20,6 @@
   "dura_max": 1,
   "need_level": 1,
   "price": 100,
-  "stock": 1,
-  "color": 251
+  "need": 0,
+  "ani_count": 107
 }

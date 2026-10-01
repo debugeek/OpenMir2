@@ -10,16 +10,23 @@ import (
 )
 
 type UserCommandResult struct {
-	Message    string
-	Monsters   []Monster
-	AddedItems []storage.UserItem
-	Character  storage.Character
-	Teleport   *TeleportEvent
+	Message          string
+	Monsters         []Monster
+	AddedItems       []storage.UserItem
+	Character        storage.Character
+	Teleport         *TeleportEvent
+	CharacterUpdates []storage.Character
+	Teleports        []TeleportEvent
+	Notices          []string
 }
 
 type ChatResult struct {
-	Message string
-	Global  bool
+	Message    string
+	Global     bool
+	Private    bool
+	Group      bool
+	Guild      bool
+	TargetName string
 }
 
 type SayResult struct {
@@ -47,15 +54,39 @@ func (w *World) handleUserCommand(activeChar storage.Character, line string, pla
 		return w.handleMakeCommand(activeChar, params), true
 	case "move":
 		return w.handleMoveCommand(activeChar, params, players), true
+	case "allowgrouprecall":
+		return w.handleAllowGroupRecallCommand(activeChar), true
+	case "grouprecall":
+		return w.handleGroupRecallCommand(activeChar, players), true
 	default:
 		return UserCommandResult{Message: "unknown command: @" + name}, true
 	}
 }
 
 func (w *World) HandleChat(activeChar storage.Character, line string) (ChatResult, bool) {
-	line = strings.TrimSpace(line)
-	if line == "" || strings.HasPrefix(line, "@") {
+	if strings.TrimSpace(line) == "" || strings.HasPrefix(line, "@") {
 		return ChatResult{}, false
+	}
+	if strings.HasPrefix(line, "/") {
+		parts := strings.SplitN(strings.TrimSpace(strings.TrimPrefix(line, "/")), " ", 2)
+		if len(parts) != 2 || parts[0] == "" || strings.TrimSpace(parts[1]) == "" {
+			return ChatResult{}, false
+		}
+		return ChatResult{Message: activeChar.Name + "=> " + strings.TrimSpace(parts[1]), Private: true, TargetName: parts[0]}, true
+	}
+	if strings.HasPrefix(line, "!!") {
+		message := strings.TrimSpace(strings.TrimPrefix(line, "!!"))
+		if message == "" {
+			return ChatResult{}, false
+		}
+		return ChatResult{Message: activeChar.Name + ": " + message, Group: true}, true
+	}
+	if strings.HasPrefix(line, "!~") {
+		message := strings.TrimSpace(strings.TrimPrefix(line, "!~"))
+		if message == "" || activeChar.GuildID == "" {
+			return ChatResult{}, false
+		}
+		return ChatResult{Message: activeChar.Name + ": " + message, Guild: true}, true
 	}
 	if strings.HasPrefix(line, "!") {
 		return ChatResult{
@@ -75,8 +106,7 @@ func (w *World) HandleSayWithPlayers(activeChar storage.Character, line string, 
 }
 
 func (w *World) handleSay(activeChar storage.Character, line string, players []storage.Character) (SayResult, bool) {
-	line = strings.TrimSpace(line)
-	if line == "" {
+	if strings.TrimSpace(line) == "" {
 		return SayResult{}, false
 	}
 	if strings.HasPrefix(line, "@") {

@@ -38,9 +38,11 @@ func (w *World) useBagItemEntryLocked(ch storage.Character, idx int) (storage.Ch
 		w.clearBagItemLocked(&ch, idx)
 		result.RemovedItems = append(result.RemovedItems, consumedItem)
 	case itemID == "祝福油":
-		if err := w.useBlessingOilLocked(&ch); err != nil {
+		changed, err := w.useBlessingOilLocked(&ch)
+		if err != nil {
 			return ch, ItemUseResult{}, err
 		}
+		result.AbilityChanged = changed
 		w.clearBagItemLocked(&ch, idx)
 		result.RemovedItems = append(result.RemovedItems, consumedItem)
 	case itemID == "修复油":
@@ -121,13 +123,15 @@ func (w *World) useBagItemEntryLocked(ch storage.Character, idx int) (storage.Ch
 		}
 		w.clearBagItemLocked(&ch, idx)
 		result.RemovedItems = append(result.RemovedItems, consumedItem)
-	case item.Kind == "book" || item.StdMode == 4:
+		result.SuppressRemovedSync = true
+	case item.StdMode == 4:
 		if skill, ok := w.data.Skills[item.Name]; ok {
 			if canLearnSkill(ch, skill) && !hasSkill(ch, skill.ID) {
 				if !learnSkill(&ch, skill.ID) {
 					return ch, ItemUseResult{}, fmt.Errorf("item %s cannot be used", itemID)
 				}
 				result.SkillChanged = true
+				result.AddedSkills = append(result.AddedSkills, storage.SkillState{ID: skill.ID})
 				w.clearBagItemLocked(&ch, idx)
 				result.RemovedItems = append(result.RemovedItems, consumedItem)
 			} else {

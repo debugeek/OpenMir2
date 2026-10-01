@@ -1,7 +1,6 @@
 {
   "id": "护身符(大)",
   "name": "护身符(大)",
-  "kind": "misc",
   "weight": 1,
   "stats": {
     "min_attack": 0,
@@ -20,6 +19,7 @@
   "looks": 270,
   "dura_max": 20000,
   "price": 1000,
-  "stock": 5,
-  "color": 251
+  "need": 0,
+  "need_level": 0,
+  "ani_count": 111
 }

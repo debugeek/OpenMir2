@@ -2,12 +2,16 @@ package network
 
 import (
 	"bytes"
+	"strconv"
 
 	"openmir2/internal/data"
 	"openmir2/internal/world"
 )
 
 func ClientItemBody(item data.StdItem, desc [14]byte, makeIndex int32, dura, duraMax uint16) []byte {
+	if item.StdMode == 50 {
+		item.Name += " #" + strconv.Itoa(int(dura))
+	}
 	body := bytes.NewBuffer(make([]byte, 0, 192))
 	writeGBKAsciiString(body, item.Name, itemNameLen)
 	writeByte(body, byte(item.StdMode))

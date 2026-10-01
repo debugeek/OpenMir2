@@ -1,7 +1,6 @@
 {
   "id": "铜矿",
   "name": "铜矿",
-  "kind": "misc",
   "weight": 4,
   "stats": {
     "min_attack": 0,
@@ -19,6 +18,8 @@
   "looks": 286,
   "dura_max": 30000,
   "price": 500,
-  "stock": 5,
-  "color": 251
+  "shape": 0,
+  "need": 0,
+  "need_level": 0,
+  "ani_count": 0
 }

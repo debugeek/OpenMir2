@@ -31,34 +31,59 @@ func TeleportRandomInMap(ch storage.Character, mp data.StdMap, rng *rand.Rand) (
 	if mp.Width <= 0 || mp.Height <= 0 {
 		return ch, fmt.Errorf("map %s is invalid", mp.ID)
 	}
-	positions := make([][2]int, 0, mp.Width*mp.Height)
-	for y := 0; y < mp.Height; y++ {
-		for x := 0; x < mp.Width; x++ {
-			if mp.Walkable(x, y) {
-				positions = append(positions, [2]int{x, y})
+	edge := 50
+	if mp.Height < 150 {
+		edge = 20
+		if mp.Height < 30 {
+			edge = 2
+		}
+	}
+	if mp.Width-edge-1 <= 0 || mp.Height-edge-1 <= 0 {
+		positions := make([][2]int, 0, mp.Width*mp.Height)
+		for y := 0; y < mp.Height; y++ {
+			for x := 0; x < mp.Width; x++ {
+				if mp.Walkable(x, y) {
+					positions = append(positions, [2]int{x, y})
+				}
+			}
+		}
+		if len(positions) == 0 {
+			return ch, fmt.Errorf("no available teleport position")
+		}
+		pick := positions[rng.Intn(len(positions))]
+		ch.MapID, ch.X, ch.Y = mp.ID, pick[0], pick[1]
+		return ch, nil
+	}
+	x := rng.Intn(mp.Width-edge-1) + edge
+	y := rng.Intn(mp.Height-edge-1) + edge
+	stepX := 10
+	if mp.Width < 80 {
+		stepX = 3
+	}
+	wallY := 50
+	if mp.Height < 150 {
+		wallY = 15
+		if mp.Height < 50 {
+			wallY = 2
+		}
+	}
+	for attempt := 0; attempt < 201; attempt++ {
+		if mp.Walkable(x, y) {
+			ch.MapID = mp.ID
+			ch.X = x
+			ch.Y = y
+			return ch, nil
+		}
+		if x < mp.Width-wallY-1 {
+			x += stepX
+		} else {
+			x = rng.Intn(mp.Width)
+			if y < mp.Height-wallY-1 {
+				y += stepX
+			} else {
+				y = rng.Intn(mp.Height)
 			}
 		}
 	}
-	if len(positions) == 0 {
-		return ch, fmt.Errorf("no available teleport position")
-	}
-	pick := positions[rng.Intn(len(positions))]
-	if len(positions) > 1 && pick[0] == ch.X && pick[1] == ch.Y {
-		currentIndex := 0
-		for i, position := range positions {
-			if position == pick {
-				currentIndex = i
-				break
-			}
-		}
-		otherIndex := rng.Intn(len(positions) - 1)
-		if otherIndex >= currentIndex {
-			otherIndex++
-		}
-		pick = positions[otherIndex]
-	}
-	ch.MapID = mp.ID
-	ch.X = pick[0]
-	ch.Y = pick[1]
-	return ch, nil
+	return ch, fmt.Errorf("no available teleport position")
 }

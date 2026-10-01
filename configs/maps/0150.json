@@ -26,6 +26,9 @@
       "to_y": 274
     }
   ],
+  "doors": [
+    {"x": 7, "y": 22, "group": 34610198}
+  ],
   "monster_spawns": [],
   "blocked_bits": "////////////////////////////////7/z/Y/x/APx/APwXAPwHAP8BwP8A8D8A/AMA/wGA/wDA/wH0/wn//8b///H///z///////8f"
 }

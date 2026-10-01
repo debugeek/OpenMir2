@@ -45,15 +45,14 @@ func (w *World) normalizeBagItemMakeIndexesLocked(ch *storage.Character) bool {
 		if entry.MakeIndex > 0 {
 			if _, ok := seen[entry.MakeIndex]; !ok {
 				seen[entry.MakeIndex] = struct{}{}
-				if next := int(entry.MakeIndex) + 1; next > w.nextID {
-					w.nextID = next
+				if entry.MakeIndex <= itemMakeIndexMax && entry.MakeIndex+1 > w.nextItemID {
+					w.nextItemID = entry.MakeIndex + 1
 				}
 				normalized = append(normalized, entry)
 				continue
 			}
 		}
-		entry.MakeIndex = int32(w.nextID)
-		w.nextID++
+		entry.MakeIndex = w.nextItemMakeIndexLocked()
 		seen[entry.MakeIndex] = struct{}{}
 		normalized = append(normalized, entry)
 		changed = true
@@ -77,13 +76,50 @@ func (w *World) normalizeEquippedItemsLocked(ch *storage.Character) bool {
 			continue
 		}
 		if item.MakeIndex != 0 {
+			if item.MakeIndex <= itemMakeIndexMax && item.MakeIndex+1 > w.nextItemID {
+				w.nextItemID = item.MakeIndex + 1
+			}
 			continue
 		}
-		item.MakeIndex = int32(w.nextID)
-		w.nextID++
+		item.MakeIndex = w.nextItemMakeIndexLocked()
 		ch.EquippedItems[slot] = item
 		changed = true
 	}
+	return changed
+}
+
+func (w *World) normalizeStorageItemMakeIndexesLocked(ch *storage.Character) bool {
+	changed := false
+	seen := map[int32]struct{}{}
+	normalized := make([]storage.UserItem, 0, len(ch.StorageItems))
+	for _, entry := range ch.StorageItems {
+		if entry.ItemID == "" {
+			changed = true
+			continue
+		}
+		if _, ok := w.data.Items[entry.ItemID]; !ok {
+			changed = true
+			continue
+		}
+		if entry.MakeIndex > 0 {
+			if _, ok := seen[entry.MakeIndex]; !ok {
+				seen[entry.MakeIndex] = struct{}{}
+				if entry.MakeIndex <= itemMakeIndexMax && entry.MakeIndex+1 > w.nextItemID {
+					w.nextItemID = entry.MakeIndex + 1
+				}
+				normalized = append(normalized, entry)
+				continue
+			}
+		}
+		entry.MakeIndex = w.nextItemMakeIndexLocked()
+		seen[entry.MakeIndex] = struct{}{}
+		normalized = append(normalized, entry)
+		changed = true
+	}
+	if len(normalized) != len(ch.StorageItems) {
+		changed = true
+	}
+	ch.StorageItems = normalized
 	return changed
 }
 

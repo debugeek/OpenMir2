@@ -1,7 +1,6 @@
 {
   "id": "斩马刀",
   "name": "斩马刀",
-  "kind": "weapon",
   "weight": 27,
   "stats": {
     "min_attack": 5,
@@ -21,6 +20,6 @@
   "dura_max": 19000,
   "need_level": 20,
   "price": 6000,
-  "stock": 50,
-  "color": 251
+  "need": 0,
+  "ani_count": 0
 }

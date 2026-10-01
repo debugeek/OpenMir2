@@ -8,7 +8,6 @@ import (
 	"io"
 	"log/slog"
 	"math"
-	"math/rand"
 	"net"
 	"sort"
 	"strconv"
@@ -35,16 +34,16 @@ const (
 	SlotCharm  = world.SlotCharm
 )
 
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
-
 type Server struct {
-	serverName string
-	listeners  []config.Listener
-	store      *storage.Store
-	world      *world.World
-	log        *slog.Logger
+	serverName  string
+	listeners   []config.Listener
+	connWG      sync.WaitGroup
+	connMu      sync.Mutex
+	connections map[net.Conn]struct{}
+	saveDone    chan struct{}
+	store       *storage.Store
+	world       *world.World
+	log         *slog.Logger
 
 	sessionMu                sync.Mutex
 	sessions                 map[int32]string
@@ -67,10 +66,20 @@ type Server struct {
 	delayedTimer             *time.Timer
 	delayedSeq               uint64
 	delayedActive            bool
+	clientActionQueueActive  bool
+	actionClientCursor       int
+	saveMu                   sync.Mutex
+	lastCharacterSave        map[string]time.Time
+	lastWeaponUpgradeExpiry  time.Time
+	characterSaveQueue       chan characterSaveJob
+	characterSaveActive      bool
 
 	hitImpactDelay      time.Duration
 	monsterTickInterval time.Duration
+	actionProcessLimit  time.Duration
 }
+
+const humanActionProcessLimit = 30 * time.Millisecond
 
 type MonsterPacketTrace struct {
 	Sequence  int    `json:"sequence"`
@@ -135,12 +144,26 @@ type spellRefSnapshot struct {
 }
 
 type delayedClientEvent struct {
-	at          time.Time
-	seq         uint64
-	conn        net.Conn
-	characterID string
-	run         func(*Client)
-	runServer   func()
+	at                time.Time
+	seq               uint64
+	conn              net.Conn
+	characterID       string
+	serverCharacterID string
+	cancelKey         string
+	run               func(*Client)
+	runServer         func()
+}
+
+type clientActionMessage struct {
+	cmd      mir176.Command
+	response []byte
+	at       time.Time
+	late     bool
+}
+
+type characterSaveJob struct {
+	character storage.Character
+	retries   int
 }
 
 type fireHitState struct {
@@ -253,7 +276,7 @@ const (
 )
 
 func New(serverName string, listeners []config.Listener, store *storage.Store, world *world.World, log *slog.Logger) *Server {
-	return &Server{serverName: serverName, listeners: listeners, store: store, world: world, log: log, sessions: map[int32]string{}, clients: map[net.Conn]*Client{}, closed: map[net.Conn]struct{}{}, spellRefs: map[string]spellRefSnapshot{}, skillExpGen: map[string]uint64{}, fireHitState: map[string]fireHitState{}, powerHitState: map[string]bool{}, hitImpactDelay: 200 * time.Millisecond, monsterTickInterval: 100 * time.Millisecond}
+	return &Server{serverName: serverName, listeners: listeners, store: store, world: world, log: log, sessions: map[int32]string{}, clients: map[net.Conn]*Client{}, connections: map[net.Conn]struct{}{}, closed: map[net.Conn]struct{}{}, spellRefs: map[string]spellRefSnapshot{}, skillExpGen: map[string]uint64{}, fireHitState: map[string]fireHitState{}, powerHitState: map[string]bool{}, lastCharacterSave: map[string]time.Time{}, characterSaveQueue: make(chan characterSaveJob, 256), saveDone: make(chan struct{}), hitImpactDelay: 200 * time.Millisecond, monsterTickInterval: 100 * time.Millisecond, actionProcessLimit: humanActionProcessLimit}
 }
 
 func (s *Server) SetHitImpactDelay(delay time.Duration) {
@@ -288,6 +311,7 @@ type Client struct {
 	spellActionCount       int
 	pendingSpellMessages   int
 	pendingTurnMessages    int
+	pendingButcherMessages int
 	pendingSitDownMessages int
 	pendingHitMessages     int
 	hitActionCount         int
@@ -296,14 +320,27 @@ type Client struct {
 	turnAt                 time.Time
 	sitDownAt              time.Time
 	pendingMoveMessages    int
+	actionMessages         []clientActionMessage
+	actionRunAt            time.Time
 	moveAt                 time.Time
 	actionAt               time.Time
 	actionIdent            uint16
 	actionDir              int
+	filterAction           bool
 	struckAt               time.Time
 	chargeAt               time.Time
+	dealPeerID             string
+	dealItems              []storage.UserItem
+	dealGold               int
+	dealOK                 bool
+	dealLastAt             time.Time
+	sayAt                  time.Time
+	sayCount               int
+	sayDisabledUntil       time.Time
+	shoutAt                time.Time
 	probeLatestAt          time.Time
 	closed                 bool
+	softVersion            int
 	spellMessages          chan spellObjectMessage
 	spellQueue             []spellObjectMessage
 	spellQueueWaiters      []chan struct{}
@@ -345,8 +382,7 @@ func (a pickupSyncAdapter) BroadcastDropHide(ch storage.Character, dropID string
 }
 
 func (a pickupSyncAdapter) SendGoldChanged(ch storage.Character, gold int) {
-	_ = ch
-	a.s.sendGoldChanged(a.conn, gold)
+	a.s.sendGoldChanged(a.conn, ch, gold)
 }
 
 func (a pickupSyncAdapter) SendBagAddItem(ch storage.Character, item storage.UserItem) {
@@ -414,10 +450,6 @@ func (a itemUseSyncAdapter) SendHealthSpellChanged(ch storage.Character) {
 	a.s.sendHealthSpellChanged(a.conn, world.CharacterActorID(ch), a.s.world.AbilityStats(ch))
 }
 
-func (a itemUseSyncAdapter) SendEquippedItems(ch storage.Character) {
-	a.s.sendEquippedItems(a.conn, ch)
-}
-
 func (a itemUseSyncAdapter) SendWeightChanged(ch storage.Character) {
 	a.s.sendWeightChanged(a.conn, a.s.world.AbilityStats(ch))
 }
@@ -427,20 +459,60 @@ func (a itemUseSyncAdapter) SendAbilityRefresh(ch storage.Character, okIdent uin
 }
 
 func (a itemUseSyncAdapter) SendLocalHear(ch storage.Character, msg string) {
-	if clients := a.s.ClientsInMap(ch.MapID); len(clients) > 0 {
-		a.s.broadcastHear(clients, msg, 0x00, 0xFF)
+	if clients := a.s.ClientsAround(ch.MapID, ch.X, ch.Y, a.s.viewRange()); len(clients) > 0 {
+		a.s.broadcastHear(clients, world.CharacterActorID(ch), msg, 0x00, 0xFF)
 		return
 	}
-	a.s.sendHear(a.conn, msg, 0x00, 0xFF)
+	a.s.sendHear(a.conn, world.CharacterActorID(ch), msg, 0x00, 0xFF)
 }
 
 func (a itemUseSyncAdapter) SendGlobalHear(ch storage.Character, msg string) {
-	_ = ch
-	if clients := a.s.allClients(); len(clients) > 0 {
-		a.s.broadcastHear(clients, msg, 0x00, 0x97)
+	if clients := a.s.ClientsAround(ch.MapID, ch.X, ch.Y, 50); len(clients) > 0 {
+		a.s.broadcastHear(clients, world.CharacterActorID(ch), msg, 0x00, 0x97)
 		return
 	}
-	a.s.sendHear(a.conn, msg, 0x00, 0x97)
+	a.s.sendHear(a.conn, world.CharacterActorID(ch), msg, 0x00, 0x97)
+}
+
+func (a itemUseSyncAdapter) SendPrivate(ch storage.Character, targetName, msg string) {
+	for _, client := range a.s.allClients() {
+		target := client.character()
+		if strings.EqualFold(target.Name, targetName) {
+			if target.Ghost {
+				a.s.sendSystemMessage(a.conn, ch, targetName+" 目前无法接收私聊，请稍后再试")
+				return
+			}
+			prefix := ch.Name + "=> "
+			content := strings.TrimPrefix(msg, prefix)
+			senderMessage := prefix + content
+			recipientMessage := ch.Name + "=>" + target.Name + " " + content
+			whisper := func(target *Client, body string) {
+				target.writeCommand(a.s, mir176.Command{Ident: mir176.SMWhisper, Recog: world.CharacterActorID(ch), Param: makeWord(0xFC, 0xFF), Series: 1}, EncodeString(body))
+			}
+			if sender := a.s.clientForConn(a.conn); sender != nil {
+				whisper(sender, senderMessage)
+			}
+			whisper(client, recipientMessage)
+			return
+		}
+	}
+	a.s.sendSystemMessage(a.conn, ch, targetName+" 目前不在线，请稍后再试")
+}
+
+func (a itemUseSyncAdapter) SendGroup(ch storage.Character, msg string) {
+	for _, client := range a.s.allClients() {
+		if client.ch.GroupOwnerID == ch.GroupOwnerID && ch.GroupOwnerID != "" {
+			client.writeCommand(a.s, mir176.Command{Ident: mir176.SMGroupMessage, Recog: world.CharacterActorID(ch), Param: makeWord(0xC4, 0xFF), Series: 1}, EncodeString("〖组队〗"+msg))
+		}
+	}
+}
+
+func (a itemUseSyncAdapter) SendGuild(ch storage.Character, msg string) {
+	for _, client := range a.s.allClients() {
+		if ch.GuildID != "" && client.ch.GuildID == ch.GuildID {
+			client.writeCommand(a.s, mir176.Command{Ident: mir176.SMGuildMessage, Recog: world.CharacterActorID(ch), Param: makeWord(0xDB, 0xFF), Series: 1}, EncodeString(msg))
+		}
+	}
 }
 
 type attackSyncAdapter struct {
@@ -455,6 +527,23 @@ func (a attackSyncAdapter) UpdateClient(ch storage.Character) {
 
 func (a attackSyncAdapter) SendActionOK() {
 	a.s.sendActionOK(a.conn)
+}
+
+func (a attackSyncAdapter) SendMiningFeedback() {
+	a.s.sendRawFrame(a.conn, "=DIG")
+}
+
+func (a attackSyncAdapter) SendAttackItemChanges(ch storage.Character, durabilities []world.SpellDurability, deleted []storage.UserItem) {
+	a.s.sendCharacterDeletedItems(a.conn, ch, deleted)
+	for _, durability := range durabilities {
+		a.s.sendCommand(a.conn, DurabilityCommand(durability), nil)
+	}
+}
+
+func (a attackSyncAdapter) SendWeaponBroken() {
+	if client := a.s.clientForConn(a.conn); client != nil {
+		a.s.sendSystemMessage(a.conn, client.character(), "武器破碎")
+	}
 }
 
 func (a attackSyncAdapter) SendWinExp(exp int, currentExp int) {
@@ -501,6 +590,10 @@ func (a attackSyncAdapter) SendSkillExp(magicID uint16, level byte, train int, d
 }
 
 func (a attackSyncAdapter) BroadcastCharacterHit(ch storage.Character, attackIdent uint16) {
+	a.broadcastCharacterHit(ch, attackIdent, nil)
+}
+
+func (a attackSyncAdapter) broadcastCharacterHit(ch storage.Character, attackIdent uint16, body []byte) {
 	clients := a.s.spellRefClients(ch)
 	filtered := make([]*Client, 0, len(clients))
 	for _, client := range clients {
@@ -509,7 +602,7 @@ func (a attackSyncAdapter) BroadcastCharacterHit(ch storage.Character, attackIde
 		}
 	}
 	if len(filtered) > 0 {
-		a.s.broadcastCharacterHit(filtered, ch, attackIdent)
+		a.s.broadcastCharacterHitBody(filtered, ch, attackIdent, body)
 	}
 }
 
@@ -544,7 +637,7 @@ func (a groupSyncAdapter) UpdateClient(ch storage.Character) {
 
 func (a groupSyncAdapter) SendGroupCancel(ch storage.Character) {
 	if client, ok := a.s.ClientByCharacterID(ch.ID); ok {
-		client.writeCommand(a.s, mir176.Command{Ident: mir176.SMGroupCancel}, nil)
+		client.writeCommand(a.s, mir176.Command{Ident: mir176.SMGroupCancel, Recog: world.CharacterActorID(ch)}, nil)
 	}
 }
 
@@ -581,7 +674,19 @@ func (s *Server) Run(ctx context.Context) error {
 					}
 				}
 				disableNagle(conn)
-				go s.handleConn(ctx, listener.Name, conn)
+				s.connMu.Lock()
+				s.connections[conn] = struct{}{}
+				s.connMu.Unlock()
+				s.connWG.Add(1)
+				go func() {
+					defer s.connWG.Done()
+					defer func() {
+						s.connMu.Lock()
+						delete(s.connections, conn)
+						s.connMu.Unlock()
+					}()
+					s.handleConn(ctx, listener.Name, conn)
+				}()
 			}
 		}(cfg, ln)
 	}
@@ -591,8 +696,17 @@ func (s *Server) Run(ctx context.Context) error {
 			_ = c.Close()
 		}
 	}()
+	s.clientActionQueueActive = true
+	s.saveMu.Lock()
+	s.characterSaveActive = true
+	s.saveMu.Unlock()
 	go s.runWorldTicks(ctx)
+	go s.runClientActionTicks(ctx)
+	go s.runCharacterSaves(ctx)
 	wg.Wait()
+	s.closeAllConnections()
+	s.connWG.Wait()
+	<-s.saveDone
 	select {
 	case err := <-errCh:
 		return err
@@ -618,7 +732,229 @@ func (s *Server) runWorldTicks(ctx context.Context) {
 				continue
 			}
 			s.applyWorldTick(result, now)
+			s.expireWeaponUpgrades(now)
+			for _, door := range s.world.ExpireDoors(now) {
+				s.broadcastDoorChange(door, mir176.SMCloseDoor)
+			}
+			s.saveDueCharacters(now)
 		}
+	}
+}
+
+func (s *Server) expireWeaponUpgrades(now time.Time) {
+	if !s.lastWeaponUpgradeExpiry.IsZero() && now.Sub(s.lastWeaponUpgradeExpiry) < time.Hour {
+		return
+	}
+	expireDays := s.world.Gameplay().Item.UpgradeWeaponExpireDays
+	if expireDays <= 0 {
+		return
+	}
+	cutoff := now.Add(-time.Duration(expireDays) * 24 * time.Hour)
+	if expired, err := s.store.ExpireWeaponUpgrades(cutoff); err == nil {
+		for _, characterID := range expired {
+			if client, ok := s.ClientByCharacterID(characterID); ok {
+				ch := client.character()
+				ch.WeaponUpgrade = nil
+				s.updateClientByCharacterID(ch)
+			}
+		}
+		s.lastWeaponUpgradeExpiry = now
+	}
+}
+
+func (s *Server) runClientActionTicks(ctx context.Context) {
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.runClientActionTick()
+		}
+	}
+}
+
+func (s *Server) runClientActionTick() {
+	s.clientMu.Lock()
+	clients := make([]*Client, 0, len(s.clients))
+	for _, client := range s.clients {
+		clients = append(clients, client)
+	}
+	cursor := s.actionClientCursor
+	s.clientMu.Unlock()
+	if len(clients) == 0 {
+		s.clientMu.Lock()
+		s.actionClientCursor = 0
+		s.clientMu.Unlock()
+		return
+	}
+	sort.SliceStable(clients, func(i, j int) bool {
+		left := clients[i].character()
+		right := clients[j].character()
+		if left.ObjectOrder == 0 || right.ObjectOrder == 0 {
+			return left.ID < right.ID
+		}
+		if left.ObjectOrder == right.ObjectOrder {
+			return left.ID < right.ID
+		}
+		return left.ObjectOrder < right.ObjectOrder
+	})
+	if cursor >= len(clients) {
+		cursor = 0
+	}
+	startedAt := time.Now()
+	processLimit := s.actionProcessLimit
+	if processLimit == 0 {
+		processLimit = humanActionProcessLimit
+	}
+	for offset := 0; offset < len(clients); offset++ {
+		client := clients[(cursor+offset)%len(clients)]
+		client.mu.Lock()
+		now := time.Now()
+		if !client.actionRunAt.IsZero() && now.Sub(client.actionRunAt) <= 250*time.Millisecond {
+			client.mu.Unlock()
+			continue
+		}
+		client.actionRunAt = now
+		messages := make([]clientActionMessage, 0, len(client.actionMessages))
+		pending := client.actionMessages[:0]
+		for _, message := range client.actionMessages {
+			if message.at.IsZero() || !message.at.After(now) {
+				messages = append(messages, message)
+				continue
+			}
+			pending = append(pending, message)
+		}
+		client.actionMessages = pending
+		closed := client.closed
+		client.mu.Unlock()
+		if closed {
+			continue
+		}
+		for _, message := range messages {
+			if len(message.response) != 0 {
+				client.enqueueOutput(message.response)
+				continue
+			}
+			if message.late {
+				s.decrementPendingAction(client, message.cmd.Ident)
+			}
+			active := client.character()
+			s.processClientAction(client.conn, &active, message.cmd, message.late)
+		}
+		if time.Since(startedAt) > processLimit {
+			s.clientMu.Lock()
+			s.actionClientCursor = (cursor + offset + 1) % len(clients)
+			s.clientMu.Unlock()
+			return
+		}
+	}
+	s.clientMu.Lock()
+	s.actionClientCursor = 0
+	s.clientMu.Unlock()
+}
+
+func (s *Server) queueClientAction(conn net.Conn, cmd mir176.Command) {
+	client := s.clientForConn(conn)
+	if client == nil {
+		return
+	}
+	client.mu.Lock()
+	if client.actionRunAt.IsZero() {
+		client.actionRunAt = time.Now()
+	}
+	client.actionRunAt = client.actionRunAt.Add(-100 * time.Millisecond)
+	pending := client.actionMessages[:0]
+	for _, message := range client.actionMessages {
+		if !isQueuedClientAction(message.cmd.Ident) {
+			pending = append(pending, message)
+			continue
+		}
+		if message.late {
+			decrementPendingActionLocked(client, message.cmd.Ident)
+		}
+	}
+	client.actionMessages = append(pending, clientActionMessage{cmd: cmd})
+	client.mu.Unlock()
+}
+
+func isQueuedClientAction(ident uint16) bool {
+	switch ident {
+	case mir176.CMTurn, mir176.CMWalk, mir176.CMRun, mir176.CMSitDown,
+		mir176.CMHit, mir176.CMHeavyHit, mir176.CMBigHit, mir176.CMPowerHit,
+		mir176.CMLongHit, mir176.CMWideHit, mir176.CMFireHit:
+		return true
+	default:
+		return false
+	}
+}
+
+func (c *Client) queueActionOutput(response []byte) {
+	c.mu.Lock()
+	c.actionMessages = append(c.actionMessages, clientActionMessage{response: response})
+	c.mu.Unlock()
+}
+
+func (s *Server) queueDelayedClientAction(conn net.Conn, characterID string, cmd mir176.Command, delay time.Duration) bool {
+	if !s.clientActionQueueActive {
+		return false
+	}
+	client := s.clientForConn(conn)
+	if client == nil && characterID != "" {
+		client, _ = s.ClientByCharacterID(characterID)
+	}
+	if client == nil {
+		return true
+	}
+	if client.character().Ghost {
+		return true
+	}
+	client.mu.Lock()
+	client.actionMessages = append(client.actionMessages, clientActionMessage{cmd: cmd, at: time.Now().Add(delay), late: true})
+	client.mu.Unlock()
+	return true
+}
+
+func (s *Server) decrementPendingAction(client *Client, ident uint16) {
+	client.mu.Lock()
+	decrementPendingActionLocked(client, ident)
+	client.mu.Unlock()
+}
+
+func decrementPendingActionLocked(client *Client, ident uint16) {
+	switch ident {
+	case mir176.CMTurn:
+		if client.pendingTurnMessages > 0 {
+			client.pendingTurnMessages--
+		}
+	case mir176.CMWalk, mir176.CMRun:
+		if client.pendingMoveMessages > 0 {
+			client.pendingMoveMessages--
+		}
+	case mir176.CMSitDown:
+		if client.pendingSitDownMessages > 0 {
+			client.pendingSitDownMessages--
+		}
+	case mir176.CMHit, mir176.CMHeavyHit, mir176.CMBigHit, mir176.CMPowerHit, mir176.CMLongHit, mir176.CMWideHit, mir176.CMFireHit:
+		if client.pendingHitMessages > 0 {
+			client.pendingHitMessages--
+		}
+	}
+}
+
+func (s *Server) processClientAction(conn net.Conn, activeChar *storage.Character, cmd mir176.Command, lateDelivery bool) {
+	switch cmd.Ident {
+	case mir176.CMTurn:
+		s.processTurn(conn, activeChar, cmd, lateDelivery)
+	case mir176.CMWalk:
+		s.processMove(conn, activeChar, cmd, false, lateDelivery)
+	case mir176.CMRun:
+		s.processMove(conn, activeChar, cmd, true, lateDelivery)
+	case mir176.CMSitDown:
+		s.processSitDown(conn, activeChar, cmd, lateDelivery)
+	case mir176.CMHit, mir176.CMHeavyHit, mir176.CMBigHit, mir176.CMPowerHit, mir176.CMLongHit, mir176.CMWideHit, mir176.CMFireHit:
+		s.processHit(conn, activeChar, cmd, lateDelivery)
 	}
 }
 
@@ -674,15 +1010,18 @@ func (s *Server) handleProtocol(ctx context.Context, conn net.Conn) {
 					}
 					pendingLogin = &login
 					s.sendNotice(conn)
+					_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 					continue
 				}
 				cmd, text, err := mir176.DecodePlain6ClientMessage(frame)
 				if err == nil && isPlausibleProtocolIdent(cmd.Ident) {
 					if cmd.Ident == mir176.CMLoginNoticeOK && pendingLogin != nil {
+						_ = conn.SetReadDeadline(time.Time{})
 						if ch, ok := s.sendEnterWorld(conn, *pendingLogin); ok {
 							initializeSpellStateOnLogin(&ch)
 							ch = s.world.RegisterCharacter(ch)
 							activeClient = s.registerClient(conn, ch)
+							activeClient.softVersion = pendingLogin.Version
 							activeChar = &ch
 							activeClient.active = activeChar
 							s.sendEnterWorldState(conn, ch)
@@ -693,16 +1032,11 @@ func (s *Server) handleProtocol(ctx context.Context, conn net.Conn) {
 					}
 					if activeChar != nil {
 						switch cmd.Ident {
-						case mir176.CMTurn:
-							s.handleTurn(conn, activeChar, cmd)
-						case mir176.CMWalk:
-							s.handleMove(conn, activeChar, cmd, false)
-						case mir176.CMRun:
-							s.handleMove(conn, activeChar, cmd, true)
-						case mir176.CMSitDown:
-							s.handleSitDown(conn, activeChar, cmd)
-						case mir176.CMHit, mir176.CMHeavyHit, mir176.CMBigHit, mir176.CMPowerHit, mir176.CMLongHit, mir176.CMWideHit, mir176.CMFireHit:
-							s.handleHit(conn, activeChar, cmd)
+						case mir176.CMOpenDoor:
+							s.handleOpenDoor(activeChar, cmd)
+						case mir176.CMTurn, mir176.CMWalk, mir176.CMRun, mir176.CMSitDown,
+							mir176.CMHit, mir176.CMHeavyHit, mir176.CMBigHit, mir176.CMPowerHit, mir176.CMLongHit, mir176.CMWideHit, mir176.CMFireHit:
+							s.queueClientAction(conn, cmd)
 						case mir176.CMSpell:
 							s.handleSpell(conn, activeChar, cmd)
 						case mir176.CMSay, mir176.CMUserCommand:
@@ -737,6 +1071,8 @@ func (s *Server) handleProtocol(ctx context.Context, conn net.Conn) {
 							s.handleQueryUserState(conn, activeChar, cmd)
 						case mir176.CMDropItem:
 							s.handleDropItem(conn, activeChar, cmd, text)
+						case mir176.CMBUTCH:
+							s.handleButcher(conn, activeChar, cmd, false)
 						case mir176.CMPickup:
 							s.handlePickup(conn, activeChar, cmd)
 						case mir176.CMQueryBagItems:
@@ -749,12 +1085,40 @@ func (s *Server) handleProtocol(ctx context.Context, conn net.Conn) {
 							s.handleAddGroupMember(conn, activeChar, text)
 						case mir176.CMDelGroupMember:
 							s.handleDelGroupMember(conn, activeChar, text)
+						case mir176.CMOpenGuildDialog, mir176.CMGuildHome:
+							s.handleOpenGuildDialog(conn, activeChar)
+						case mir176.CMGuildMemberList:
+							s.handleGuildMemberList(conn, activeChar)
+						case mir176.CMGuildAddMember:
+							s.handleGuildAddMember(conn, activeChar, text)
+						case mir176.CMGuildDelMember:
+							s.handleGuildDelMember(conn, activeChar, text)
+						case mir176.CMGuildUpdateNotice:
+							s.handleGuildUpdateNotice(conn, activeChar, text)
+						case mir176.CMGuildUpdateRankInfo:
+							s.handleGuildUpdateRankInfo(conn, activeChar, text)
+						case mir176.CMGuildAlly:
+							s.handleGuildAlly(conn, activeChar)
+						case mir176.CMGuildBreakAlly:
+							s.handleGuildBreakAlly(conn, activeChar, text)
 						case mir176.CMEat:
 							s.handleEatItem(conn, activeChar, cmd, text)
 						case mir176.CMTakeOnItem:
 							s.handleTakeOnItem(conn, activeChar, cmd, text)
 						case mir176.CMTakeOffItem:
 							s.handleTakeOffItem(conn, activeChar, cmd, text)
+						case mir176.CMDealTry:
+							s.handleDealTry(conn, activeChar)
+						case mir176.CMDealAddItem:
+							s.handleDealAddItem(conn, activeChar, cmd, text)
+						case mir176.CMDealDelItem:
+							s.handleDealDelItem(conn, activeChar, cmd, text)
+						case mir176.CMDealCancel:
+							s.handleDealCancel(conn)
+						case mir176.CMDealChangeGold:
+							s.handleDealChangeGold(conn, activeChar, cmd)
+						case mir176.CMDealEnd:
+							s.handleDealEnd(conn, activeChar)
 						}
 					}
 					continue
@@ -773,18 +1137,22 @@ func (s *Server) handleTurn(conn net.Conn, activeChar *storage.Character, cmd mi
 
 func (s *Server) processTurn(conn net.Conn, activeChar *storage.Character, cmd mir176.Command, lateDelivery bool) {
 	combat := s.world.Gameplay().Combat
-	if activeChar == nil || activeChar.HP <= 0 || activeChar.ParalyzedUntil > 0 {
+	if activeChar == nil || activeChar.HP <= 0 || activeChar.StoneMode || activeChar.ParalyzedUntil > 0 {
 		s.sendActionFail(conn)
 		return
 	}
 	x := int(uint32(cmd.Recog) & 0xFFFF)
 	y := int(uint32(cmd.Recog) >> 16)
-	dir := int(cmd.Tag)
+	dir := int(byte(cmd.Tag))
 	client := s.clientForConn(conn)
 	if !lateDelivery && client != nil {
 		client.mu.Lock()
 		now := time.Now()
 		delay := time.Duration(0)
+		filterAction := true
+		struckDelayActive := false
+		actionDelayActive := false
+		actionStateAdvance := false
 		if !client.turnAt.IsZero() {
 			delay = time.Duration(combat.TurnIntervalMS)*time.Millisecond - now.Sub(client.turnAt)
 		}
@@ -793,22 +1161,41 @@ func (s *Server) processTurn(conn net.Conn, activeChar *storage.Character, cmd m
 			if struckDelay > delay {
 				delay = struckDelay
 			}
+			if struckDelay > 0 {
+				struckDelayActive = true
+				filterAction = false
+			}
 		}
 		if combat.ControlActionInterval && client.actionIdent != cmd.Ident && !client.actionAt.IsZero() {
 			actionDelay := baseActionInterval(combat) - now.Sub(client.actionAt)
 			if actionDelay > delay {
 				delay = actionDelay
 			}
+			if actionDelay > 0 {
+				actionDelayActive = true
+				filterAction = false
+			} else {
+				actionStateAdvance = true
+			}
+		} else if combat.ControlActionInterval && !struckDelayActive && client.actionIdent != cmd.Ident {
+			actionStateAdvance = true
 		}
+		client.filterAction = filterAction
 		if delay > 0 {
+			updateActionState := func() {
+				if actionStateAdvance {
+					client.actionAt = now
+					client.actionIdent = cmd.Ident
+					client.actionDir = dir
+				} else if actionDelayActive {
+					client.actionIdent = cmd.Ident
+					client.actionDir = dir
+				}
+			}
 			if delay < time.Duration(combat.HitDropOverSpeedMS)*time.Millisecond {
+				updateActionState()
 				client.mu.Unlock()
 				s.sendActionOK(conn)
-				return
-			}
-			if delay > time.Duration(combat.HitDropOverSpeedMS)*time.Millisecond && combat.SpeedControlMode == 1 {
-				client.mu.Unlock()
-				s.sendActionFail(conn)
 				return
 			}
 			if client.pendingTurnMessages >= combat.MaxTurnMessages {
@@ -817,9 +1204,7 @@ func (s *Server) processTurn(conn net.Conn, activeChar *storage.Character, cmd m
 				return
 			}
 			client.pendingTurnMessages++
-			client.actionAt = now
-			client.actionIdent = cmd.Ident
-			client.actionDir = dir
+			updateActionState()
 			client.mu.Unlock()
 			s.queueDelayedTurn(conn, activeChar.ID, cmd, delay)
 			return
@@ -831,7 +1216,7 @@ func (s *Server) processTurn(conn net.Conn, activeChar *storage.Character, cmd m
 	}
 	updated, err := s.world.Turn(*activeChar, x, y, dir)
 	if err != nil {
-		s.sendMoveFail(conn, activeChar)
+		s.sendActionFail(conn)
 		return
 	}
 	*activeChar = updated
@@ -847,7 +1232,7 @@ func (s *Server) processTurn(conn net.Conn, activeChar *storage.Character, cmd m
 }
 
 func (s *Server) broadcastCharacterTurn(conn net.Conn, ch storage.Character) {
-	clients := s.ClientsAroundExcept(ch.MapID, ch.X, ch.Y, s.viewRange(), conn)
+	clients := s.actionRefClients(ch, conn)
 	actorID := world.CharacterActorID(ch)
 	turn := mir176.Command{
 		Ident:  mir176.SMTurn,
@@ -866,12 +1251,15 @@ func (s *Server) broadcastCharacterTurn(conn net.Conn, ch storage.Character) {
 		Series: uint16(s.world.CharacterFeatureEx(ch)),
 	}
 	for _, client := range clients {
-		client.writeCommand(s, turn, body)
-		client.writeCommand(s, featureChanged, nil)
+		client.queueActionOutput(encodeMessage(turn, body))
+		client.queueActionOutput(encodeMessage(featureChanged, nil))
 	}
 }
 
 func (s *Server) queueDelayedTurn(conn net.Conn, characterID string, cmd mir176.Command, delay time.Duration) {
+	if s.queueDelayedClientAction(conn, characterID, cmd, delay) {
+		return
+	}
 	s.enqueueDelayedClientEvent(conn, characterID, delay, func(client *Client) {
 		client.mu.Lock()
 		if client.pendingTurnMessages > 0 {
@@ -889,16 +1277,15 @@ func (s *Server) handleMove(conn net.Conn, activeChar *storage.Character, cmd mi
 
 func (s *Server) processMove(conn net.Conn, activeChar *storage.Character, cmd mir176.Command, run, lateDelivery bool) {
 	combat := s.world.Gameplay().Combat
-	if activeChar == nil || activeChar.HP <= 0 || (activeChar.ParalyzedUntil > 0 && ((run && !combat.ParalyCanRun) || (!run && !combat.ParalyCanWalk))) {
+	if activeChar == nil || activeChar.HP <= 0 || ((activeChar.StoneMode || activeChar.ParalyzedUntil > 0) && ((run && !combat.ParalyCanRun) || (!run && !combat.ParalyCanWalk))) {
 		s.sendActionFail(conn)
 		return
 	}
 	x := int(uint32(cmd.Recog) & 0xFFFF)
 	y := int(uint32(cmd.Recog) >> 16)
-	dir := int(cmd.Tag)
+	dir := world.Direction(activeChar.X, activeChar.Y, x, y)
 	client := s.clientForConn(conn)
-	runLateFlag := isLateRunCommand(cmd, run)
-	if !lateDelivery && !runLateFlag && client != nil {
+	if !lateDelivery && client != nil {
 		client.mu.Lock()
 		now := time.Now()
 		interval := time.Duration(combat.WalkIntervalMS) * time.Millisecond
@@ -908,6 +1295,10 @@ func (s *Server) processMove(conn net.Conn, activeChar *storage.Character, cmd m
 			maxMessages = combat.MaxRunMessages
 		}
 		delay := time.Duration(0)
+		filterAction := true
+		struckDelayActive := false
+		actionDelayActive := false
+		actionStateAdvance := false
 		if !client.moveAt.IsZero() {
 			delay = interval - now.Sub(client.moveAt)
 		}
@@ -916,8 +1307,16 @@ func (s *Server) processMove(conn net.Conn, activeChar *storage.Character, cmd m
 			if struckDelay > delay {
 				delay = struckDelay
 			}
+			if struckDelay > 0 {
+				struckDelayActive = true
+				filterAction = false
+			}
 		}
-		if combat.ControlActionInterval && client.actionIdent != cmd.Ident && !client.actionAt.IsZero() {
+		runFlagMatchesIdent := run && cmd.Series == cmd.Ident
+		if runFlagMatchesIdent {
+			filterAction = client.filterAction
+		}
+		if combat.ControlActionInterval && !runFlagMatchesIdent && client.actionIdent != cmd.Ident && !client.actionAt.IsZero() {
 			actionDelay := baseActionInterval(combat) - now.Sub(client.actionAt)
 			if interval := moveActionInterval(combat, run, client.actionIdent, client.actionDir, dir); interval > 0 {
 				actionDelay = interval - now.Sub(client.actionAt)
@@ -925,10 +1324,37 @@ func (s *Server) processMove(conn net.Conn, activeChar *storage.Character, cmd m
 			if actionDelay > delay {
 				delay = actionDelay
 			}
+			if actionDelay > 0 {
+				actionDelayActive = true
+				filterAction = false
+			} else {
+				actionStateAdvance = true
+			}
+		} else if combat.ControlActionInterval && !runFlagMatchesIdent && !struckDelayActive && client.actionIdent != cmd.Ident {
+			actionStateAdvance = true
+		}
+		if !runFlagMatchesIdent {
+			client.filterAction = filterAction
 		}
 		if delay > 0 {
 			delay = compressMoveDelay(delay, interval, &client.moveActionCount)
-			if delay > time.Duration(combat.HitDropOverSpeedMS)*time.Millisecond && combat.SpeedControlMode == 1 {
+			updateActionState := func() {
+				if actionStateAdvance {
+					client.actionAt = now
+					client.actionIdent = cmd.Ident
+					client.actionDir = dir
+				} else if actionDelayActive {
+					client.actionIdent = cmd.Ident
+					client.actionDir = dir
+				}
+			}
+			if delay < time.Duration(combat.HitDropOverSpeedMS)*time.Millisecond {
+				updateActionState()
+				client.mu.Unlock()
+				s.sendActionOK(conn)
+				return
+			}
+			if delay > time.Duration(combat.HitDropOverSpeedMS)*time.Millisecond && combat.SpeedControlMode == 1 && filterAction {
 				client.mu.Unlock()
 				s.sendActionFail(conn)
 				return
@@ -939,9 +1365,7 @@ func (s *Server) processMove(conn net.Conn, activeChar *storage.Character, cmd m
 				return
 			}
 			client.pendingMoveMessages++
-			client.actionAt = now
-			client.actionIdent = cmd.Ident
-			client.actionDir = dir
+			updateActionState()
 			client.mu.Unlock()
 			s.queueDelayedMove(conn, activeChar.ID, cmd, run, delay)
 			return
@@ -952,29 +1376,99 @@ func (s *Server) processMove(conn net.Conn, activeChar *storage.Character, cmd m
 		client.moveActionCount = 0
 		client.mu.Unlock()
 	}
-	move := s.world.Walk
+	move := func(ch storage.Character, x, y, dir int, blockers ...storage.Character) (world.MovementResult, error) {
+		return s.world.WalkWithEvents(ch, x, y, dir, blockers...)
+	}
 	if run {
-		move = s.world.Run
+		move = func(ch storage.Character, x, y, dir int, blockers ...storage.Character) (world.MovementResult, error) {
+			return s.world.RunWithEvents(ch, x, y, dir, blockers...)
+		}
 	}
-	updated, err := move(*activeChar, x, y, dir, s.PlayerCharacters()...)
-	if err != nil {
-		s.sendMoveFail(conn, activeChar)
-		return
-	}
-	*activeChar = updated
-	s.updateClient(conn, updated)
-	s.recordClientAction(conn, cmd.Ident, dir)
-	s.broadcastCharacterMove(conn, updated, run)
 	if client != nil {
 		client.mu.Lock()
 		client.moveAt = time.Now()
 		client.mu.Unlock()
 	}
+	previousMap := activeChar.MapID
+	moveResult, err := move(*activeChar, x, y, dir, s.PlayerCharacters()...)
+	updated := moveResult.Character
+	for _, hit := range moveResult.CharacterHits {
+		if hit.Damage <= 0 {
+			continue
+		}
+		caster := storage.Character{ID: hit.AttackerID}
+		if owner, ok := s.ClientByCharacterID(hit.AttackerID); ok {
+			caster = owner.character()
+		}
+		s.sendCharacterSpellStruck(s.spellRefClientsFor(hit.Character.ID, hit.Character.MapID, hit.Character.X, hit.Character.Y), caster, hit)
+	}
+	if err != nil {
+		*activeChar = updated
+		s.updateClient(conn, updated)
+		s.sendActionFail(conn)
+		return
+	}
+	*activeChar = updated
+	s.updateClient(conn, updated)
+	if updated.MapID != previousMap {
+		if client := s.clientForConn(conn); client != nil {
+			s.sendCharacterMapChange(conn, client, updated)
+		}
+		s.recordClientAction(conn, cmd.Ident, dir)
+		s.sendActionOK(conn)
+		return
+	}
+	s.broadcastCharacterMove(conn, updated, run)
+	if updated.X != x || updated.Y != y {
+		s.sendActionFail(conn)
+		return
+	}
+	s.recordClientAction(conn, cmd.Ident, dir)
 	s.sendActionOK(conn)
 }
 
+func (s *Server) queueCharacterMapChange(client *Client, ch storage.Character) {
+	s.resetClientMapVisibility(client)
+	client.queueActionOutput(encodeMessage(mir176.Command{Ident: mir176.SMClearObjects}, nil))
+	client.queueActionOutput(encodeMessage(mir176.Command{
+		Ident:  mir176.SMChangeMap,
+		Recog:  world.CharacterActorID(ch),
+		Param:  uint16(ch.X),
+		Tag:    uint16(ch.Y),
+		Series: uint16(s.world.MapLight(ch.MapID)),
+	}, EncodeString(ch.MapID)))
+	client.queueActionOutput(encodeMessage(mir176.Command{Ident: mir176.SMAreaState, Recog: s.world.CharacterAreaState(ch)}, nil))
+	if client.softVersion != 0 {
+		client.queueActionOutput(encodeMessage(s.serverConfigCommand(ch), s.serverConfigBody(ch)))
+	}
+}
+
+func (s *Server) sendCharacterMapChange(conn net.Conn, client *Client, ch storage.Character) {
+	s.resetClientMapVisibility(client)
+	actorID := world.CharacterActorID(ch)
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMClearObjects}, nil)
+	s.sendCommand(conn, mir176.Command{
+		Ident:  mir176.SMChangeMap,
+		Recog:  actorID,
+		Param:  uint16(ch.X),
+		Tag:    uint16(ch.Y),
+		Series: uint16(s.world.MapLight(ch.MapID)),
+	}, EncodeString(ch.MapID))
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMAreaState, Recog: s.world.CharacterAreaState(ch)}, nil)
+	s.sendServerConfig(conn, ch)
+}
+
+func (s *Server) resetClientMapVisibility(client *Client) {
+	client.mu.Lock()
+	client.visibleMonsters = map[string]world.Monster{}
+	client.visibleDrops = map[string]world.GroundDrop{}
+	client.visibleNPCs = map[string]npc.Entity{}
+	client.visibleEvents = map[int32]world.SpellGroundEvent{}
+	client.mu.Unlock()
+}
+
 func (s *Server) broadcastCharacterMove(conn net.Conn, ch storage.Character, run bool) {
-	clients := s.ClientsAroundExcept(ch.MapID, ch.X, ch.Y, s.viewRange(), conn)
+	clients := s.actionRefClients(ch, conn)
 	ident := uint16(mir176.SMWalk)
 	if run {
 		ident = mir176.SMRun
@@ -988,7 +1482,25 @@ func (s *Server) broadcastCharacterMove(conn net.Conn, ch storage.Character, run
 	}
 	body := EncodeBuffer(CharDesc(s.world.HumanFeatureForCharacter(ch), s.world.CharacterStatus(ch)))
 	for _, client := range clients {
-		client.writeCommand(s, command, body)
+		client.queueActionOutput(encodeMessage(command, body))
+	}
+}
+
+func (s *Server) handleOpenDoor(ch *storage.Character, cmd mir176.Command) {
+	if ch == nil || !s.world.OpenDoor(ch.MapID, int(cmd.Param), int(cmd.Tag), time.Now()) {
+		return
+	}
+	s.broadcastDoorChange(world.DoorChange{MapID: ch.MapID, X: int(cmd.Param), Y: int(cmd.Tag)}, mir176.SMOpenDoorOK)
+}
+
+func (s *Server) broadcastDoorChange(change world.DoorChange, ident uint16) {
+	command := mir176.Command{Ident: ident, Param: uint16(change.X), Tag: uint16(change.Y)}
+	for _, client := range s.allClients() {
+		ch := client.character()
+		if ch.MapID != change.MapID || absInt(ch.X-change.X) > 12 || absInt(ch.Y-change.Y) > 12 {
+			continue
+		}
+		client.queueActionOutput(encodeMessage(command, nil))
 	}
 }
 
@@ -1005,11 +1517,10 @@ func compressMoveDelay(delay, interval time.Duration, count *int) time.Duration 
 	return delay
 }
 
-func isLateRunCommand(cmd mir176.Command, run bool) bool {
-	return run && cmd.Series == cmd.Ident
-}
-
 func (s *Server) queueDelayedMove(conn net.Conn, characterID string, cmd mir176.Command, run bool, delay time.Duration) {
+	if s.queueDelayedClientAction(conn, characterID, cmd, delay) {
+		return
+	}
 	s.enqueueDelayedClientEvent(conn, characterID, delay, func(client *Client) {
 		client.mu.Lock()
 		if client.pendingMoveMessages > 0 {
@@ -1027,7 +1538,7 @@ func (s *Server) handleSitDown(conn net.Conn, activeChar *storage.Character, cmd
 
 func (s *Server) processSitDown(conn net.Conn, activeChar *storage.Character, cmd mir176.Command, lateDelivery bool) {
 	combat := s.world.Gameplay().Combat
-	if activeChar == nil || activeChar.HP <= 0 || activeChar.ParalyzedUntil > 0 {
+	if activeChar == nil || activeChar.HP <= 0 || activeChar.StoneMode || activeChar.ParalyzedUntil > 0 {
 		s.sendActionFail(conn)
 		return
 	}
@@ -1036,18 +1547,13 @@ func (s *Server) processSitDown(conn net.Conn, activeChar *storage.Character, cm
 		client.mu.Lock()
 		now := time.Now()
 		delay := time.Duration(0)
-		if !client.sitDownAt.IsZero() {
-			delay = time.Duration(combat.TurnIntervalMS)*time.Millisecond - now.Sub(client.sitDownAt)
+		if !client.turnAt.IsZero() {
+			delay = time.Duration(combat.TurnIntervalMS)*time.Millisecond - now.Sub(client.turnAt)
 		}
 		if delay > 0 {
 			if delay < time.Duration(combat.HitDropOverSpeedMS)*time.Millisecond {
 				client.mu.Unlock()
 				s.sendActionOK(conn)
-				return
-			}
-			if delay > time.Duration(combat.HitDropOverSpeedMS)*time.Millisecond && combat.SpeedControlMode == 1 {
-				client.mu.Unlock()
-				s.sendActionFail(conn)
 				return
 			}
 			if client.pendingSitDownMessages >= combat.MaxSitDownMessages {
@@ -1064,13 +1570,18 @@ func (s *Server) processSitDown(conn net.Conn, activeChar *storage.Character, cm
 	}
 	if client != nil {
 		client.mu.Lock()
-		client.sitDownAt = time.Now()
+		now := time.Now()
+		client.turnAt = now
+		client.actionAt = now
 		client.mu.Unlock()
 	}
 	s.sendActionOK(conn)
 }
 
 func (s *Server) queueDelayedSitDown(conn net.Conn, characterID string, cmd mir176.Command, delay time.Duration) {
+	if s.queueDelayedClientAction(conn, characterID, cmd, delay) {
+		return
+	}
 	s.enqueueDelayedClientEvent(conn, characterID, delay, func(client *Client) {
 		client.mu.Lock()
 		if client.pendingSitDownMessages > 0 {
@@ -1087,7 +1598,7 @@ func (s *Server) handleHit(conn net.Conn, activeChar *storage.Character, cmd mir
 }
 
 func (s *Server) processHit(conn net.Conn, activeChar *storage.Character, cmd mir176.Command, lateDelivery bool) {
-	if activeChar == nil || activeChar.HP <= 0 || (activeChar.ParalyzedUntil > 0 && !s.world.CanHitWhileParalyzed()) {
+	if activeChar == nil || activeChar.HP <= 0 || (activeChar.StoneMode && !s.world.CanHitWhileParalyzed()) || (activeChar.ParalyzedUntil > 0 && !s.world.CanHitWhileParalyzed()) {
 		s.sendActionFail(conn)
 		return
 	}
@@ -1110,6 +1621,12 @@ func (s *Server) processHit(conn net.Conn, activeChar *storage.Character, cmd mi
 			s.queueDelayedHit(conn, activeChar.ID, cmd, delay)
 			return
 		}
+	}
+	x := int(uint32(cmd.Recog) & 0xFFFF)
+	y := int(uint32(cmd.Recog) >> 16)
+	if x != activeChar.X || y != activeChar.Y {
+		s.sendActionFail(conn)
+		return
 	}
 	if attackIdent == mir176.CMWideHit {
 		state, _, ok := activeChar.Skills.Get("半月弯刀")
@@ -1156,18 +1673,17 @@ func (s *Server) processHit(conn net.Conn, activeChar *storage.Character, cmd mi
 		}
 		client.mu.Unlock()
 	}
-	x := int(uint32(cmd.Recog) & 0xFFFF)
-	y := int(uint32(cmd.Recog) >> 16)
 	dir := int(cmd.Tag)
 	result, err := s.world.HitWithIdent(*activeChar, x, y, dir, attackIdent, s.PlayerCharacters()...)
 	if err != nil {
-		s.sendMoveFail(conn, activeChar)
+		s.sendActionFail(conn)
 		return
 	}
 	*activeChar = result.Character
+	s.syncGroundEvents(result.GroundEvents)
 	s.recordClientAction(conn, cmd.Ident, dir)
 	world.ApplyAttackSync(attackSyncAdapter{s: s, conn: conn, characterID: result.Character.ID}, result, attackIdent)
-	if client != nil {
+	if client != nil && !result.HeavyHitMining {
 		s.advancePowerHitStateLocked(client, *activeChar, true)
 	}
 }
@@ -1285,6 +1801,9 @@ func (s *Server) hitDeliveryDelay(client *Client, ch storage.Character, ident ui
 }
 
 func (s *Server) queueDelayedHit(conn net.Conn, characterID string, cmd mir176.Command, delay time.Duration) {
+	if s.queueDelayedClientAction(conn, characterID, cmd, delay) {
+		return
+	}
 	s.enqueueDelayedClientEvent(conn, characterID, delay, func(client *Client) {
 		client.mu.Lock()
 		if client.pendingHitMessages > 0 {
@@ -1341,7 +1860,7 @@ func (s *Server) processSpell(conn net.Conn, activeChar *storage.Character, requ
 }
 
 func (s *Server) processSpellDelivery(conn net.Conn, activeChar *storage.Character, request spellRequest, lateDelivery bool) {
-	if activeChar == nil || activeChar.HP <= 0 || activeChar.SpellBlocked || (activeChar.ParalyzedUntil > 0 && !s.world.CanSpellWhileParalyzed()) {
+	if activeChar == nil || activeChar.HP <= 0 || activeChar.SpellBlocked || (activeChar.StoneMode && !s.world.CanSpellWhileParalyzed()) || (activeChar.ParalyzedUntil > 0 && !s.world.CanSpellWhileParalyzed()) {
 		s.sendActionFail(conn)
 		return
 	}
@@ -1709,6 +2228,14 @@ func (s *Server) enqueueDelayedClientEvent(conn net.Conn, characterID string, de
 	}
 	now := time.Now()
 	event := delayedClientEvent{at: now.Add(delay), conn: conn, characterID: characterID, run: run}
+	if client := s.clientForConn(conn); client != nil {
+		current := client.character()
+		if characterID == "" || current.ID == characterID {
+			if current.Ghost {
+				return
+			}
+		}
+	}
 	s.delayedMu.Lock()
 	s.delayedSeq++
 	event.seq = s.delayedSeq
@@ -1732,11 +2259,24 @@ func (s *Server) enqueueDelayedClientEvent(conn net.Conn, characterID string, de
 }
 
 func (s *Server) enqueueDelayedServerEvent(delay time.Duration, run func()) {
+	s.enqueueDelayedServerEventForCharacter("", delay, run)
+}
+
+func (s *Server) enqueueDelayedServerEventForCharacter(characterID string, delay time.Duration, run func()) {
+	s.enqueueDelayedServerEventForCharacterKey(characterID, "", delay, run)
+}
+
+func (s *Server) enqueueDelayedServerEventForCharacterKey(characterID, cancelKey string, delay time.Duration, run func()) {
 	if delay <= 0 {
 		delay = time.Millisecond
 	}
 	now := time.Now()
-	event := delayedClientEvent{at: now.Add(delay), runServer: run}
+	event := delayedClientEvent{at: now.Add(delay), serverCharacterID: characterID, cancelKey: cancelKey, runServer: run}
+	if characterID != "" {
+		if client, ok := s.ClientByCharacterID(characterID); ok && client.character().Ghost {
+			return
+		}
+	}
 	s.delayedMu.Lock()
 	s.delayedSeq++
 	event.seq = s.delayedSeq
@@ -1759,6 +2299,37 @@ func (s *Server) enqueueDelayedServerEvent(delay time.Duration, run func()) {
 	s.delayedMu.Unlock()
 }
 
+func (s *Server) cancelDelayedServerEvents(cancelKey string) {
+	if cancelKey == "" {
+		return
+	}
+	s.delayedMu.Lock()
+	defer s.delayedMu.Unlock()
+	if len(s.delayedEvents) == 0 {
+		return
+	}
+	pending := s.delayedEvents[:0]
+	for _, event := range s.delayedEvents {
+		if event.cancelKey != cancelKey {
+			pending = append(pending, event)
+		}
+	}
+	s.delayedEvents = pending
+	if len(s.delayedEvents) == 0 {
+		if s.delayedTimer != nil {
+			s.delayedTimer.Stop()
+		}
+		s.delayedTimer = nil
+		s.delayedActive = false
+		return
+	}
+	if s.delayedTimer != nil {
+		s.delayedTimer.Stop()
+	}
+	s.delayedActive = true
+	s.delayedTimer = time.AfterFunc(time.Until(s.delayedEvents[0].at), func() { s.runDelayedClientEvents() })
+}
+
 func (s *Server) runDelayedClientEvents() {
 	for {
 		s.delayedMu.Lock()
@@ -1779,19 +2350,28 @@ func (s *Server) runDelayedClientEvents() {
 		s.delayedEvents = s.delayedEvents[1:]
 		s.delayedMu.Unlock()
 		if event.runServer != nil {
+			if event.serverCharacterID != "" {
+				if client, ok := s.ClientByCharacterID(event.serverCharacterID); !ok || client.character().Ghost {
+					continue
+				}
+			}
 			event.runServer()
 			continue
 		}
 
 		client := s.clientForConn(event.conn)
-		if client == nil && event.characterID != "" {
-			client, _ = s.ClientByCharacterID(event.characterID)
+		if event.characterID != "" {
+			if client == nil || client.character().ID != event.characterID {
+				client, _ = s.ClientByCharacterID(event.characterID)
+			}
 		}
 		if client != nil {
 			client.mu.Lock()
 			closed := client.closed
+			currentCharacterID := client.ch.ID
+			ghost := client.ch.Ghost
 			client.mu.Unlock()
-			if !closed {
+			if !closed && !ghost && (event.characterID == "" || currentCharacterID == event.characterID) {
 				event.run(client)
 			}
 		}
@@ -2020,7 +2600,10 @@ func (s *Server) scheduleSkillExp(characterID string, magicID uint16, level byte
 	}
 	generation := s.skillExpGen[key]
 	s.skillExpMu.Unlock()
-	s.enqueueDelayedServerEvent(delay, func() {
+	if replacePending {
+		s.cancelDelayedServerEvents(key)
+	}
+	s.enqueueDelayedServerEventForCharacterKey(characterID, key, delay, func() {
 		s.skillExpMu.Lock()
 		current := s.skillExpGen[key]
 		s.skillExpMu.Unlock()
@@ -2148,7 +2731,7 @@ func (s *Server) advancePowerHitStateLocked(client *Client, ch storage.Character
 		if client.powerHitCount < 1 {
 			client.powerHitCount = 1
 		}
-		client.powerHitPointCount = rand.Intn(client.powerHitCount)
+		client.powerHitPointCount = s.world.RandomIntn(client.powerHitCount)
 	}
 	client.powerHitCount--
 	if client.powerHitCount == client.powerHitPointCount {
@@ -2161,7 +2744,7 @@ func (s *Server) advancePowerHitStateLocked(client *Client, ch storage.Character
 		if client.powerHitCount < 1 {
 			client.powerHitCount = 1
 		}
-		client.powerHitPointCount = rand.Intn(client.powerHitCount)
+		client.powerHitPointCount = s.world.RandomIntn(client.powerHitCount)
 		if notify {
 			s.sendRawFrame(client.conn, "+PWR")
 		}
@@ -2172,7 +2755,7 @@ func (s *Server) advancePowerHitStateLocked(client *Client, ch storage.Character
 		if client.powerHitCount < 1 {
 			client.powerHitCount = 1
 		}
-		client.powerHitPointCount = rand.Intn(client.powerHitCount)
+		client.powerHitPointCount = s.world.RandomIntn(client.powerHitCount)
 	}
 	return false
 }
@@ -2202,9 +2785,73 @@ func (s *Server) sendRawFrame(conn net.Conn, text string) {
 }
 
 func (s *Server) handleSay(conn net.Conn, activeChar *storage.Character, text []byte) {
-	line := strings.TrimSpace(DecodeString(text))
-	if line == "" {
+	line := DecodeString(text)
+	if strings.TrimSpace(line) == "" {
 		return
+	}
+	if strings.EqualFold(line, "@authally") {
+		s.handleAuthAllyCommand(conn, activeChar)
+		return
+	}
+	if strings.EqualFold(line, "@letguild") {
+		if activeChar != nil {
+			activeChar.AllowGuild = !activeChar.AllowGuild
+			if client := s.clientForConn(conn); client != nil {
+				client.mu.Lock()
+				client.ch.AllowGuild = activeChar.AllowGuild
+				client.mu.Unlock()
+			}
+			if activeChar.AllowGuild {
+				s.sendSystemMessage(conn, *activeChar, "允许加入行会")
+			} else {
+				s.sendSystemMessage(conn, *activeChar, "禁止加入行会")
+			}
+		}
+		return
+	}
+	const sayMsgMaxLen = 80
+	line = truncateSayMessage(line, sayMsgMaxLen)
+	client := s.clientForConn(conn)
+	now := time.Now()
+	if client != nil {
+		client.mu.Lock()
+		if now.Before(client.sayDisabledUntil) {
+			client.mu.Unlock()
+			return
+		}
+		if client.sayAt.IsZero() || now.Sub(client.sayAt) >= 3*time.Second {
+			client.sayAt = now
+			client.sayCount = 0
+		} else {
+			client.sayCount++
+			if client.sayCount >= 2 {
+				client.sayDisabledUntil = now.Add(60 * time.Second)
+				client.mu.Unlock()
+				s.sendSystemMessage(conn, *activeChar, "[由于你重复发相同的内容，1分钟内你将被禁止发言...]")
+				return
+			}
+		}
+		client.mu.Unlock()
+	}
+	if strings.HasPrefix(line, "!") && !strings.HasPrefix(line, "!!") && !strings.HasPrefix(line, "!~") && client != nil {
+		client.mu.Lock()
+		lastShout := client.shoutAt
+		if activeChar.Level <= 7 {
+			client.mu.Unlock()
+			s.sendSystemMessage(conn, *activeChar, "你的等级要在8级以上才能用此功能！！！")
+			return
+		}
+		if !lastShout.IsZero() && now.Sub(lastShout) <= 10*time.Second {
+			remaining := 10 - int(now.Sub(lastShout)/time.Second)
+			if remaining < 0 {
+				remaining = 0
+			}
+			client.mu.Unlock()
+			s.sendSystemMessage(conn, *activeChar, fmt.Sprintf("%d秒后才可以再发文字！！", remaining))
+			return
+		}
+		client.shoutAt = now
+		client.mu.Unlock()
 	}
 	result, ok := s.world.HandleSayWithPlayers(*activeChar, line, s.PlayerCharacters())
 	if !ok {
@@ -2217,7 +2864,965 @@ func (s *Server) handleSay(conn net.Conn, activeChar *storage.Character, text []
 	world.ApplySaySync(itemUseSyncAdapter{s: s, conn: conn}, *activeChar, result)
 }
 
+func truncateSayMessage(line string, maxBytes int) string {
+	if maxBytes <= 0 {
+		return ""
+	}
+	encoded, err := simplifiedchinese.GB18030.NewEncoder().String(line)
+	if err != nil || len(encoded) <= maxBytes {
+		return line
+	}
+	for end := maxBytes; end > 0; end-- {
+		decoded, decodeErr := simplifiedchinese.GB18030.NewDecoder().String(encoded[:end])
+		if decodeErr == nil {
+			return decoded
+		}
+	}
+	return ""
+}
+
+func (s *Server) handleAuthAllyCommand(conn net.Conn, activeChar *storage.Character) {
+	if activeChar == nil || activeChar.GuildID == "" || activeChar.GuildRank != 1 {
+		return
+	}
+	guild, ok := s.store.Guild(activeChar.GuildID)
+	if !ok {
+		return
+	}
+	guild.EnableAuthAlly = !guild.EnableAuthAlly
+	if err := s.store.SaveGuild(guild); err != nil {
+		return
+	}
+	if guild.EnableAuthAlly {
+		s.sendSystemMessage(conn, *activeChar, "允许行会联盟")
+	} else {
+		s.sendSystemMessage(conn, *activeChar, "禁止行会联盟")
+	}
+}
+
+func (s *Server) handleOpenGuildDialog(conn net.Conn, activeChar *storage.Character) {
+	if activeChar == nil || activeChar.GuildID == "" {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMOpenGuildDialogFail}, nil)
+		return
+	}
+	guild, ok := s.store.Guild(activeChar.GuildID)
+	if !ok {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMOpenGuildDialogFail}, nil)
+		return
+	}
+	isMaster := activeChar.GuildRank == 1
+	body := guild.ID + "\r\n \r\n"
+	if isMaster {
+		body += "1\r\n"
+	} else {
+		body += "0\r\n"
+	}
+	body += "<Notice>\r\n" + guild.Notice + "\r\n<KillGuilds>\r\n"
+	warGuilds := make([]string, 0, len(guild.Wars))
+	for warGuild, active := range guild.Wars {
+		if active {
+			warGuilds = append(warGuilds, warGuild)
+		}
+	}
+	sort.Strings(warGuilds)
+	for _, warGuild := range warGuilds {
+		if len(body) > 5000 {
+			break
+		}
+		body += warGuild + "\r\n"
+	}
+	body += "<AllyGuilds>\r\n"
+	for _, allyGuild := range normalizedGuildAlliances(guild) {
+		if len(body) > 5000 {
+			break
+		}
+		body += allyGuild + "\r\n"
+	}
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMOpenGuildDialog, Series: 1}, EncodeString(body))
+}
+
+func (s *Server) handleGuildMemberList(conn net.Conn, activeChar *storage.Character) {
+	if activeChar == nil || activeChar.GuildID == "" {
+		return
+	}
+	guild, ok := s.store.Guild(activeChar.GuildID)
+	if !ok {
+		return
+	}
+	body := ""
+	for _, rank := range guild.Ranks {
+		body += "#" + strconv.Itoa(rank.Number) + "/*" + rank.Name + "/"
+		for _, member := range rank.Members {
+			if len(body) > 5000 {
+				break
+			}
+			body += member + "/"
+		}
+	}
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendGuildMemberList, Series: 1}, EncodeString(body))
+}
+
+func (s *Server) handleGuildAddMember(conn net.Conn, activeChar *storage.Character, text []byte) {
+	if activeChar == nil || activeChar.GuildID == "" || activeChar.GuildRank != 1 {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildAddMemberFail, Recog: 1}, nil)
+		return
+	}
+	name := strings.TrimSpace(DecodeString(text))
+	dx, dy := dealFrontDelta(activeChar.Dir)
+	if _, ok := s.store.Guild(activeChar.GuildID); !ok {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildAddMemberFail, Recog: 1}, nil)
+		return
+	}
+	for _, candidate := range s.allClients() {
+		if !strings.EqualFold(candidate.ch.Name, name) || candidate.ch.Ghost || candidate.ch.MapID != activeChar.MapID || candidate.ch.X != activeChar.X+dx || candidate.ch.Y != activeChar.Y+dy {
+			continue
+		}
+		candidateDX, candidateDY := dealFrontDelta(candidate.ch.Dir)
+		if candidate.ch.X+candidateDX != activeChar.X || candidate.ch.Y+candidateDY != activeChar.Y {
+			continue
+		}
+		guild, exists := s.store.Guild(activeChar.GuildID)
+		if !exists {
+			s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildAddMemberFail, Recog: 1}, nil)
+			return
+		}
+		if !candidate.ch.AllowGuild {
+			s.sendSystemMessage(candidate.conn, candidate.ch, "拒绝加入行会。[请输入@letguild开启]")
+			s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildAddMemberFail, Recog: 5}, nil)
+			return
+		}
+		if candidate.ch.GuildID == activeChar.GuildID {
+			s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildAddMemberFail, Recog: 3}, nil)
+			return
+		}
+		if candidate.ch.GuildID != "" {
+			s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildAddMemberFail, Recog: 4}, nil)
+			return
+		}
+		memberCount := 0
+		for _, rank := range guild.Ranks {
+			memberCount += len(rank.Members)
+		}
+		if memberCount >= 400 {
+			s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildAddMemberFail, Recog: 4}, nil)
+			return
+		}
+		if len(guild.Ranks) == 0 {
+			guild.Ranks = append(guild.Ranks, storage.GuildRank{Number: 0, Name: ""})
+		}
+		rankIndex := len(guild.Ranks) - 1
+		for i := range guild.Ranks {
+			if guild.Ranks[i].Number == 0 {
+				rankIndex = i
+				break
+			}
+		}
+		guild.Ranks[rankIndex].Members = append(guild.Ranks[rankIndex].Members, candidate.ch.Name)
+		if err := s.store.SaveGuild(guild); err != nil {
+			s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildAddMemberFail, Recog: 1}, nil)
+			return
+		}
+		updated := candidate.ch
+		updated.GuildID = activeChar.GuildID
+		updated.GuildRank = 0
+		updated.GuildNotice = ""
+		if err := s.store.SaveCharacter(updated); err != nil {
+			guild.Ranks[rankIndex].Members = removeGuildMember(guild.Ranks[rankIndex].Members, candidate.ch.Name)
+			_ = s.store.SaveGuild(guild)
+			s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildAddMemberFail, Recog: 1}, nil)
+			return
+		}
+		s.updateClientByCharacterID(updated)
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildAddMemberOK}, nil)
+		return
+	}
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildAddMemberFail, Recog: 2}, nil)
+}
+
+func (s *Server) handleGuildDelMember(conn net.Conn, activeChar *storage.Character, text []byte) {
+	if activeChar == nil || activeChar.GuildID == "" || activeChar.GuildRank != 1 {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildDelMemberFail, Recog: 1}, nil)
+		return
+	}
+	name := strings.TrimSpace(DecodeString(text))
+	if strings.EqualFold(name, activeChar.Name) {
+		guildID := activeChar.GuildID
+		updatedMembers, err := s.store.DisbandGuild(guildID)
+		if err != nil {
+			return
+		}
+		for _, member := range updatedMembers {
+			if member.ID == activeChar.ID || strings.EqualFold(member.Name, activeChar.Name) {
+				*activeChar = member
+			}
+			s.updateClientByCharacterID(member)
+		}
+		s.sendSystemMessage(conn, *activeChar, "行会"+guildID+"已被取消！！！")
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildDelMemberOK}, nil)
+		return
+	}
+	guild, exists := s.store.Guild(activeChar.GuildID)
+	if !exists || !guildHasMember(guild, name) {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildDelMemberFail, Recog: 2}, nil)
+		return
+	}
+	for _, candidate := range s.allClients() {
+		if strings.EqualFold(candidate.ch.Name, name) && !candidate.ch.Ghost && candidate.ch.GuildID == activeChar.GuildID {
+			updated := candidate.ch
+			updated.GuildID = ""
+			updated.GuildRank = 0
+			updated.GuildNotice = ""
+			updated.GuildAllianceID = ""
+			updated.GuildAllianceIDs = nil
+			if err := s.store.SaveCharacter(updated); err != nil {
+				return
+			}
+			if guild, exists := s.store.Guild(activeChar.GuildID); exists {
+				for i := range guild.Ranks {
+					guild.Ranks[i].Members = removeGuildMember(guild.Ranks[i].Members, updated.Name)
+				}
+				_ = s.store.SaveGuild(guild)
+			}
+			s.updateClientByCharacterID(updated)
+			s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildDelMemberOK}, nil)
+			return
+		}
+	}
+	_, removed, err := s.store.RemoveGuildMember(activeChar.GuildID, name)
+	if err != nil {
+		return
+	}
+	if removed {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildDelMemberOK}, nil)
+		return
+	}
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildDelMemberFail, Recog: 2}, nil)
+}
+
+func guildHasMember(guild storage.Guild, name string) bool {
+	for _, rank := range guild.Ranks {
+		for _, member := range rank.Members {
+			if strings.EqualFold(member, name) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (s *Server) handleGuildUpdateNotice(conn net.Conn, activeChar *storage.Character, text []byte) {
+	if activeChar == nil || activeChar.GuildID == "" || activeChar.GuildRank != 1 {
+		return
+	}
+	notice := DecodeString(text)
+	guild, ok := s.store.Guild(activeChar.GuildID)
+	if !ok {
+		return
+	}
+	guild.Notice = notice
+	if err := s.store.SaveGuild(guild); err != nil {
+		return
+	}
+	if err := s.store.UpdateGuildNotice(activeChar.GuildID, notice); err != nil {
+		return
+	}
+	for _, member := range s.allClients() {
+		if member.ch.GuildID != activeChar.GuildID {
+			continue
+		}
+		updated := member.ch
+		updated.GuildNotice = notice
+		s.updateClientByCharacterID(updated)
+	}
+	s.handleOpenGuildDialog(conn, activeChar)
+}
+
+func (s *Server) handleGuildUpdateRankInfo(conn net.Conn, activeChar *storage.Character, text []byte) {
+	if activeChar == nil || activeChar.GuildID == "" || activeChar.GuildRank != 1 {
+		return
+	}
+	guild, ok := s.store.Guild(activeChar.GuildID)
+	if !ok {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildRankUpdateFail, Recog: -1}, nil)
+		return
+	}
+	var ranks []storage.GuildRank
+	var current *storage.GuildRank
+	for _, raw := range strings.Split(strings.ReplaceAll(DecodeString(text), "\r", ""), "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "#") {
+			open, close := strings.IndexByte(line, '<'), strings.IndexByte(line, '>')
+			if open < 2 || close <= open {
+				s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildRankUpdateFail, Recog: -2}, nil)
+				return
+			}
+			number, err := strconv.Atoi(strings.TrimSpace(line[1:open]))
+			if err != nil {
+				s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildRankUpdateFail, Recog: -2}, nil)
+				return
+			}
+			ranks = append(ranks, storage.GuildRank{Number: number, Name: strings.TrimSpace(line[open+1 : close])})
+			current = &ranks[len(ranks)-1]
+			continue
+		}
+		if current == nil {
+			continue
+		}
+		for _, name := range strings.FieldsFunc(line, func(r rune) bool { return r == ' ' || r == ',' }) {
+			if name != "" && len(current.Members) < 10 {
+				current.Members = append(current.Members, name)
+			}
+		}
+	}
+	if len(ranks) == 0 {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildRankUpdateFail, Recog: -2}, nil)
+		return
+	}
+	if ranks[0].Number != 1 {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildRankUpdateFail, Recog: -2}, nil)
+		return
+	}
+	if ranks[0].Name == "" {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildRankUpdateFail, Recog: -3}, nil)
+		return
+	}
+	if len(ranks[0].Members) > 2 {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildRankUpdateFail, Recog: -4}, nil)
+		return
+	}
+	online := 0
+	for _, name := range ranks[0].Members {
+		if _, ok := s.ClientByName(name); ok {
+			online++
+		}
+	}
+	if online == 0 {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildRankUpdateFail, Recog: -5}, nil)
+		return
+	}
+	oldMembers := make(map[string]struct{})
+	for _, rank := range guild.Ranks {
+		for _, name := range rank.Members {
+			oldMembers[name] = struct{}{}
+		}
+	}
+	newMembers := make(map[string]struct{})
+	for i := range ranks {
+		if len(ranks[i].Name) > 30 {
+			ranks[i].Name = ranks[i].Name[:30]
+		}
+		if ranks[i].Number <= 0 || ranks[i].Number > 99 {
+			s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildRankUpdateFail, Recog: -7}, nil)
+			return
+		}
+		for _, name := range ranks[i].Members {
+			if _, exists := newMembers[name]; exists {
+				s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildRankUpdateFail, Recog: -6}, nil)
+				return
+			}
+			newMembers[name] = struct{}{}
+		}
+		for j := 0; j < i; j++ {
+			if ranks[j].Number == ranks[i].Number {
+				s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildRankUpdateFail, Recog: -7}, nil)
+				return
+			}
+		}
+	}
+	if len(oldMembers) != len(newMembers) {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildRankUpdateFail, Recog: -6}, nil)
+		return
+	}
+	for name := range oldMembers {
+		if _, ok := newMembers[name]; !ok {
+			s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildRankUpdateFail, Recog: -6}, nil)
+			return
+		}
+	}
+	guild.Ranks = ranks
+	if err := s.store.SaveGuild(guild); err != nil {
+		return
+	}
+	if err := s.store.UpdateGuildRanks(activeChar.GuildID, ranks); err != nil {
+		return
+	}
+	for _, member := range s.allClients() {
+		if member.ch.GuildID != activeChar.GuildID {
+			continue
+		}
+		updated := member.ch
+		for _, rank := range ranks {
+			for _, name := range rank.Members {
+				if strings.EqualFold(name, updated.Name) {
+					updated.GuildRank = rank.Number
+					updated.GuildRankName = rank.Name
+				}
+			}
+		}
+		_ = s.store.SaveCharacter(updated)
+		s.updateClientByCharacterID(updated)
+	}
+	s.handleGuildMemberList(conn, activeChar)
+}
+
+func (s *Server) handleGuildAlly(conn net.Conn, activeChar *storage.Character) {
+	if activeChar == nil || activeChar.GuildID == "" || activeChar.GuildRank != 1 {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildMakeAllyFail, Recog: -3}, nil)
+		return
+	}
+	dx, dy := dealFrontDelta(activeChar.Dir)
+	for _, candidate := range s.allClients() {
+		if candidate.ch.MapID != activeChar.MapID || candidate.ch.X != activeChar.X+dx || candidate.ch.Y != activeChar.Y+dy || candidate.ch.GuildID == "" || candidate.ch.GuildID == activeChar.GuildID {
+			continue
+		}
+		candidateDX, candidateDY := dealFrontDelta(candidate.ch.Dir)
+		if candidate.ch.X+candidateDX != activeChar.X || candidate.ch.Y+candidateDY != activeChar.Y {
+			continue
+		}
+		candidateGuild, candidateGuildOK := s.store.Guild(candidate.ch.GuildID)
+		if !candidateGuildOK {
+			continue
+		}
+		if !candidateGuild.EnableAuthAlly {
+			s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildMakeAllyFail, Recog: -4}, nil)
+			return
+		}
+		if candidate.ch.GuildRank != 1 {
+			s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildMakeAllyFail, Recog: -3}, nil)
+			return
+		}
+		if s.store.GuildAtWar(activeChar.GuildID, candidate.ch.GuildID) {
+			s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildMakeAllyFail, Recog: -2}, nil)
+			return
+		}
+		if !s.setGuildAlliance(activeChar.GuildID, candidate.ch.GuildID) {
+			return
+		}
+		itemUseSyncAdapter{s: s}.SendGuild(*activeChar, candidate.ch.GuildID+"行会已经和您的行会联盟成功。")
+		itemUseSyncAdapter{s: s}.SendGuild(storage.Character{ID: activeChar.ID, GuildID: candidate.ch.GuildID}, activeChar.GuildID+"行会已经和您的行会联盟成功。")
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildMakeAllyOK}, nil)
+		return
+	}
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildMakeAllyFail, Recog: -1}, nil)
+}
+
+func (s *Server) handleGuildBreakAlly(conn net.Conn, activeChar *storage.Character, text []byte) {
+	if activeChar == nil || activeChar.GuildID == "" || activeChar.GuildRank != 1 {
+		return
+	}
+	name := strings.TrimSpace(DecodeString(text))
+	guild, ok := s.store.Guild(activeChar.GuildID)
+	if !ok || !guildHasAlliance(guild, name) {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildMakeAllyFail}, nil)
+		return
+	}
+	if !s.removeGuildAlliance(activeChar.GuildID, name) {
+		return
+	}
+	itemUseSyncAdapter{s: s}.SendGuild(*activeChar, name+" 行会与您的行会解除联盟成功！！！")
+	itemUseSyncAdapter{s: s}.SendGuild(storage.Character{ID: activeChar.ID, GuildID: name}, activeChar.GuildID+" 行会解除了与您行会的联盟！！！")
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMGuildBreakAllyOK}, nil)
+	return
+}
+
+func (s *Server) setGuildAlliance(guildID, allianceID string) bool {
+	guild, ok := s.store.Guild(guildID)
+	if !ok {
+		return false
+	}
+	ally, exists := s.store.Guild(allianceID)
+	if !exists {
+		return false
+	}
+	guildAlliances := normalizedGuildAlliances(guild)
+	allyAlliances := normalizedGuildAlliances(ally)
+	if !containsString(guildAlliances, allianceID) {
+		guildAlliances = append(guildAlliances, allianceID)
+	}
+	if !containsString(allyAlliances, guildID) {
+		allyAlliances = append(allyAlliances, guildID)
+	}
+	guild.Alliances, guild.Alliance = guildAlliances, firstString(guildAlliances)
+	ally.Alliances, ally.Alliance = allyAlliances, firstString(allyAlliances)
+	if err := s.store.SaveGuild(guild); err != nil {
+		return false
+	}
+	if err := s.store.SaveGuild(ally); err != nil {
+		return false
+	}
+	if err := s.store.UpdateGuildAlliances(guildID, guildAlliances); err != nil {
+		return false
+	}
+	if err := s.store.UpdateGuildAlliances(allianceID, allyAlliances); err != nil {
+		return false
+	}
+	for _, client := range s.allClients() {
+		if client.ch.GuildID != guildID && client.ch.GuildID != allianceID {
+			continue
+		}
+		updated := client.ch
+		if updated.GuildID == guildID {
+			updated.GuildAllianceIDs = append([]string(nil), guildAlliances...)
+			updated.GuildAllianceID = firstString(guildAlliances)
+		} else {
+			updated.GuildAllianceIDs = append([]string(nil), allyAlliances...)
+			updated.GuildAllianceID = firstString(allyAlliances)
+		}
+		if err := s.store.SaveCharacter(updated); err != nil {
+			return false
+		}
+		s.updateClientByCharacterID(updated)
+	}
+	return true
+}
+
+func (s *Server) removeGuildAlliance(guildID, allianceID string) bool {
+	guild, ok := s.store.Guild(guildID)
+	if !ok {
+		return false
+	}
+	ally, ok := s.store.Guild(allianceID)
+	if !ok {
+		return false
+	}
+	guildAlliances := removeString(normalizedGuildAlliances(guild), allianceID)
+	allyAlliances := removeString(normalizedGuildAlliances(ally), guildID)
+	guild.Alliances, guild.Alliance = guildAlliances, firstString(guildAlliances)
+	ally.Alliances, ally.Alliance = allyAlliances, firstString(allyAlliances)
+	if err := s.store.SaveGuild(guild); err != nil {
+		return false
+	}
+	if err := s.store.SaveGuild(ally); err != nil {
+		return false
+	}
+	if err := s.store.UpdateGuildAlliances(guildID, guildAlliances); err != nil {
+		return false
+	}
+	if err := s.store.UpdateGuildAlliances(allianceID, allyAlliances); err != nil {
+		return false
+	}
+	for _, client := range s.allClients() {
+		if client.ch.GuildID != guildID && client.ch.GuildID != allianceID {
+			continue
+		}
+		updated := client.ch
+		if updated.GuildID == guildID {
+			updated.GuildAllianceIDs = append([]string(nil), guildAlliances...)
+			updated.GuildAllianceID = firstString(guildAlliances)
+		} else {
+			updated.GuildAllianceIDs = append([]string(nil), allyAlliances...)
+			updated.GuildAllianceID = firstString(allyAlliances)
+		}
+		if err := s.store.SaveCharacter(updated); err != nil {
+			return false
+		}
+		s.updateClientByCharacterID(updated)
+	}
+	return true
+}
+
+func normalizedGuildAlliances(guild storage.Guild) []string {
+	all := append([]string(nil), guild.Alliances...)
+	if guild.Alliance != "" && !containsString(all, guild.Alliance) {
+		all = append(all, guild.Alliance)
+	}
+	return all
+}
+
+func guildHasAlliance(guild storage.Guild, allianceID string) bool {
+	return containsString(normalizedGuildAlliances(guild), allianceID)
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func removeString(values []string, want string) []string {
+	filtered := values[:0]
+	for _, value := range values {
+		if value != want {
+			filtered = append(filtered, value)
+		}
+	}
+	return filtered
+}
+
+func firstString(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
+}
+
+func removeGuildMember(members []string, name string) []string {
+	filtered := members[:0]
+	for _, member := range members {
+		if !strings.EqualFold(member, name) {
+			filtered = append(filtered, member)
+		}
+	}
+	return filtered
+}
+
+func (s *Server) handleDealTry(conn net.Conn, activeChar *storage.Character) {
+	client := s.clientForConn(conn)
+	if client == nil || activeChar == nil || client.dealPeerID != "" {
+		return
+	}
+	client.mu.Lock()
+	if !client.dealLastAt.IsZero() && time.Since(client.dealLastAt) < 3*time.Second {
+		client.mu.Unlock()
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMDealTryFail}, nil)
+		return
+	}
+	client.mu.Unlock()
+	dx, dy := dealFrontDelta(activeChar.Dir)
+	for _, candidate := range s.allClients() {
+		if candidate == client || candidate.ch.MapID != activeChar.MapID || candidate.ch.X != activeChar.X+dx || candidate.ch.Y != activeChar.Y+dy || candidate.ch.HP <= 0 {
+			continue
+		}
+		candidateDX, candidateDY := dealFrontDelta(candidate.ch.Dir)
+		if candidate.ch.X+candidateDX != activeChar.X || candidate.ch.Y+candidateDY != activeChar.Y {
+			continue
+		}
+		candidate.mu.Lock()
+		busy := candidate.dealPeerID != ""
+		candidate.mu.Unlock()
+		if busy {
+			continue
+		}
+		client.mu.Lock()
+		client.dealPeerID = candidate.ch.ID
+		client.dealItems = nil
+		client.dealGold = 0
+		client.dealOK = false
+		client.dealLastAt = time.Now()
+		client.mu.Unlock()
+		candidate.mu.Lock()
+		candidate.dealPeerID = activeChar.ID
+		candidate.dealItems = nil
+		candidate.dealGold = 0
+		candidate.dealOK = false
+		candidate.dealLastAt = time.Now()
+		candidate.mu.Unlock()
+		client.writeCommand(s, mir176.Command{Ident: mir176.SMDealMenu}, EncodeString(candidate.ch.Name))
+		candidate.writeCommand(s, mir176.Command{Ident: mir176.SMDealMenu}, EncodeString(activeChar.Name))
+		return
+	}
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMDealTryFail}, nil)
+}
+
+func (s *Server) handleDealCancel(conn net.Conn) {
+	s.handleDealCancelWithPersistence(conn, true)
+}
+
+func (s *Server) handleDealCancelWithPersistence(conn net.Conn, persist bool) {
+	client := s.clientForConn(conn)
+	if client == nil {
+		return
+	}
+	peerID := client.dealPeerID
+	client.mu.Lock()
+	clientChar := client.ch
+	clientChar.BagItems = append(clientChar.BagItems, client.dealItems...)
+	clientChar.Gold += client.dealGold
+	client.dealPeerID = ""
+	client.dealItems = nil
+	client.dealGold = 0
+	client.dealOK = false
+	client.mu.Unlock()
+	if persist {
+		_ = s.store.SaveCharacter(clientChar)
+	}
+	s.updateClient(conn, clientChar)
+	for _, peer := range s.allClients() {
+		if peer.ch.ID != peerID {
+			continue
+		}
+		peer.mu.Lock()
+		peerChar := peer.ch
+		peerChar.BagItems = append(peerChar.BagItems, peer.dealItems...)
+		peerChar.Gold += peer.dealGold
+		peer.dealPeerID = ""
+		peer.dealItems = nil
+		peer.dealGold = 0
+		peer.dealOK = false
+		peer.mu.Unlock()
+		if persist {
+			_ = s.store.SaveCharacter(peerChar)
+		}
+		s.updateClientByCharacterID(peerChar)
+		peer.writeCommand(s, mir176.Command{Ident: mir176.SMDealCancel}, nil)
+	}
+	client.writeCommand(s, mir176.Command{Ident: mir176.SMDealCancel}, nil)
+}
+
+func (s *Server) handleDealAddItem(conn net.Conn, activeChar *storage.Character, cmd mir176.Command, text []byte) {
+	client := s.clientForConn(conn)
+	if client == nil || activeChar == nil {
+		return
+	}
+	peer := s.dealPeer(client)
+	if peer == nil {
+		return
+	}
+	name := strings.TrimSpace(DecodeString(text))
+	first, second := lockDealPair(client, peer)
+	allowed := !peer.dealOK && len(client.dealItems) < 12
+	second.mu.Unlock()
+	first.mu.Unlock()
+	if !allowed {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMDealAddItemFail}, nil)
+		return
+	}
+	for i, entry := range activeChar.BagItems {
+		if entry.MakeIndex != cmd.Recog || !strings.EqualFold(entry.ItemID, name) {
+			continue
+		}
+		activeChar.BagItems = append(activeChar.BagItems[:i], activeChar.BagItems[i+1:]...)
+		if err := s.store.SaveCharacter(*activeChar); err != nil {
+			return
+		}
+		s.updateClient(conn, *activeChar)
+		client.mu.Lock()
+		client.dealItems = append(client.dealItems, entry)
+		client.dealLastAt = time.Now()
+		client.mu.Unlock()
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMDealAddItemOK}, nil)
+		peer.writeCommand(s, mir176.Command{Ident: mir176.SMDealRemoteAddItem, Recog: world.CharacterActorID(*activeChar), Series: 1}, s.dealItemBody(*activeChar, entry))
+		return
+	}
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMDealAddItemFail}, nil)
+}
+
+func (s *Server) handleDealDelItem(conn net.Conn, activeChar *storage.Character, cmd mir176.Command, text []byte) {
+	client := s.clientForConn(conn)
+	if client == nil || activeChar == nil {
+		return
+	}
+	peer := s.dealPeer(client)
+	if peer == nil {
+		return
+	}
+	first, second := lockDealPair(client, peer)
+	if peer.dealOK {
+		second.mu.Unlock()
+		first.mu.Unlock()
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMDealDelItemFail}, nil)
+		return
+	}
+	name := strings.TrimSpace(DecodeString(text))
+	for i, entry := range client.dealItems {
+		if entry.MakeIndex != cmd.Recog || !strings.EqualFold(entry.ItemID, name) {
+			continue
+		}
+		client.dealItems = append(client.dealItems[:i], client.dealItems[i+1:]...)
+		client.dealLastAt = time.Now()
+		second.mu.Unlock()
+		first.mu.Unlock()
+		activeChar.BagItems = append(activeChar.BagItems, entry)
+		if err := s.store.SaveCharacter(*activeChar); err != nil {
+			return
+		}
+		s.updateClient(conn, *activeChar)
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMDealDelItemOK}, nil)
+		if peer := s.dealPeer(client); peer != nil {
+			peer.writeCommand(s, mir176.Command{Ident: mir176.SMDealRemoteDelItem, Recog: world.CharacterActorID(*activeChar), Series: 1}, s.dealItemBody(*activeChar, entry))
+		}
+		return
+	}
+	second.mu.Unlock()
+	first.mu.Unlock()
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMDealDelItemFail}, nil)
+}
+
+func (s *Server) handleDealChangeGold(conn net.Conn, activeChar *storage.Character, cmd mir176.Command) {
+	client := s.clientForConn(conn)
+	if client == nil || activeChar == nil {
+		return
+	}
+	peer := s.dealPeer(client)
+	if peer == nil {
+		return
+	}
+	gold := int(cmd.Recog)
+	client.mu.Lock()
+	peer.mu.Lock()
+	allowed := !peer.dealOK && activeChar.Gold+client.dealGold >= gold
+	if gold < 0 || !allowed {
+		peer.mu.Unlock()
+		client.mu.Unlock()
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMDealChangeGoldFail, Recog: int32(client.dealGold), Param: uint16(activeChar.Gold), Tag: uint16(uint32(activeChar.Gold) >> 16)}, nil)
+		return
+	}
+	activeChar.Gold += client.dealGold - gold
+	client.dealGold = gold
+	now := time.Now()
+	client.dealLastAt = now
+	peer.dealLastAt = now
+	peer.mu.Unlock()
+	client.mu.Unlock()
+	if err := s.store.SaveCharacter(*activeChar); err != nil {
+		return
+	}
+	s.updateClient(conn, *activeChar)
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMDealChangeGoldOK, Recog: int32(gold), Param: uint16(activeChar.Gold), Tag: uint16(uint32(activeChar.Gold) >> 16)}, nil)
+	peer.writeCommand(s, mir176.Command{Ident: mir176.SMDealRemoteChangeGold, Recog: int32(gold)}, nil)
+}
+
+func (s *Server) handleDealEnd(conn net.Conn, activeChar *storage.Character) {
+	client := s.clientForConn(conn)
+	if client == nil || activeChar == nil {
+		return
+	}
+	now := time.Now()
+	client.mu.Lock()
+	client.dealOK = true
+	clientLastAt := client.dealLastAt
+	client.mu.Unlock()
+	peer := s.dealPeer(client)
+	if peer == nil {
+		return
+	}
+	peer.mu.Lock()
+	peerOK := peer.dealOK
+	peerLastAt := peer.dealLastAt
+	peer.mu.Unlock()
+	if (!clientLastAt.IsZero() && now.Sub(clientLastAt) < time.Second) || (!peerLastAt.IsZero() && now.Sub(peerLastAt) < time.Second) {
+		s.handleDealCancel(conn)
+		return
+	}
+	if !peerOK {
+		return
+	}
+	first, second := lockDealPair(client, peer)
+	clientChar := client.ch
+	peerChar := peer.ch
+	clientItems := append([]storage.UserItem(nil), client.dealItems...)
+	peerItems := append([]storage.UserItem(nil), peer.dealItems...)
+	clientGold := client.dealGold
+	peerGold := peer.dealGold
+	second.mu.Unlock()
+	first.mu.Unlock()
+	maxGold := s.world.Gameplay().Item.MaxGold
+	capacityFailed := false
+	if len(clientChar.BagItems)+len(peerItems) > s.world.Gameplay().Item.MaxBagItem {
+		s.sendSystemMessage(conn, clientChar, "你的背包空间不够，无法装下对方交易给你的物品！！！")
+		capacityFailed = true
+	}
+	if clientChar.Gold+peerGold > maxGold {
+		s.sendSystemMessage(conn, clientChar, "你的所带的金币太多，无法装下对方交易给你的金币！！！")
+		capacityFailed = true
+	}
+	if len(peerChar.BagItems)+len(clientItems) > s.world.Gameplay().Item.MaxBagItem {
+		s.sendSystemMessage(conn, clientChar, "交易对方的背包空间不够，无法装下对方交易给你的物品！！！")
+		capacityFailed = true
+	}
+	if peerChar.Gold+clientGold > maxGold {
+		s.sendSystemMessage(conn, clientChar, "交易对方的所带的金币太多，无法装下对方交易给你的金币！！！")
+		capacityFailed = true
+	}
+	if capacityFailed {
+		s.handleDealCancel(conn)
+		return
+	}
+	clientChar.BagItems = append(clientChar.BagItems, peerItems...)
+	clientChar.Gold += peerGold
+	peerChar.BagItems = append(peerChar.BagItems, clientItems...)
+	peerChar.Gold += clientGold
+	if err := s.store.SaveCharacter(clientChar); err != nil {
+		return
+	}
+	if err := s.store.SaveCharacter(peerChar); err != nil {
+		return
+	}
+	client.mu.Lock()
+	client.dealPeerID = ""
+	client.dealItems = nil
+	client.dealGold = 0
+	client.dealOK = false
+	client.mu.Unlock()
+	peer.mu.Lock()
+	peer.dealPeerID = ""
+	peer.dealItems = nil
+	peer.dealGold = 0
+	peer.dealOK = false
+	peer.mu.Unlock()
+	s.updateClient(conn, clientChar)
+	s.updateClientByCharacterID(peerChar)
+	client.writeCommand(s, mir176.Command{Ident: mir176.SMDealSuccess}, nil)
+	peer.writeCommand(s, mir176.Command{Ident: mir176.SMDealSuccess}, nil)
+}
+
+func (s *Server) dealPeer(client *Client) *Client {
+	client.mu.Lock()
+	id := client.dealPeerID
+	client.mu.Unlock()
+	if id == "" {
+		return nil
+	}
+	for _, candidate := range s.allClients() {
+		if candidate.ch.ID == id {
+			return candidate
+		}
+	}
+	return nil
+}
+
+func lockDealPair(a, b *Client) (*Client, *Client) {
+	if a.ch.ID < b.ch.ID {
+		a.mu.Lock()
+		b.mu.Lock()
+		return a, b
+	}
+	b.mu.Lock()
+	a.mu.Lock()
+	return b, a
+}
+
+func (s *Server) dealItemBody(ch storage.Character, entry storage.UserItem) []byte {
+	item, ok := s.world.Item(entry.ItemID)
+	if !ok {
+		return nil
+	}
+	return ClientItemBody(item, entry.Desc, entry.MakeIndex, entry.Dura, entry.DuraMax)
+}
+
+func dealFrontDelta(dir int) (int, int) {
+	switch dir {
+	case 0:
+		return 0, -1
+	case 1:
+		return 1, -1
+	case 2:
+		return 1, 0
+	case 3:
+		return 1, 1
+	case 4:
+		return 0, 1
+	case 5:
+		return -1, 1
+	case 6:
+		return -1, 0
+	case 7:
+		return -1, -1
+	default:
+		return 0, 0
+	}
+}
+
 func (s *Server) handleClickNPC(conn net.Conn, activeChar *storage.Character, activeClient *Client, cmd mir176.Command) {
+	if activeChar == nil || activeChar.Ghost || activeChar.HP <= 0 {
+		return
+	}
 	entity, ok := s.world.NPCByActorID(cmd.Recog)
 	if !ok {
 		return
@@ -2240,8 +3845,14 @@ func (s *Server) handleClickNPC(conn net.Conn, activeChar *storage.Character, ac
 }
 
 func (s *Server) handleMerchantDlgSelect(conn net.Conn, activeChar *storage.Character, activeClient *Client, cmd mir176.Command, text []byte) {
+	if activeChar == nil || activeChar.Ghost || activeChar.HP <= 0 {
+		return
+	}
 	entity, ok := s.resolveMerchantEntity(activeClient, cmd)
 	if !ok {
+		return
+	}
+	if !entity.Hidden && !merchantWithinStorageRange(*activeChar, entity) {
 		return
 	}
 	rawText := strings.TrimSpace(DecodeString(text))
@@ -2285,6 +3896,9 @@ func (s *Server) handleMerchantDlgSelect(conn net.Conn, activeChar *storage.Char
 		}
 		activeClient.mu.Unlock()
 	}
+	if rawText == "" || !strings.HasPrefix(rawText, "@") {
+		return
+	}
 	if s.sendMerchantMenu(conn, cmd.Recog, *activeChar, entity, label) {
 		return
 	}
@@ -2303,48 +3917,105 @@ func (s *Server) handlePendingMerchantAction(conn net.Conn, activeChar *storage.
 	switch strings.ToLower(strings.TrimSpace(action)) {
 	case "buildguild":
 		if text == "" {
-			s.sendMerchantSay(conn, entity.Name, "请填写行会名称。\n<返回/@main>")
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "请填写行会名称。\n<返回/@main>")
 			return true
 		}
 		price := s.world.Gameplay().Guild.BuildGuildPrice
 		if activeChar.Gold < price {
-			s.sendMerchantSay(conn, entity.Name, "你身上的钱不够！请准备好后再来。\n<返回/@main>")
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "你身上的钱不够！请准备好后再来。\n<返回/@main>")
 			return true
 		}
 		if !bagHasItemID(*activeChar, "沃玛号角") {
-			s.sendMerchantSay(conn, entity.Name, "你没有准备好需要的全部物品。\n<返回/@main>")
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "你没有准备好需要的全部物品。\n<返回/@main>")
+			return true
+		}
+		for _, online := range s.PlayerCharacters() {
+			if strings.EqualFold(online.GuildID, text) {
+				s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "这个行会已经存在。\n<返回/@main>")
+				return true
+			}
+		}
+		if _, exists := s.store.Guild(strings.TrimSpace(text)); exists {
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "这个行会已经存在。\n<返回/@main>")
 			return true
 		}
 		updated, removed, ok := removeBagItemsByID(*activeChar, "沃玛号角", 1)
 		if !ok {
-			s.sendMerchantSay(conn, entity.Name, "你没有准备好需要的全部物品。\n<返回/@main>")
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "你没有准备好需要的全部物品。\n<返回/@main>")
 			return true
 		}
 		updated.Gold -= price
+		updated.GuildID = strings.TrimSpace(text)
+		updated.GuildRank = 1
+		updated.GuildRankName = "会长"
+		updated.GuildNotice = ""
+		if err := s.store.SaveGuild(storage.Guild{ID: updated.GuildID, Ranks: []storage.GuildRank{{Number: 1, Name: "会长", Members: []string{updated.Name}}}}); err != nil {
+			return true
+		}
 		*activeChar = updated
 		s.sendDelItemList(conn, removed)
-		s.sendGoldChanged(conn, updated.Gold)
-		s.sendMerchantSay(conn, entity.Name, "行会创建申请已提交: "+text+"\n<返回/@main>")
+		s.sendGoldChanged(conn, updated, updated.Gold)
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "行会创建申请已提交: "+text+"\n<返回/@main>")
 		if err := s.store.SaveCharacter(updated); err != nil {
 		}
 		return true
 	case "guildwar":
 		if text == "" {
-			s.sendMerchantSay(conn, entity.Name, fmt.Sprintf("填写与你交战的敌对行会的名字，申请行会战争必须支付%d金币。\n<立即申请行会战争/@@guildwar>\n<返回/@main>", s.world.Gameplay().Guild.GuildWarPrice))
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, fmt.Sprintf("填写与你交战的敌对行会的名字，申请行会战争必须支付%d金币。\n<立即申请行会战争/@@guildwar>\n<返回/@main>", s.world.Gameplay().Guild.GuildWarPrice))
+			return true
+		}
+		if activeChar.GuildID == "" || activeChar.GuildRank != 1 {
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "只有行会会长可以申请行会战争。\n<返回/@main>")
+			return true
+		}
+		targetGuild := strings.TrimSpace(text)
+		if targetGuild == activeChar.GuildID {
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "不能向自己的行会申请战争。\n<返回/@main>")
+			return true
+		}
+		if _, ok := s.store.Guild(targetGuild); !ok {
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "目标行会不存在。\n<返回/@main>")
 			return true
 		}
 		price := s.world.Gameplay().Guild.GuildWarPrice
 		if activeChar.Gold < price {
-			s.sendMerchantSay(conn, entity.Name, "你身上的钱不够！请准备好后再来。\n<返回/@main>")
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "你身上的钱不够！请准备好后再来。\n<返回/@main>")
 			return true
 		}
 		updated := *activeChar
 		updated.Gold -= price
 		*activeChar = updated
-		s.sendGoldChanged(conn, updated.Gold)
-		s.sendMerchantSay(conn, entity.Name, "行会战争申请已提交: "+text+"\n<返回/@main>")
+		s.sendGoldChanged(conn, updated, updated.Gold)
+		if err := s.store.AddGuildWar(activeChar.GuildID, targetGuild); err != nil {
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "行会战争申请失败。\n<返回/@main>")
+			if err := s.store.SaveCharacter(updated); err != nil {
+			}
+			return true
+		}
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "行会战争申请已提交: "+targetGuild+"\n<返回/@main>")
 		if err := s.store.SaveCharacter(updated); err != nil {
 		}
+		return true
+	case "castle_withdraw", "castle_receipt":
+		amount, err := strconv.Atoi(strings.TrimSpace(text))
+		if err != nil || amount <= 0 {
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "请输入有效的金币数量。\n<返回/@main>")
+			return true
+		}
+		var updated storage.Character
+		if action == "castle_withdraw" {
+			updated, err = s.world.CastleWithdraw(*activeChar, s.world.CastleID(), amount)
+		} else {
+			updated, err = s.world.CastleReceipt(*activeChar, s.world.CastleID(), amount)
+		}
+		if err != nil {
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "没有权限或城堡金币状态不允许此操作。\n<返回/@main>")
+			return true
+		}
+		*activeChar = updated
+		s.sendGoldChanged(conn, updated, updated.Gold)
+		_ = s.store.SaveCharacter(updated)
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "城堡金币操作完成。\n<返回/@main>")
 		return true
 	}
 	return false
@@ -2354,31 +4025,31 @@ func (s *Server) handleTeleportMerchantDlgSelect(conn net.Conn, activeChar *stor
 	switch strings.ToLower(strings.TrimSpace(label)) {
 	case "@anquan":
 		if activeChar.Level <= 6 {
-			s.sendMerchantSay(conn, entity.Name, "照你现在这个级别,我没什么能帮的上你!\n请你练到7级再来找我吧，祝你好运!")
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "照你现在这个级别,我没什么能帮的上你!\n请你练到7级再来找我吧，祝你好运!")
 			return true
 		}
-		s.sendMerchantSay(conn, entity.Name, "这里是<城区传送>服务,你必须给我2000金币的报酬!\n┏━━━━┳━━━━┳━━━━┳━━━━┓\n┃<比齐大城/@JIANAN>┃<毒蛇山谷/@FENGDI>┃<银杏小村/@XIAGU>┃<比奇村庄/@HAIBIN>┃\n┣━━━━╋━━━━╋━━━━╋━━━━┫\n┃<盟重土城/@YASHU>┃<苍月之岛/@HUANGCHENG>┃<封魔神谷/@JIANYU>┃<白 日 门/@SHADINDAO>┃\n┗━━━━┻━━━━┻━━━━┻━━━━┛")
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "这里是<城区传送>服务,你必须给我2000金币的报酬!\n┏━━━━┳━━━━┳━━━━┳━━━━┓\n┃<比齐大城/@JIANAN>┃<毒蛇山谷/@FENGDI>┃<银杏小村/@XIAGU>┃<比奇村庄/@HAIBIN>┃\n┣━━━━╋━━━━╋━━━━╋━━━━┫\n┃<盟重土城/@YASHU>┃<苍月之岛/@HUANGCHENG>┃<封魔神谷/@JIANYU>┃<白 日 门/@SHADINDAO>┃\n┗━━━━┻━━━━┻━━━━┻━━━━┛")
 		return true
 	case "@xiane":
 		if activeChar.Level > 34 {
-			s.sendMerchantSay(conn, entity.Name, "这里是<险恶地区>服务，按照你的级别你可以前往以下地区:\n当然你还得付给我3000金币的报酬!\n┏━━━━┳━━━━┳━━━━┳━━━━┳━━━━┓\n┃<沃玛三层/@JM7>┃<猪洞七层/@JM8>┃<祖玛七层/@JM5>┃<死亡棺材/@JM6>┃<抉择之地/@S6>┃\n┣━━━━╋━━━━╋━━━━╋━━━━╋━━━━┫\n┃<比齐矿区/@JN1>┃<蜈蚣洞穴/@JN2>┃<天然洞穴/@JM1>┃<牛魔四层/@JM2>┃<封魔矿区/@FENGMOKOU>┃\n┣━━━━╋━━━━╋━━━━╋━━━━╋━━━━┫\n┃<未知暗殿/@JXJDVE>┃<尸 魔 洞/@JM3>┃<骨 魔 洞/@JM4>┃<尸王大殿/@LM2>┃<沙城区域/@沙城区域>┃\n┗━━━━┻━━━━┻━━━━┻━━━━┻━━━━┛")
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "这里是<险恶地区>服务，按照你的级别你可以前往以下地区:\n当然你还得付给我3000金币的报酬!\n┏━━━━┳━━━━┳━━━━┳━━━━┳━━━━┓\n┃<沃玛三层/@JM7>┃<猪洞七层/@JM8>┃<祖玛七层/@JM5>┃<死亡棺材/@JM6>┃<抉择之地/@S6>┃\n┣━━━━╋━━━━╋━━━━╋━━━━╋━━━━┫\n┃<比齐矿区/@JN1>┃<蜈蚣洞穴/@JN2>┃<天然洞穴/@JM1>┃<牛魔四层/@JM2>┃<封魔矿区/@FENGMOKOU>┃\n┣━━━━╋━━━━╋━━━━╋━━━━╋━━━━┫\n┃<未知暗殿/@JXJDVE>┃<尸 魔 洞/@JM3>┃<骨 魔 洞/@JM4>┃<尸王大殿/@LM2>┃<沙城区域/@沙城区域>┃\n┗━━━━┻━━━━┻━━━━┻━━━━┻━━━━┛")
 			return true
 		}
 		if activeChar.Level > 21 {
-			s.sendMerchantSay(conn, entity.Name, "这里是<险恶地区>服务，按照你的级别35级前你可以前往以下地区:\n当然你还得付给我3000金币的报酬!\n┏━━━━┳━━━━┳━━━━┳━━━━┳━━━━┓\n┃<沃玛二层/@S1>┃<猪洞一层/@S2>┃<祖玛三层/@S3>┃<赤月峡谷/@S5>┃<封魔矿区/@FENGMOKOU>┃\n┣━━━━╋━━━━╋━━━━╋━━━━╋━━━━┫\n┃<比齐矿区/@JN1>┃<蜈蚣洞穴/@JN2>┃<天然洞穴/@JM1>┃<牛魔一层/@NN7>┃<尸 魔 洞/@JM3>┃\n┣━━━━╋━━━━╋━━━━┻━━━━┻━━━━┫\n┃<骨 魔 洞/@JM4>┃<尸王大殿/@LM2>┃\n┗━━━━┻━━━━┛")
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "这里是<险恶地区>服务，按照你的级别35级前你可以前往以下地区:\n当然你还得付给我3000金币的报酬!\n┏━━━━┳━━━━┳━━━━┳━━━━┳━━━━┓\n┃<沃玛二层/@S1>┃<猪洞一层/@S2>┃<祖玛三层/@S3>┃<赤月峡谷/@S5>┃<封魔矿区/@FENGMOKOU>┃\n┣━━━━╋━━━━╋━━━━╋━━━━╋━━━━┫\n┃<比齐矿区/@JN1>┃<蜈蚣洞穴/@JN2>┃<天然洞穴/@JM1>┃<牛魔一层/@NN7>┃<尸 魔 洞/@JM3>┃\n┣━━━━╋━━━━╋━━━━┻━━━━┻━━━━┫\n┃<骨 魔 洞/@JM4>┃<尸王大殿/@LM2>┃\n┗━━━━┻━━━━┛")
 			return true
 		}
 		if activeChar.Level > 6 {
-			s.sendMerchantSay(conn, entity.Name, "这里是<险恶地区>服务，按照你的级别22级前你只能前往以下地区:\n当然你还得付给我3000金币的报酬!\n┏━━━━┳━━━━┳━━━━┓\n┃<比齐矿区/@JN1>┃<蜈蚣洞穴/@JN2>┃<天然洞穴/@JM1>┃\n┣━━━━╋━━━━┻━━━━┛\n┃<封魔矿区/@FENGMOKOU>┃\n┗━━━━┛")
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "这里是<险恶地区>服务，按照你的级别22级前你只能前往以下地区:\n当然你还得付给我3000金币的报酬!\n┏━━━━┳━━━━┳━━━━┓\n┃<比齐矿区/@JN1>┃<蜈蚣洞穴/@JN2>┃<天然洞穴/@JM1>┃\n┣━━━━╋━━━━┻━━━━┛\n┃<封魔矿区/@FENGMOKOU>┃\n┗━━━━┛")
 			return true
 		}
-		s.sendMerchantSay(conn, entity.Name, "照你现在这个级别,我没什么能帮的上你!\n请你练到7级再来找我吧，祝你好运!")
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "照你现在这个级别,我没什么能帮的上你!\n请你练到7级再来找我吧，祝你好运!")
 		return true
 	case "@huan":
-		s.sendMerchantSay(conn, entity.Name, "移动到幻境需要2万金币，移动吗？\n<移动/@移动> \n<不/@exit> \n<返 回/@Main>")
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "移动到幻境需要2万金币，移动吗？\n<移动/@移动> \n<不/@exit> \n<返 回/@Main>")
 		return true
 	case "@time":
-		s.sendMerchantSay(conn, entity.Name, teleporterTimeMessage(time.Now(), activeChar.Name))
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, teleporterTimeMessage(time.Now(), activeChar.Name))
 		return true
 	case "@jianan":
 		return s.teleportMerchantCharacter(conn, activeChar, entity, "0", 333, 268, false, 2000, "比齐大城", "")
@@ -2444,11 +4115,11 @@ func (s *Server) handleTeleportMerchantDlgSelect(conn net.Conn, activeChar *stor
 
 func (s *Server) teleportMerchantCharacter(conn net.Conn, activeChar *storage.Character, entity npc.Entity, mapID string, x, y int, random bool, goldCost int, destination, giftItemID string) bool {
 	if activeChar.Gold < goldCost {
-		s.sendMerchantSay(conn, entity.Name, "你身上的钱不够！请准备好后再来。\n<离 开/@exit>")
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "你身上的钱不够！请准备好后再来。\n<离 开/@exit>")
 		return true
 	}
 	if giftItemID != "" && !s.world.CanCarryBagItems(*activeChar, 1) {
-		s.sendMerchantSay(conn, entity.Name, "你的包裹已经满了，暂时不能前往那里。\n<离 开/@exit>")
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "你的包裹已经满了，暂时不能前往那里。\n<离 开/@exit>")
 		return true
 	}
 	prev := *activeChar
@@ -2462,18 +4133,18 @@ func (s *Server) teleportMerchantCharacter(conn net.Conn, activeChar *storage.Ch
 		updated, err = s.world.Teleport(prev, mapID, x, y)
 	}
 	if err != nil {
-		s.sendMerchantSay(conn, entity.Name, "目的地暂时无法前往。\n<离 开/@exit>")
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "目的地暂时无法前往。\n<离 开/@exit>")
 		return true
 	}
 	updated.Gold -= goldCost
 	if giftItemID != "" && s.world.CanCarryBagItems(updated, 1) {
-		gift := storage.UserItem{ItemID: giftItemID, MakeIndex: int32(time.Now().UnixNano() & 0x7fffffff)}
+		gift := storage.UserItem{ItemID: giftItemID, MakeIndex: s.world.AllocateItemMakeIndex()}
 		updated.BagItems = append(updated.BagItems, gift)
 		s.sendBagAddItem(conn, updated, gift.ItemID, gift.MakeIndex)
 	}
 	*activeChar = updated
 	world.ApplyTeleportSync(teleportSyncAdapter{s: s, conn: conn}, world.TeleportEvent{From: prev, To: updated})
-	s.sendGoldChanged(conn, updated.Gold)
+	s.sendGoldChanged(conn, updated, updated.Gold)
 	s.sendMerchantDlgClose(conn, s.world.NPCActorID(entity.ID))
 	if err := s.store.SaveCharacter(updated); err != nil {
 	}
@@ -2510,79 +4181,79 @@ func teleporterTimeMessage(now time.Time, username string) string {
 }
 
 func (s *Server) handleWarehouseMerchantDlgSelect(conn net.Conn, activeChar *storage.Character, entity npc.Entity, label string) bool {
-	if !entity.Merchant.Capabilities.Storage || !entity.Merchant.Capabilities.GetBack {
+	if !entity.Merchant.Capabilities.Storage {
 		return false
 	}
 	switch strings.ToLower(strings.TrimSpace(label)) {
 	case "@mbind":
-		s.sendMerchantSay(conn, entity.Name, "你知道我是什么人吗？\n我做的是这样的事情...\n你要试一下吗？有什么要拜托的就说吧。\n用金币<交换/@changeGold>金条 \n用金条<交换/@changeMoney>金币 \n<捆/@bind>\n<离 开/@exit>")
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "你知道我是什么人吗？\n我做的是这样的事情...\n你要试一下吗？有什么要拜托的就说吧。\n用金币<交换/@changeGold>金条 \n用金条<交换/@changeMoney>金币 \n<捆/@bind>\n<离 开/@exit>")
 		return true
 	case "@changegold":
 		if activeChar.Gold < 1002000 {
-			s.sendMerchantSay(conn, entity.Name, "你连这点钱都没有，还换什么？\n等你有足够的钱，再来找我吧\n<返 回/@Main>")
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "你连这点钱都没有，还换什么？\n等你有足够的钱，再来找我吧\n<返 回/@Main>")
 			return true
 		}
-		s.sendMerchantSay(conn, entity.Name, "你说你要用金币换成金条?\n好的，我帮你换\n但是要支付手续费\n费用是2000金币，你还换吗？\n<交换/@changeGold_1>\n<离 开/@exit>")
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "你说你要用金币换成金条?\n好的，我帮你换\n但是要支付手续费\n费用是2000金币，你还换吗？\n<交换/@changeGold_1>\n<离 开/@exit>")
 		return true
 	case "@changegold_1":
 		if activeChar.Gold < 1002000 {
-			s.sendMerchantSay(conn, entity.Name, "你的包里东西已经满了，或者你没有足够的钱支付手续费\n你再确认一下吧\n<离 开/@exit>")
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "你的包里东西已经满了，或者你没有足够的钱支付手续费\n你再确认一下吧\n<离 开/@exit>")
 			return true
 		}
 		if !s.world.CanCarryBagItems(*activeChar, 1) {
-			s.sendMerchantSay(conn, entity.Name, "你的包里东西已经满了，或者你没有足够的钱支付手续费\n你再确认一下吧\n<离 开/@exit>")
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "你的包里东西已经满了，或者你没有足够的钱支付手续费\n你再确认一下吧\n<离 开/@exit>")
 			return true
 		}
 		updated := *activeChar
 		updated.Gold -= 1002000
-		bought := storage.UserItem{ItemID: "金条", MakeIndex: int32(time.Now().UnixNano() & 0x7fffffff)}
+		bought := storage.UserItem{ItemID: "金条", MakeIndex: s.world.AllocateItemMakeIndex()}
 		updated.BagItems = append(updated.BagItems, bought)
 		*activeChar = updated
 		s.sendBagAddItem(conn, updated, bought.ItemID, bought.MakeIndex)
-		s.sendGoldChanged(conn, updated.Gold)
+		s.sendGoldChanged(conn, updated, updated.Gold)
 		s.sendWeightChanged(conn, s.world.AbilityStats(updated))
-		s.sendMerchantSay(conn, entity.Name, "金币已经换好金条了.\n还换吗？\n<交换/@changeGold>\n<离 开/@exit>")
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "金币已经换好金条了.\n还换吗？\n<交换/@changeGold>\n<离 开/@exit>")
 		if err := s.store.SaveCharacter(updated); err != nil {
 		}
 		return true
 	case "@changemoney":
 		if !bagHasItemID(*activeChar, "金条") {
-			s.sendMerchantSay(conn, entity.Name, "你都没有金条还换什么?\n想骗我?快滚!\n<离 开/@exit>")
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "你都没有金条还换什么?\n想骗我?快滚!\n<离 开/@exit>")
 			return true
 		}
-		s.sendMerchantSay(conn, entity.Name, "你要把金条换成金币?\n好的，我给你换\n不过需要支付手续费\n费用是2000金币，你还换吗？\n<交换/@changeMoney_1>\n<离 开/@exit>")
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "你要把金条换成金币?\n好的，我给你换\n不过需要支付手续费\n费用是2000金币，你还换吗？\n<交换/@changeMoney_1>\n<离 开/@exit>")
 		return true
 	case "@changemoney_1":
 		if !bagHasItemID(*activeChar, "金条") {
-			s.sendMerchantSay(conn, entity.Name, "你都没有金条还换什么?\n想骗我?快滚!\n<离 开/@exit>")
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "你都没有金条还换什么?\n想骗我?快滚!\n<离 开/@exit>")
 			return true
 		}
 		if activeChar.Gold >= 14000001 {
-			s.sendMerchantSay(conn, entity.Name, "我也很想给你换，\n但是你钱太多了，我没办法给你换.\n<离 开/@exit>")
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "我也很想给你换，\n但是你钱太多了，我没办法给你换.\n<离 开/@exit>")
 			return true
 		}
 		updated, removed, ok := removeBagItemsByID(*activeChar, "金条", 1)
 		if !ok {
-			s.sendMerchantSay(conn, entity.Name, "你都没有金条还换什么?\n想骗我?快滚!\n<离 开/@exit>")
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "你都没有金条还换什么?\n想骗我?快滚!\n<离 开/@exit>")
 			return true
 		}
 		updated.Gold += 998000
 		*activeChar = updated
 		s.sendDelItemList(conn, removed)
-		s.sendGoldChanged(conn, updated.Gold)
+		s.sendGoldChanged(conn, updated, updated.Gold)
 		s.sendWeightChanged(conn, s.world.AbilityStats(updated))
-		s.sendMerchantSay(conn, entity.Name, "金条已经换好金币.\n还继续换吗?\n<交换/@changeMoney>\n<返 回/@main>\n<关闭/@exit>")
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "金条已经换好金币.\n还继续换吗?\n<交换/@changeMoney>\n<返 回/@main>\n<关闭/@exit>")
 		if err := s.store.SaveCharacter(updated); err != nil {
 		}
 		return true
 	case "@bind":
-		s.sendMerchantSay(conn, entity.Name, "目前我能捆的只有卷书和药水\n你要捆吗？\n要捆东西需要100金币.\n<捆/@P_bind>药水\n<捆/@Z_bind>卷书")
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "目前我能捆的只有卷书和药水\n你要捆吗？\n要捆东西需要100金币.\n<捆/@P_bind>药水\n<捆/@Z_bind>卷书")
 		return true
 	case "@p_bind":
-		s.sendMerchantSay(conn, entity.Name, "<捆/@ch_bind1>强效金创药\n<捆/@ma_bind1>强效魔法药 \n<捆/@ch_bind2>金创药(中量)\n<捆/@ma_bind2>魔法药(中量)\n<捆/@ch_bind3>金创药\n<捆/@ma_bind3>魔法药\n<返 回/@bind>")
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "<捆/@ch_bind1>强效金创药\n<捆/@ma_bind1>强效魔法药 \n<捆/@ch_bind2>金创药(中量)\n<捆/@ma_bind2>魔法药(中量)\n<捆/@ch_bind3>金创药\n<捆/@ma_bind3>魔法药\n<返 回/@bind>")
 		return true
 	case "@z_bind":
-		s.sendMerchantSay(conn, entity.Name, "<捆/@zum_bind1>地牢逃脱卷\n<捆/@zum_bind2>随机传送卷\n<捆/@zum_bind3>回城卷\n<捆/@zum_bind4>行会回城卷\n<返 回/@bind>")
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "<捆/@zum_bind1>地牢逃脱卷\n<捆/@zum_bind2>随机传送卷\n<捆/@zum_bind3>回城卷\n<捆/@zum_bind4>行会回城卷\n<返 回/@bind>")
 		return true
 	case "@ch_bind1":
 		return s.handleWarehousePackExchange(conn, activeChar, entity, "强效金创药", "超级金创药")
@@ -2609,6 +4280,9 @@ func (s *Server) handleWarehouseMerchantDlgSelect(conn net.Conn, activeChar *sto
 }
 
 func (s *Server) handleSpecialMerchantDlgSelect(conn net.Conn, activeChar *storage.Character, activeClient *Client, entity npc.Entity, label, text string) bool {
+	if isCastleOfficialLabel(label) && !entity.CastleOfficial {
+		return false
+	}
 	switch strings.ToLower(strings.TrimSpace(label)) {
 	case "@upgradenow":
 		return s.handleWeaponUpgradeStart(conn, activeChar, entity)
@@ -2621,7 +4295,7 @@ func (s *Server) handleSpecialMerchantDlgSelect(conn net.Conn, activeChar *stora
 			activeClient.mu.Unlock()
 		}
 		if text == "" || strings.EqualFold(text, label) || strings.HasPrefix(text, "@") {
-			s.sendMerchantSay(conn, entity.Name, "请填写行会名称。\n<返回/@main>")
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "请填写行会名称。\n<返回/@main>")
 			return true
 		}
 		return s.handlePendingMerchantAction(conn, activeChar, entity, "buildguild", text)
@@ -2632,7 +4306,7 @@ func (s *Server) handleSpecialMerchantDlgSelect(conn net.Conn, activeChar *stora
 			activeClient.mu.Unlock()
 		}
 		if text == "" || strings.EqualFold(text, label) || strings.HasPrefix(text, "@") {
-			s.sendMerchantSay(conn, entity.Name, "填写与你交战的敌对行会的名字，申请行会战争必须支付3万金币。\n<立即申请行会战争/@@guildwar>\n<返回/@main>")
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "填写与你交战的敌对行会的名字，申请行会战争必须支付3万金币。\n<立即申请行会战争/@@guildwar>\n<返回/@main>")
 			return true
 		}
 		return s.handlePendingMerchantAction(conn, activeChar, entity, "guildwar", text)
@@ -2643,52 +4317,104 @@ func (s *Server) handleSpecialMerchantDlgSelect(conn net.Conn, activeChar *stora
 				activeClient.pendingMerchantAction = "guildwar"
 				activeClient.mu.Unlock()
 			}
-			s.sendMerchantSay(conn, entity.Name, "填写与你交战的敌对行会的名字，申请行会战争必须支付3万金币。\n<立即申请行会战争/@@guildwar>\n<返回/@main>")
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "填写与你交战的敌对行会的名字，申请行会战争必须支付3万金币。\n<立即申请行会战争/@@guildwar>\n<返回/@main>")
 			return true
 		}
 		return s.handlePendingMerchantAction(conn, activeChar, entity, "guildwar", text)
 	case "@@withdrawal", "@@receipts":
-		s.sendMerchantSay(conn, entity.Name, "沙巴克城堡功能暂未接入。\n<返回/@main>")
+		if activeClient != nil {
+			action := "castle_withdraw"
+			if strings.EqualFold(label, "@@receipts") {
+				action = "castle_receipt"
+			}
+			activeClient.mu.Lock()
+			activeClient.pendingMerchantAction = action
+			activeClient.mu.Unlock()
+		}
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "请输入金币数量。\n<返回/@main>")
 		return true
 	case "@requestcastlewarnow":
+		if err := s.world.ValidateCastleRequestWar(*activeChar, s.world.CastleID()); err != nil {
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "你当前不能申请攻城。\n<返回/@main>")
+			return true
+		}
 		if !bagHasItemID(*activeChar, "祖玛头像") {
-			s.sendMerchantSay(conn, entity.Name, "你没有祖玛教主的头像。\n<返回/@main>")
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "你没有祖玛教主的头像。\n<返回/@main>")
+			return true
+		}
+		if err := s.world.CastleRequestWar(*activeChar, s.world.CastleID()); err != nil {
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "你当前不能申请攻城。\n<返回/@main>")
 			return true
 		}
 		updated, removed, ok := removeBagItemsByID(*activeChar, "祖玛头像", 1)
 		if !ok {
-			s.sendMerchantSay(conn, entity.Name, "你没有祖玛教主的头像。\n<返回/@main>")
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "你没有祖玛教主的头像。\n<返回/@main>")
 			return true
 		}
 		*activeChar = updated
 		s.sendDelItemList(conn, removed)
-		s.sendMerchantSay(conn, entity.Name, "沙巴克攻城申请已经提交。\n战争会在第二天内开始。\n<返回/@main>")
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "沙巴克攻城申请已经提交。\n战争会在第二天内开始。\n<返回/@main>")
 		if err := s.store.SaveCharacter(updated); err != nil {
 		}
 		return true
 	case "@openmaindoor":
-		s.sendMerchantSay(conn, entity.Name, "城门已打开.\n<返回/@treatdoor>")
+		if err := s.world.CastleSetMainDoor(*activeChar, s.world.CastleID(), true); err != nil {
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "没有权限或城堡正在攻城。\n<返回/@treatdoor>")
+			return true
+		}
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "城门已打开.\n<返回/@treatdoor>")
 		return true
 	case "@closemaindoor":
-		s.sendMerchantSay(conn, entity.Name, "城门已关闭.\n<返回/@treatdoor>")
+		if err := s.world.CastleSetMainDoor(*activeChar, s.world.CastleID(), false); err != nil {
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "没有权限或城堡正在攻城。\n<返回/@treatdoor>")
+			return true
+		}
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "城门已关闭.\n<返回/@treatdoor>")
 		return true
 	case "@repairdoornow":
-		s.sendMerchantSay(conn, entity.Name, "城堡功能暂未接入。\n<返回/@repairdoor>")
+		if err := s.world.CastleRepairDoor(*activeChar, s.world.CastleID()); err != nil {
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "城堡门当前无法修理。\n<返回/@repairdoor>")
+			return true
+		}
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "城门已经修复。\n<返回/@repairdoor>")
 		return true
 	case "@repairwallnow1", "@repairwallnow2", "@repairwallnow3":
-		s.sendMerchantSay(conn, entity.Name, "城堡功能暂未接入。\n<返回/@repairwalls>")
+		index := int(label[len(label)-1] - '1')
+		if err := s.world.CastleRepairWall(*activeChar, s.world.CastleID(), index); err != nil {
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "城墙当前无法修理。\n<返回/@repairwalls>")
+			return true
+		}
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "城墙已经修复。\n<返回/@repairwalls>")
 		return true
 	case "@hireguardnow1", "@hireguardnow2", "@hireguardnow3", "@hireguardnow4":
-		s.sendMerchantSay(conn, entity.Name, "城堡功能暂未接入。\n<返回/@hireguards>")
+		index := int(label[len(label)-1] - '1')
+		spawned, err := s.world.HireCastleDefense(*activeChar, s.world.CastleID(), false, index)
+		if err != nil {
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "守卫当前无法租用。\n<返回/@hireguards>")
+			return true
+		}
+		s.broadcastMonsterAppear(nil, spawned.Monsters)
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "守卫已经租用。\n<返回/@hireguards>")
 		return true
 	case "@hirearchernow1", "@hirearchernow2", "@hirearchernow3", "@hirearchernow4", "@hirearchernow5", "@hirearchernow6", "@hirearchernow7", "@hirearchernow8", "@hirearchernow9", "@hirearchernow10", "@hirearchernow11", "@hirearchernow12":
-		s.sendMerchantSay(conn, entity.Name, "城堡功能暂未接入。\n<返回/@hirearchers>")
+		index, err := strconv.Atoi(label[len("@hirearchernow"):])
+		if err != nil {
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "弓箭手当前无法租用。\n<返回/@hirearchers>")
+			return true
+		}
+		spawned, err := s.world.HireCastleDefense(*activeChar, s.world.CastleID(), true, index-1)
+		if err != nil {
+			s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "弓箭手当前无法租用。\n<返回/@hirearchers>")
+			return true
+		}
+		s.broadcastMonsterAppear(nil, spawned.Monsters)
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "弓箭手已经租用。\n<返回/@hirearchers>")
 		return true
 	case "@guardrule_normalnow":
-		s.sendMerchantSay(conn, entity.Name, "防守方式已经更改，守卫们已经目前处于正常防御状态.\n<返回/@guardcmd>")
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "防守方式已经更改，守卫们已经目前处于正常防御状态.\n<返回/@guardcmd>")
 		return true
 	case "@guardrule_pkattack":
-		s.sendMerchantSay(conn, entity.Name, "防守方式已经更改，守卫们已经目前处于对来犯者进攻状态.\n<返回/@guardcmd>")
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "防守方式已经更改，守卫们已经目前处于对来犯者进攻状态.\n<返回/@guardcmd>")
 		return true
 	}
 	return false
@@ -2696,123 +4422,142 @@ func (s *Server) handleSpecialMerchantDlgSelect(conn net.Conn, activeChar *stora
 
 func (s *Server) handleWarehousePackExchange(conn net.Conn, activeChar *storage.Character, entity npc.Entity, fromItemID, toItemID string) bool {
 	if !bagHasItemCount(*activeChar, fromItemID, 6) {
-		s.sendMerchantSay(conn, entity.Name, "你都没有要捆的药水，还捆什么?\n等准备好药水之后再来找我吧..\n<离 开/@exit>")
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "你都没有要捆的药水，还捆什么?\n等准备好药水之后再来找我吧..\n<离 开/@exit>")
 		return true
 	}
 	if activeChar.Gold < 100 {
-		s.sendMerchantSay(conn, entity.Name, "你都没有钱捆东西，\n还捆什么?\n快走吧....\n<离 开/@exit>")
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "你都没有钱捆东西，\n还捆什么?\n快走吧....\n<离 开/@exit>")
 		return true
 	}
 	updated, removed, ok := removeBagItemsByID(*activeChar, fromItemID, 6)
 	if !ok {
-		s.sendMerchantSay(conn, entity.Name, "你都没有要捆的药水，还捆什么?\n等准备好药水之后再来找我吧..\n<离 开/@exit>")
+		s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "你都没有要捆的药水，还捆什么?\n等准备好药水之后再来找我吧..\n<离 开/@exit>")
 		return true
 	}
 	updated.Gold -= 100
-	bought := storage.UserItem{ItemID: toItemID, MakeIndex: int32(time.Now().UnixNano() & 0x7fffffff)}
+	bought := storage.UserItem{ItemID: toItemID, MakeIndex: s.world.AllocateItemMakeIndex()}
 	updated.BagItems = append(updated.BagItems, bought)
 	*activeChar = updated
 	s.sendDelItemList(conn, removed)
 	s.sendBagAddItem(conn, updated, bought.ItemID, bought.MakeIndex)
-	s.sendGoldChanged(conn, updated.Gold)
+	s.sendGoldChanged(conn, updated, updated.Gold)
 	s.sendWeightChanged(conn, s.world.AbilityStats(updated))
-	s.sendMerchantSay(conn, entity.Name, "已经捆好了... 我的技术不错吧..\n以后还有要捆的，就来找我吧..\n<继续捆/@P_bind>\n<离 开/@exit>")
+	s.sendMerchantSay(conn, s.world.NPCActorID(entity.ID), entity.Name, "已经捆好了... 我的技术不错吧..\n以后还有要捆的，就来找我吧..\n<继续捆/@P_bind>\n<离 开/@exit>")
 	if err := s.store.SaveCharacter(updated); err != nil {
 	}
 	return true
 }
 
 func (s *Server) handleMerchantQuerySellPrice(conn net.Conn, activeChar *storage.Character, activeClient *Client, cmd mir176.Command, text []byte) {
-	entity, ok := s.resolveMerchantEntity(activeClient, cmd)
-	if !ok || !entity.Merchant.Capabilities.Sell {
-		return
-	}
 	makeIndex := merchantMakeIndex(cmd)
-	itemName := strings.TrimSpace(DecodeString(text))
+	itemName := merchantItemName(DecodeString(text))
 	entry, item, ok := merchantBagItemByMakeIndex(*activeChar, makeIndex, itemName, s.world)
 	if !ok {
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendBuyPrice, Recog: 0}, nil)
 		return
 	}
-	price := merchantSellPrice(item, entry, entity.Merchant.PriceRate)
+	entity, ok := s.resolveMerchantEntity(activeClient, cmd)
+	if !ok || !entity.Merchant.Capabilities.Sell || !merchantWithinStorageRange(*activeChar, entity) {
+		return
+	}
+	price := merchantSellPrice(item, entry)
+	if price < 0 {
+		price = 0
+	}
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendBuyPrice, Recog: int32(price)}, nil)
 }
 
 func (s *Server) handleUserSellItem(conn net.Conn, activeChar *storage.Character, activeClient *Client, cmd mir176.Command, text []byte) {
-	entity, ok := s.resolveMerchantEntity(activeClient, cmd)
-	if !ok || !entity.Merchant.Capabilities.Sell {
-		return
-	}
 	makeIndex := merchantMakeIndex(cmd)
-	itemName := strings.TrimSpace(DecodeString(text))
+	itemName := merchantItemName(DecodeString(text))
 	slot, entry, ok := merchantBagItemSlotByMakeIndex(*activeChar, makeIndex, itemName, s.world)
 	if !ok {
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMUserSellItemFail, Recog: cmd.Recog}, nil)
+		return
+	}
+	entity, ok := s.resolveMerchantEntity(activeClient, cmd)
+	if !ok || !entity.Merchant.Capabilities.Sell || !merchantWithinStorageRange(*activeChar, entity) {
 		return
 	}
 	item, _ := s.world.Item(entry.ItemID)
-	price := merchantSellPrice(item, entry, entity.Merchant.PriceRate)
-	if price <= 0 {
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMUserSellItemFail, Recog: cmd.Recog}, nil)
+	if (item.StdMode == 25 || item.StdMode == 30) && entry.Dura < 4000 {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMUserSellItemFail}, nil)
+		return
+	}
+	price := merchantSellPrice(item, entry)
+	if price <= 0 || (s.world.Gameplay().Item.MaxGold > 0 && activeChar.Gold+price > s.world.Gameplay().Item.MaxGold) {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMUserSellItemFail}, nil)
 		return
 	}
 	updated := *activeChar
-	updated.BagItems = append(updated.BagItems[:slot], updated.BagItems[slot+1:]...)
 	updated.Gold += price
 	*activeChar = updated
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMUserSellItemOK, Recog: int32(updated.Gold)}, nil)
-	s.sendGoldChanged(conn, updated.Gold)
 	s.world.AddMerchantStock(entity.ID, entry)
+	updated.BagItems = append(updated.BagItems[:slot], updated.BagItems[slot+1:]...)
+	*activeChar = updated
+	s.sendWeightChanged(conn, s.world.AbilityStats(updated))
 	if err := s.store.SaveCharacter(updated); err != nil {
 	}
 }
 
 func (s *Server) handleUserBuyItem(conn net.Conn, activeChar *storage.Character, activeClient *Client, cmd mir176.Command, text []byte) {
+	if activeClient != nil {
+		activeClient.mu.Lock()
+		dealing := activeClient.dealPeerID != ""
+		activeClient.mu.Unlock()
+		if dealing {
+			return
+		}
+	}
 	entity, ok := s.resolveMerchantEntity(activeClient, cmd)
-	if !ok || !entity.Merchant.Capabilities.Buy {
+	if !ok || !entity.Merchant.Capabilities.Buy || !merchantWithinBuyRange(*activeChar, entity) {
 		return
 	}
 	makeIndex := merchantMakeIndex(cmd)
-	itemName := strings.TrimSpace(DecodeString(text))
+	itemName := merchantItemName(DecodeString(text))
 	stock, item, ok := merchantStockItemByMakeIndexOrName(s.world, entity, makeIndex, itemName)
 	if !ok {
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMBuyItemFail, Recog: cmd.Recog}, nil)
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMBuyItemFail, Recog: 3}, nil)
 		return
 	}
-	price := merchantPrice(item, entity.Merchant.PriceRate)
+	if !s.world.CanCarryBagItems(*activeChar, 1) || !s.world.CanCarryWeight(*activeChar, item.Weight) {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMBuyItemFail, Recog: 2}, nil)
+		return
+	}
+	price := merchantPrice(item, stock, entity.Merchant.PriceRate)
 	if price <= 0 || activeChar.Gold < price {
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMBuyItemFail, Recog: cmd.Recog}, nil)
-		return
-	}
-	if !s.world.CanCarryBagItems(*activeChar, 1) {
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMBuyItemFail, Param: 2}, nil)
-		return
-	}
-	if !s.world.ConsumeMerchantStock(entity.ID, stock.MakeIndex, item.ID) {
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMBuyItemFail, Recog: cmd.Recog}, nil)
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMBuyItemFail, Recog: 1}, nil)
 		return
 	}
 	updated := *activeChar
-	updated.Gold -= price
-	bought := storage.UserItem{ItemID: item.ID, MakeIndex: int32(time.Now().UnixNano() & 0x7fffffff)}
+	bought := stock
 	updated.BagItems = append(updated.BagItems, bought)
+	updated.Gold -= price
 	*activeChar = updated
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMBuyItemSuccess, Recog: int32(updated.Gold), Param: 1}, nil)
+	s.sendWeightChanged(conn, s.world.AbilityStats(updated))
 	s.sendBagAddItem(conn, updated, bought.ItemID, bought.MakeIndex)
-	s.sendGoldChanged(conn, updated.Gold)
+	_ = s.world.ConsumeMerchantStock(entity.ID, stock.MakeIndex, item.ID)
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMBuyItemSuccess, Recog: int32(updated.Gold), Param: uint16(stock.MakeIndex), Tag: uint16(uint32(stock.MakeIndex) >> 16)}, nil)
 	if err := s.store.SaveCharacter(updated); err != nil {
 	}
 }
 
 func (s *Server) handleUserGetDetailItem(conn net.Conn, activeChar *storage.Character, activeClient *Client, cmd mir176.Command, text []byte) {
+	if activeClient != nil {
+		activeClient.mu.Lock()
+		dealing := activeClient.dealPeerID != ""
+		activeClient.mu.Unlock()
+		if dealing {
+			return
+		}
+	}
 	entity, ok := s.resolveMerchantEntity(activeClient, cmd)
-	if !ok {
+	if !ok || !entity.Merchant.Capabilities.Buy || !merchantWithinBuyRange(*activeChar, entity) {
 		return
 	}
-	itemName := strings.TrimSpace(DecodeString(text))
+	itemName := merchantItemName(DecodeString(text))
 	stocks := s.world.MerchantStock(entity.ID)
 	if !merchantStockHasItemName(s.world, stocks, itemName) {
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendDetailGoodsList, Recog: cmd.Recog}, nil)
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendDetailGoodsList, Recog: cmd.Recog, Tag: cmd.Param}, nil)
 		return
 	}
 	body, count, page := merchantDetailGoodsListBody(s.world, stocks, itemName, int(cmd.Param), entity.Merchant.PriceRate, *activeChar)
@@ -2820,39 +4565,43 @@ func (s *Server) handleUserGetDetailItem(conn net.Conn, activeChar *storage.Char
 }
 
 func (s *Server) handleMerchantQueryRepairCost(conn net.Conn, activeChar *storage.Character, activeClient *Client, cmd mir176.Command, text []byte) {
-	entity, ok := s.resolveMerchantEntity(activeClient, cmd)
-	if !ok || !entity.Merchant.Capabilities.Repair {
-		return
-	}
 	makeIndex := merchantMakeIndex(cmd)
-	itemName := strings.TrimSpace(DecodeString(text))
+	itemName := merchantItemName(DecodeString(text))
 	entry, item, ok := merchantBagItemByMakeIndex(*activeChar, makeIndex, itemName, s.world)
 	if !ok {
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendRepairCost, Recog: cmd.Recog}, nil)
 		return
 	}
-	special := merchantIsSpecialRepair(activeClient)
-	price := merchantRepairPrice(item, entry, special, s.world.Gameplay().Castle.SuperRepairPriceRate)
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendRepairCost, Recog: cmd.Recog, Param: uint16(price)}, nil)
+	entity, ok := s.resolveMerchantEntity(activeClient, cmd)
+	if !ok || !merchantWithinStorageRange(*activeChar, entity) {
+		return
+	}
+	price := merchantRepairPrice(item, entry, entity.Merchant.PriceRate, merchantIsSpecialRepair(activeClient), s.world.Gameplay().Castle.SuperRepairPriceRate)
+	if !entity.Merchant.Capabilities.Repair || price <= 0 {
+		price = -1
+	}
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendRepairCost, Recog: int32(price)}, nil)
 }
 
 func (s *Server) handleUserRepairItem(conn net.Conn, activeChar *storage.Character, activeClient *Client, cmd mir176.Command, text []byte) {
-	entity, ok := s.resolveMerchantEntity(activeClient, cmd)
-	if !ok || !entity.Merchant.Capabilities.Repair {
-		return
-	}
 	makeIndex := merchantMakeIndex(cmd)
-	itemName := strings.TrimSpace(DecodeString(text))
+	itemName := merchantItemName(DecodeString(text))
 	slot, entry, ok := merchantBagItemSlotByMakeIndex(*activeChar, makeIndex, itemName, s.world)
 	if !ok {
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMUserRepairItemFail, Recog: cmd.Recog}, nil)
 		return
 	}
-	item, _ := s.world.Item(entry.ItemID)
+	entity, ok := s.resolveMerchantEntity(activeClient, cmd)
+	if !ok || !merchantWithinStorageRange(*activeChar, entity) {
+		return
+	}
+	if !entity.Merchant.Capabilities.Repair {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMUserRepairItemFail}, nil)
+		return
+	}
+	item, itemOK := s.world.Item(entry.ItemID)
 	special := merchantIsSpecialRepair(activeClient)
-	price := merchantRepairPrice(item, entry, special, s.world.Gameplay().Castle.SuperRepairPriceRate)
-	if price <= 0 || activeChar.Gold < price || entry.DuraMax == 0 || entry.Dura >= entry.DuraMax {
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMUserRepairItemFail, Recog: cmd.Recog}, nil)
+	price := merchantRepairPrice(item, entry, entity.Merchant.PriceRate, special, s.world.Gameplay().Castle.SuperRepairPriceRate)
+	if !itemOK || item.StdMode == 43 || price <= 0 || activeChar.Gold < price || entry.DuraMax == 0 || entry.Dura >= entry.DuraMax {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMUserRepairItemFail}, nil)
 		return
 	}
 	updated := *activeChar
@@ -2872,23 +4621,20 @@ func (s *Server) handleUserRepairItem(conn net.Conn, activeChar *storage.Charact
 	}
 	*activeChar = updated
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMUserRepairItemOK, Recog: int32(updated.Gold), Param: updated.BagItems[slot].Dura, Tag: updated.BagItems[slot].DuraMax}, nil)
-	s.sendGoldChanged(conn, updated.Gold)
 	if err := s.store.SaveCharacter(updated); err != nil {
 	}
 }
 
 func (s *Server) handleUserStorageItem(conn net.Conn, activeChar *storage.Character, activeClient *Client, cmd mir176.Command, text []byte) {
-	entity, ok := s.resolveMerchantEntity(activeClient, cmd)
-	if !ok {
-		return
-	}
-	if !entity.Merchant.Capabilities.Storage {
-		return
-	}
 	makeIndex := merchantMakeIndex(cmd)
-	itemName := strings.TrimSpace(DecodeString(text))
+	itemName := merchantItemName(DecodeString(text))
 	slot, entry, ok := merchantBagItemSlotByMakeIndex(*activeChar, makeIndex, itemName, s.world)
 	if !ok {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMStorageFail}, nil)
+		return
+	}
+	entity, ok := s.resolveMerchantEntity(activeClient, cmd)
+	if !ok || !entity.Merchant.Capabilities.Storage || (!entity.Hidden && !merchantWithinStorageRange(*activeChar, entity)) {
 		s.sendCommand(conn, mir176.Command{Ident: mir176.SMStorageFail}, nil)
 		return
 	}
@@ -2900,8 +4646,8 @@ func (s *Server) handleUserStorageItem(conn net.Conn, activeChar *storage.Charac
 	updated.StorageItems = append(updated.StorageItems, entry)
 	updated.BagItems = append(updated.BagItems[:slot], updated.BagItems[slot+1:]...)
 	*activeChar = updated
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMStorageOK}, nil)
 	s.sendWeightChanged(conn, s.world.AbilityStats(updated))
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMStorageOK}, nil)
 	if err := s.store.SaveCharacter(updated); err != nil {
 	}
 }
@@ -2911,13 +4657,24 @@ func (s *Server) handleUserTakeBackStorageItem(conn net.Conn, activeChar *storag
 	if !ok {
 		return
 	}
-	if !entity.Merchant.Capabilities.GetBack {
-		return
-	}
 	makeIndex := merchantMakeIndex(cmd)
-	itemName := strings.TrimSpace(DecodeString(text))
+	itemName := merchantItemName(DecodeString(text))
 	slot, entry, ok := merchantStorageItemSlotByMakeIndex(*activeChar, makeIndex, itemName, s.world)
 	if !ok {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMTakeBackStorageItemFail}, nil)
+		return
+	}
+	item, itemOK := s.world.Item(entry.ItemID)
+	if !itemOK {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMTakeBackStorageItemFail}, nil)
+		return
+	}
+	if !s.world.CanCarryWeight(*activeChar, item.Weight) {
+		s.sendSystemMessage(conn, *activeChar, "无法携带更多物品")
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMTakeBackStorageItemFail}, nil)
+		return
+	}
+	if !entity.Merchant.Capabilities.GetBack || (!entity.Hidden && !merchantWithinStorageRange(*activeChar, entity)) {
 		s.sendCommand(conn, mir176.Command{Ident: mir176.SMTakeBackStorageItemFail}, nil)
 		return
 	}
@@ -2927,56 +4684,61 @@ func (s *Server) handleUserTakeBackStorageItem(conn net.Conn, activeChar *storag
 	}
 	updated := *activeChar
 	updated.BagItems = append(updated.BagItems, entry)
+	*activeChar = updated
+	s.sendWeightChanged(conn, s.world.AbilityStats(updated))
+	s.sendBagAddItem(conn, updated, entry.ItemID, entry.MakeIndex)
 	updated.StorageItems = append(updated.StorageItems[:slot], updated.StorageItems[slot+1:]...)
 	*activeChar = updated
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMTakeBackStorageItemOK, Recog: int32(entry.MakeIndex)}, nil)
-	s.sendBagAddItem(conn, updated, entry.ItemID, entry.MakeIndex)
-	s.sendWeightChanged(conn, s.world.AbilityStats(updated))
 	if err := s.store.SaveCharacter(updated); err != nil {
 	}
 }
 
 func (s *Server) handleUserMakeDrugItem(conn net.Conn, activeChar *storage.Character, activeClient *Client, cmd mir176.Command, text []byte) {
+	makeDrugFail := func(code int32) {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMMakeDrugFail, Recog: code}, nil)
+	}
 	entity, ok := s.resolveMerchantEntity(activeClient, cmd)
-	if !ok {
+	if !ok || !entity.Merchant.Capabilities.MakeDrug || !merchantWithinStorageRange(*activeChar, entity) {
 		return
 	}
-	itemName := strings.TrimSpace(DecodeString(text))
+	itemName := merchantItemName(DecodeString(text))
 	if itemName == "" {
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMMakeDrugFail, Recog: 1}, nil)
+		makeDrugFail(1)
 		return
 	}
 	if !merchantStockHasItemName(s.world, s.world.MerchantStock(entity.ID), itemName) {
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMMakeDrugFail, Recog: 1}, nil)
+		makeDrugFail(1)
 		return
 	}
 	if activeChar.Gold < makeDrugPrice {
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMMakeDrugFail, Recog: 3}, nil)
+		makeDrugFail(3)
 		return
 	}
 	updated, removed, err := s.world.ConsumeMakeIngredients(*activeChar, itemName)
 	if err != nil {
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMMakeDrugFail, Recog: 4}, nil)
+		makeDrugFail(4)
 		return
 	}
 	item, ok := s.world.Item(itemName)
 	if !ok {
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMMakeDrugFail, Recog: 1}, nil)
+		makeDrugFail(1)
 		return
 	}
 	if !s.world.CanCarryBagItems(updated, 1) {
 		*activeChar = updated
 		s.sendDelItemList(conn, removed)
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMMakeDrugFail, Recog: 2}, nil)
+		makeDrugFail(2)
 		if err := s.store.SaveCharacter(updated); err != nil {
 		}
 		return
 	}
-	updated.Gold -= makeDrugPrice
-	bought := storage.UserItem{ItemID: item.ID, MakeIndex: int32(time.Now().UnixNano() & 0x7fffffff)}
+	bought := storage.UserItem{ItemID: item.ID, MakeIndex: s.world.AllocateItemMakeIndex()}
 	updated.BagItems = append(updated.BagItems, bought)
+	updated.Gold -= makeDrugPrice
 	*activeChar = updated
 	s.sendDelItemList(conn, removed)
+	s.sendWeightChanged(conn, s.world.AbilityStats(updated))
 	s.sendBagAddItem(conn, updated, bought.ItemID, bought.MakeIndex)
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMMakeDrugSuccess, Recog: int32(updated.Gold)}, nil)
 	if err := s.store.SaveCharacter(updated); err != nil {
@@ -2988,15 +4750,7 @@ func (s *Server) resolveMerchantEntity(activeClient *Client, cmd mir176.Command)
 	if ok {
 		return entity, true
 	}
-	if activeClient == nil {
-		return npc.Entity{}, false
-	}
-	activeClient.mu.Lock()
-	defer activeClient.mu.Unlock()
-	if activeClient.activeNPCID == "" {
-		return npc.Entity{}, false
-	}
-	return s.world.NPCByID(activeClient.activeNPCID)
+	return npc.Entity{}, false
 }
 
 func bagHasItemID(ch storage.Character, itemID string) bool {
@@ -3040,6 +4794,22 @@ func removeBagItemsByID(ch storage.Character, itemID string, count int) (storage
 
 func merchantMakeIndex(cmd mir176.Command) int32 {
 	return int32(uint32(cmd.Param) | uint32(cmd.Tag)<<16)
+}
+
+func merchantItemName(raw string) string {
+	name := strings.TrimSpace(raw)
+	if space := strings.IndexByte(name, ' '); space >= 0 {
+		return name[:space]
+	}
+	return name
+}
+
+func merchantWithinStorageRange(ch storage.Character, entity npc.Entity) bool {
+	return entity.MapID == ch.MapID && absInt(entity.X-ch.X) < 15 && absInt(entity.Y-ch.Y) < 15
+}
+
+func merchantWithinBuyRange(ch storage.Character, entity npc.Entity) bool {
+	return entity.MapID == ch.MapID && absInt(entity.X-ch.X) <= 15 && absInt(entity.Y-ch.Y) <= 15
 }
 
 func merchantBagItemSlotByMakeIndex(ch storage.Character, makeIndex int32, itemName string, w *world.World) (int, storage.UserItem, bool) {
@@ -3090,33 +4860,18 @@ func merchantStorageItemSlotByMakeIndex(ch storage.Character, makeIndex int32, i
 
 func merchantStockItemByMakeIndexOrName(w *world.World, entity npc.Entity, makeIndex int32, itemName string) (storage.UserItem, data.StdItem, bool) {
 	stocks := w.MerchantStock(entity.ID)
-	if makeIndex > 0 {
-		for _, stock := range stocks {
-			if stock.MakeIndex != makeIndex {
-				continue
-			}
-			if itemName != "" {
-				item, ok := w.Item(stock.ItemID)
-				if !ok || !strings.EqualFold(item.Name, itemName) {
-					continue
-				}
-				return stock, item, true
-			}
-			item, ok := w.Item(stock.ItemID)
-			if !ok {
-				return storage.UserItem{}, data.StdItem{}, false
-			}
-			return stock, item, true
-		}
-	}
 	for _, stock := range stocks {
 		item, ok := w.Item(stock.ItemID)
 		if !ok {
 			continue
 		}
-		if strings.EqualFold(item.Name, itemName) {
-			return stock, item, true
+		if !strings.EqualFold(item.Name, itemName) {
+			continue
 		}
+		if item.StdMode > 4 && item.StdMode != 31 && item.StdMode != 42 && stock.MakeIndex != makeIndex {
+			continue
+		}
+		return stock, item, true
 	}
 	return storage.UserItem{}, data.StdItem{}, false
 }
@@ -3145,23 +4900,22 @@ func (s *Server) sendDelItemList(conn net.Conn, removed []storage.UserItem) {
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMDelItems, Series: uint16(len(removed))}, EncodeString(body.String()))
 }
 
-func merchantSellPrice(item data.StdItem, entry storage.UserItem, rate int) int {
+func merchantSellPrice(item data.StdItem, entry storage.UserItem) int {
 	base := merchantUserItemPrice(item, entry)
 	if base <= 0 {
 		return 0
 	}
-	return int(math.Round(float64(merchantPriceValue(base, rate)) / 2.0))
+	return int(math.Round(float64(base) / 2.0))
 }
 
-func merchantRepairPrice(item data.StdItem, entry storage.UserItem, special bool, superRate int) int {
-	if item.Price <= 0 || entry.DuraMax == 0 || entry.Dura >= entry.DuraMax {
+func merchantRepairPrice(item data.StdItem, entry storage.UserItem, rate int, special bool, superRate int) int {
+	basePrice := merchantUserItemPrice(item, entry)
+	price := merchantPriceValue(basePrice, rate)
+	if price <= 0 || entry.DuraMax == 0 || entry.Dura >= entry.DuraMax {
 		return 0
 	}
 	lost := int(entry.DuraMax) - int(entry.Dura)
-	base := int(item.Price) / 3 * lost / int(entry.DuraMax)
-	if base < 1 {
-		base = 1
-	}
+	base := int(math.Round(float64(price/3) * float64(lost) / float64(entry.DuraMax)))
 	if special {
 		if superRate <= 0 {
 			superRate = 1
@@ -3186,25 +4940,26 @@ func merchantUserItemPrice(item data.StdItem, entry storage.UserItem) int {
 	if price <= 0 {
 		return 0
 	}
+	effectiveDuraMax := entry.DuraMax
 	if item.StdMode > 4 && item.DuraMax > 0 && entry.DuraMax > 0 {
 		switch item.StdMode {
 		case 40:
 			if entry.Dura <= entry.DuraMax {
 				price = math.Max(2, math.Round(price-price/2.0/float64(entry.DuraMax)*float64(entry.DuraMax-entry.Dura)))
 			} else {
-				price = price + math.Round(price/float64(entry.DuraMax)*2.0*float64(entry.DuraMax-entry.Dura))
+				excess := float64(int(entry.DuraMax) - int(entry.Dura))
+				price = price + math.Round(price/float64(entry.DuraMax)*2.0*excess)
 			}
 		case 43:
-			userDuraMax := float64(entry.DuraMax)
-			if userDuraMax < 10000 {
-				userDuraMax = 10000
+			if effectiveDuraMax < 10000 {
+				effectiveDuraMax = 10000
 			}
-			if float64(entry.Dura) <= userDuraMax {
-				missing := userDuraMax - float64(entry.Dura)
-				price = math.Max(2, math.Round(price-price/2.0/userDuraMax*missing))
+			if float64(entry.Dura) <= float64(effectiveDuraMax) {
+				missing := float64(effectiveDuraMax) - float64(entry.Dura)
+				price = math.Max(2, math.Round(price-price/2.0/float64(effectiveDuraMax)*missing))
 			} else {
-				excess := float64(entry.Dura) - userDuraMax
-				price = price + math.Round(price/userDuraMax*1.3*excess)
+				excess := float64(effectiveDuraMax) - float64(entry.Dura)
+				price = price + math.Round(price/float64(effectiveDuraMax)*1.3*excess)
 			}
 		}
 		if item.StdMode > 4 {
@@ -3223,10 +4978,11 @@ func merchantUserItemPrice(item data.StdItem, entry storage.UserItem) int {
 				}
 			}
 			if n14 > 0 {
-				price = price / 5.0 * float64(n14)
+				price = float64(int(price) / 5 * n14)
 			}
-			price = math.Round(price / float64(item.DuraMax) * float64(entry.DuraMax))
-			price = math.Max(2, math.Round(price-price/2.0/float64(entry.DuraMax)*float64(entry.DuraMax-entry.Dura)))
+			price = math.Round(price / float64(item.DuraMax) * float64(effectiveDuraMax))
+			missing := float64(int(effectiveDuraMax) - int(entry.Dura))
+			price = math.Max(2, math.Round(price-price/2.0/float64(effectiveDuraMax)*missing))
 		}
 	}
 	return int(math.Round(price))
@@ -3241,7 +4997,21 @@ func merchantIsSpecialRepair(activeClient *Client) bool {
 	return strings.EqualFold(activeClient.merchantCurrentLabel, "@s_repair")
 }
 
+func isCastleOfficialLabel(label string) bool {
+	switch strings.ToLower(strings.TrimSpace(label)) {
+	case "@@withdrawal", "@@receipts", "@openmaindoor", "@closemaindoor", "@repairdoornow", "@repairwallnow1", "@repairwallnow2", "@repairwallnow3", "@hireguardnow1", "@hireguardnow2", "@hireguardnow3", "@hireguardnow4", "@hirearchernow1", "@hirearchernow2", "@hirearchernow3", "@hirearchernow4", "@hirearchernow5", "@hirearchernow6", "@hirearchernow7", "@hirearchernow8", "@hirearchernow9", "@hirearchernow10", "@hirearchernow11", "@hirearchernow12", "@guardrule_normalnow", "@guardrule_pkattack":
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *Server) handleGroupMode(conn net.Conn, activeChar *storage.Character, cmd mir176.Command) {
+	if cmd.Param == 0 && activeChar.GroupOwnerID == activeChar.ID && activeChar.ID != "" {
+		s.sendSystemMessage(conn, *activeChar, "If you want to withdraw from group, use function of (del member).")
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGroupModeChanged, Param: 1}, nil)
+		return
+	}
 	updated, result, err := s.world.SetGroupModeWithResult(*activeChar, cmd.Param != 0)
 	if err != nil {
 		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGroupModeChanged}, nil)
@@ -3254,18 +5024,27 @@ func (s *Server) handleGroupMode(conn net.Conn, activeChar *storage.Character, c
 
 func (s *Server) handleCreateGroup(conn net.Conn, activeChar *storage.Character, text []byte) {
 	targetName := strings.TrimSpace(DecodeString(text))
-	if targetName == "" {
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMCreateGroupFail, Recog: -2}, nil)
+	target, ok := s.ClientByName(targetName)
+	if activeChar.GroupOwnerID != "" {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMCreateGroupFail, Recog: -1}, nil)
 		return
 	}
-	target, ok := s.ClientByName(targetName)
-	if !ok {
+	if targetName == "" || !ok {
 		s.sendCommand(conn, mir176.Command{Ident: mir176.SMCreateGroupFail, Recog: -2}, nil)
 		return
 	}
 	updatedOwner, updatedTarget, result, err := s.world.CreateGroupWithResult(*activeChar, target.ch, len(s.onlineGroupMembers(activeChar.ID)))
 	if err != nil {
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMCreateGroupFail}, nil)
+		recog := int32(-2)
+		switch err.Error() {
+		case "group already exists":
+			recog = -1
+		case "target already in group":
+			recog = -3
+		case "target not allowing group":
+			recog = -4
+		}
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMCreateGroupFail, Recog: recog}, nil)
 		return
 	}
 	*activeChar = updatedOwner
@@ -3277,13 +5056,28 @@ func (s *Server) handleCreateGroup(conn net.Conn, activeChar *storage.Character,
 func (s *Server) handleAddGroupMember(conn net.Conn, activeChar *storage.Character, text []byte) {
 	targetName := strings.TrimSpace(DecodeString(text))
 	target, ok := s.ClientByName(targetName)
-	if !ok {
+	if activeChar.GroupOwnerID != activeChar.ID || activeChar.ID == "" {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGroupAddMemFail, Recog: -1}, nil)
+		return
+	}
+	if targetName == "" || !ok {
 		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGroupAddMemFail, Recog: -2}, nil)
 		return
 	}
-	updatedOwner, updatedTarget, result, err := s.world.AddGroupMemberWithResult(*activeChar, target.ch, len(s.onlineGroupMembers(activeChar.ID)))
+	updatedOwner, updatedTarget, result, err := s.world.AddGroupMemberWithResult(*activeChar, target.ch, len(activeChar.GroupMembers))
 	if err != nil {
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGroupAddMemFail}, nil)
+		recog := int32(-2)
+		switch err.Error() {
+		case "not group owner":
+			recog = -1
+		case "group is full":
+			recog = -5
+		case "target already in group":
+			recog = -3
+		case "target not allowing group":
+			recog = -4
+		}
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGroupAddMemFail, Recog: recog}, nil)
 		return
 	}
 	*activeChar = updatedOwner
@@ -3294,24 +5088,28 @@ func (s *Server) handleAddGroupMember(conn net.Conn, activeChar *storage.Charact
 
 func (s *Server) handleDelGroupMember(conn net.Conn, activeChar *storage.Character, text []byte) {
 	targetName := strings.TrimSpace(DecodeString(text))
-	if targetName == "" {
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGroupDelMemFail, Recog: -2}, nil)
+	target, ok := s.ClientByName(targetName)
+	if activeChar.GroupOwnerID != activeChar.ID || activeChar.ID == "" {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGroupDelMemFail, Recog: -1}, nil)
 		return
 	}
-	target, ok := s.ClientByName(targetName)
-	if !ok {
+	if targetName == "" || !ok {
 		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGroupDelMemFail, Recog: -2}, nil)
 		return
 	}
 	updatedOwner, updatedTarget, result, err := s.world.DelGroupMemberWithResult(*activeChar, target.ch)
 	if err != nil {
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGroupDelMemFail}, nil)
+		recog := int32(-3)
+		if err.Error() == "not group owner" {
+			recog = -1
+		}
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGroupDelMemFail, Recog: recog}, nil)
 		return
 	}
 	*activeChar = updatedOwner
 	target.ch = updatedTarget
-	world.ApplyGroupSync(groupSyncAdapter{s: s}, result)
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMGroupDelMemOK}, EncodeString(target.ch.Name))
+	world.ApplyGroupSync(groupSyncAdapter{s: s}, result)
 }
 
 // handleTakeOnItem implements CM_TAKEONITEM using the reference
@@ -3320,7 +5118,7 @@ func (s *Server) handleTakeOnItem(conn net.Conn, activeChar *storage.Character, 
 	itemID := DecodeString(text)
 	updated, result, err := s.world.EquipItemByBagIndexWithResult(*activeChar, int(cmd.Param), int(cmd.Recog), itemID)
 	if err != nil {
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMTakeOnFail}, nil)
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMTakeOnFail, Recog: -1}, nil)
 		return
 	}
 	*activeChar = updated
@@ -3332,7 +5130,16 @@ func (s *Server) handleTakeOffItem(conn net.Conn, activeChar *storage.Character,
 	itemID := DecodeString(text)
 	updated, result, err := s.world.UnequipItemByMakeIndexWithResult(*activeChar, int(cmd.Param), int(cmd.Recog), itemID)
 	if err != nil {
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMTakeOffFail}, nil)
+		recog := int32(0)
+		switch {
+		case strings.HasPrefix(err.Error(), "unsupported equip slot"):
+			recog = -1
+		case strings.HasPrefix(err.Error(), "slot ") && strings.HasSuffix(err.Error(), " is empty"):
+			recog = -2
+		case err.Error() == "bag is full", strings.HasPrefix(err.Error(), "item ") && strings.HasSuffix(err.Error(), " is too heavy"):
+			recog = -3
+		}
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMTakeOffFail, Recog: recog}, nil)
 		return
 	}
 	*activeChar = updated
@@ -3342,9 +5149,13 @@ func (s *Server) handleTakeOffItem(conn net.Conn, activeChar *storage.Character,
 // handleDropItem implements CM_DROPITEM.
 func (s *Server) handleDropItem(conn net.Conn, activeChar *storage.Character, cmd mir176.Command, text []byte) {
 	itemID := DecodeString(text)
-	updated, drop, err := s.world.DropItemCountByBagIndex(*activeChar, int(cmd.Recog), itemID, s.PlayerCharacters()...)
+	lookupItemID := itemID
+	if space := strings.IndexByte(lookupItemID, ' '); space >= 0 {
+		lookupItemID = lookupItemID[:space]
+	}
+	updated, drop, err := s.world.DropItemCountByBagIndex(*activeChar, int(cmd.Recog), lookupItemID, s.PlayerCharacters()...)
 	if err != nil {
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMDropItemFail, Recog: cmd.Recog}, nil)
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMDropItemFail, Recog: cmd.Recog}, EncodeString(itemID))
 		return
 	}
 	*activeChar = updated
@@ -3352,7 +5163,6 @@ func (s *Server) handleDropItem(conn net.Conn, activeChar *storage.Character, cm
 	if len(clients) > 0 {
 		s.broadcastDropAppear(clients, []world.GroundDrop{drop})
 	}
-	s.sendEquippedItems(conn, updated)
 	s.sendWeightChanged(conn, s.world.AbilityStats(updated))
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMDropItemSuccess, Recog: cmd.Recog}, EncodeString(itemID))
 }
@@ -3361,6 +5171,8 @@ func (s *Server) handleDropItem(conn net.Conn, activeChar *storage.Character, cm
 func (s *Server) handlePickup(conn net.Conn, activeChar *storage.Character, cmd mir176.Command) {
 	x := int(cmd.Param)
 	y := int(cmd.Tag)
+	x = activeChar.X
+	y = activeChar.Y
 	updated, result, err := s.world.PickupAtWithResult(*activeChar, x, y)
 	if err != nil {
 		return
@@ -3369,9 +5181,66 @@ func (s *Server) handlePickup(conn net.Conn, activeChar *storage.Character, cmd 
 	world.ApplyPickupSync(pickupSyncAdapter{s: s, conn: conn}, result)
 }
 
+func (s *Server) handleButcher(conn net.Conn, activeChar *storage.Character, cmd mir176.Command, lateDelivery bool) {
+	client := s.clientForConn(conn)
+	if !lateDelivery && client != nil {
+		client.mu.Lock()
+		now := time.Now()
+		delay := time.Duration(s.world.Gameplay().Combat.TurnIntervalMS)*time.Millisecond - now.Sub(client.turnAt)
+		if delay > 0 {
+			if client.pendingButcherMessages >= s.world.Gameplay().Combat.MaxTurnMessages {
+				client.mu.Unlock()
+				s.sendActionFail(conn)
+				return
+			}
+			client.pendingButcherMessages++
+			client.mu.Unlock()
+			s.enqueueDelayedClientEvent(conn, activeChar.ID, delay, func(delayedClient *Client) {
+				delayedClient.mu.Lock()
+				if delayedClient.pendingButcherMessages > 0 {
+					delayedClient.pendingButcherMessages--
+				}
+				delayedClient.mu.Unlock()
+				active := delayedClient.character()
+				s.handleButcher(delayedClient.conn, &active, cmd, true)
+			})
+			return
+		}
+		client.turnAt = now
+		client.mu.Unlock()
+	}
+	if lateDelivery && client != nil {
+		client.mu.Lock()
+		client.turnAt = time.Now()
+		client.mu.Unlock()
+	}
+	x := int(cmd.Param)
+	y := int(cmd.Tag)
+	result, err := s.world.ButcherAnimal(*activeChar, int32(cmd.Recog), x, y, int(cmd.Series))
+	*activeChar = result.Character
+	if err == nil && result.FoundItem {
+		s.sendBagAddItem(conn, result.Character, result.AddedItem.ItemID, result.AddedItem.MakeIndex)
+		s.sendWeightChanged(conn, s.world.AbilityStats(result.Character))
+	}
+	clients := s.ClientsInMap(result.Monster.MapID)
+	if err != nil {
+		clients = s.ClientsInMap(result.Character.MapID)
+	}
+	for _, client := range clients {
+		if result.Skeleton {
+			client.writeCommand(s, mir176.Command{Ident: mir176.SMSkeleton, Recog: world.MonsterActorID(result.Monster), Param: uint16(result.Monster.X), Tag: uint16(result.Monster.Y), Series: uint16(result.Monster.Dir)}, EncodeBuffer(CharDesc(world.MonsterFeature(result.Monster), world.MonsterStatus(result.Monster, time.Now()))))
+		}
+		client.writeCommand(s, mir176.Command{Ident: mir176.SMButch, Recog: world.CharacterActorID(result.Character), Param: uint16(result.Character.X), Tag: uint16(result.Character.Y), Series: uint16(result.Character.Dir)}, nil)
+	}
+}
+
 // handleEatItem implements CM_EAT.
 func (s *Server) handleEatItem(conn net.Conn, activeChar *storage.Character, cmd mir176.Command, text []byte) {
 	_ = text
+	if activeChar.HP <= 0 {
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMEatFail}, nil)
+		return
+	}
 	updated, useResult, err := s.world.UseItemByBagIndex(*activeChar, int(cmd.Recog))
 	if err != nil {
 		s.sendCommand(conn, mir176.Command{Ident: mir176.SMEatFail}, nil)
@@ -3400,11 +5269,11 @@ func (s *Server) handleMagicKeyChange(conn net.Conn, activeChar *storage.Charact
 
 // handleQueryBagItems implements CM_QUERYBAGITEMS.
 func (s *Server) handleQueryBagItems(conn net.Conn, activeChar *storage.Character) {
-	body, count := BagItemsBodyAndCount(s.world, *activeChar)
+	body, _ := BagItemsBodyAndCount(s.world, *activeChar)
 	if len(body) == 0 {
 		return
 	}
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMBagItems, Recog: world.CharacterActorID(*activeChar), Param: 0, Tag: 0, Series: uint16(count)}, body)
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMBagItems, Recog: world.CharacterActorID(*activeChar), Param: 0, Tag: 0, Series: uint16(len(activeChar.BagItems))}, body)
 }
 
 // sendAbilityRefresh mirrors the reference equip refresh chain:
@@ -3432,7 +5301,7 @@ func (s *Server) sendWinExp(conn net.Conn, exp int, currentExp int) {
 func (s *Server) sendLevelUp(conn net.Conn, ch storage.Character) {
 	stats := s.world.AbilityStats(ch)
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMLevelUp, Recog: int32(stats.Exp), Param: uint16(stats.Level)}, nil)
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMAbility, Recog: int32(ch.Gold), Param: makeWord(byte(world.Plain6ClassID(ch.Class)), 99), Tag: uint16(ch.PremiumGold), Series: uint16(uint32(ch.PremiumGold) >> 16)}, EncodeBuffer(s.abilityBody(ch)))
+	s.sendAbilityOnly(conn, ch)
 	s.sendCommand(conn, SubAbilityCommand(s.world.SubAbilityStats(ch)), nil)
 }
 
@@ -3451,7 +5320,6 @@ func (s *Server) sendInitialLoginState(conn net.Conn, ch storage.Character) {
 	s.sendCommand(conn, SubAbilityCommand(s.world.SubAbilityStats(ch)), nil)
 	s.sendCommand(conn, DayChangingCommand(0, 0), nil)
 	s.sendEquippedItems(conn, ch)
-	s.sendBagItems(conn, ch)
 	s.sendUseMagic(conn, ch)
 	if client := s.clientForConn(conn); client != nil {
 		for _, event := range s.world.GroundEventsAround(ch.MapID, ch.X, ch.Y, s.viewRange(), time.Now()) {
@@ -3578,7 +5446,7 @@ func (s *Server) sendSpellSpaceMoveMapChange(conn net.Conn, ch storage.Character
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMClearObjects}, nil)
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMChangeMap, Recog: actorID, Param: uint16(ch.X), Tag: uint16(ch.Y), Series: uint16(s.world.MapLight(ch.MapID))}, EncodeString(ch.MapID))
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMAreaState, Recog: s.world.CharacterAreaState(ch)}, nil)
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMMapDescription, Recog: -1}, EncodeString(s.world.MapName(ch.MapID)))
+	s.sendServerConfig(conn, ch)
 }
 
 func (s *Server) sendSpellSpaceMoveShow(conn net.Conn, ch storage.Character) {
@@ -3620,8 +5488,8 @@ func (s *Server) sendNotice(conn net.Conn) {
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMSendNotice, Recog: 2000}, NoticeBody())
 }
 
-func (s *Server) sendGoldChanged(conn net.Conn, gold int) {
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMGoldChanged, Recog: int32(gold)}, nil)
+func (s *Server) sendGoldChanged(conn net.Conn, ch storage.Character, gold int) {
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMGoldChanged, Recog: int32(gold), Param: uint16(ch.PremiumGold), Tag: uint16(uint32(ch.PremiumGold) >> 16)}, nil)
 }
 
 func (s *Server) handleQueryUserName(conn net.Conn, activeChar *storage.Character, cmd mir176.Command) {
@@ -3631,21 +5499,31 @@ func (s *Server) handleQueryUserName(conn net.Conn, activeChar *storage.Characte
 		target = &Client{ch: *activeChar}
 		ok = true
 	}
-	if !ok {
-		return
-	}
-	targetChar := target.character()
 	x := int(cmd.Param)
 	y := int(cmd.Tag)
-	if !world.CanInspectCharacterAt(targetChar, x, y) {
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMGhost, Recog: targetID, Param: uint16(x), Tag: uint16(y)}, nil)
+	if ok {
+		targetChar := target.character()
+		if activeChar == nil || targetChar.Ghost || activeChar.MapID != targetChar.MapID || !world.CanInspectCharacterAt(targetChar, x, y) {
+			s.sendCommand(conn, mir176.Command{Ident: mir176.SMGhost, Recog: targetID, Param: uint16(x), Tag: uint16(y)}, nil)
+			return
+		}
+		observer := storage.Character{}
+		if activeChar != nil {
+			observer = *activeChar
+		}
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMUserName, Recog: targetID, Param: s.world.CharacterNameColorFor(observer, targetChar)}, EncodeString(s.world.CharacterDisplayName(targetChar)))
 		return
 	}
-	observer := storage.Character{}
-	if activeChar != nil {
-		observer = *activeChar
+	if activeChar == nil {
+		return
 	}
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMUserName, Recog: targetID, Param: s.world.CharacterNameColorFor(observer, targetChar)}, EncodeString(s.world.CharacterDisplayName(targetChar)))
+	if monster, found := s.world.MonsterSnapshotByActorID(targetID); found {
+		if monster.MapID != activeChar.MapID || monster.X-x > 1 || x-monster.X > 1 || monster.Y-y > 1 || y-monster.Y > 1 {
+			s.sendCommand(conn, mir176.Command{Ident: mir176.SMGhost, Recog: targetID, Param: uint16(x), Tag: uint16(y)}, nil)
+			return
+		}
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMUserName, Recog: targetID, Param: world.MonsterNameColor(monster)}, EncodeString(world.MonsterDisplayName(monster)))
+	}
 }
 
 func (s *Server) handleQueryUserState(conn net.Conn, activeChar *storage.Character, cmd mir176.Command) {
@@ -3661,7 +5539,7 @@ func (s *Server) handleQueryUserState(conn net.Conn, activeChar *storage.Charact
 	targetChar := target.character()
 	x := int(cmd.Param)
 	y := int(cmd.Tag)
-	if !world.CanInspectCharacterAt(targetChar, x, y) {
+	if activeChar == nil || targetChar.Ghost || activeChar.MapID != targetChar.MapID || !world.CanInspectCharacterAt(targetChar, x, y) {
 		return
 	}
 	observer := storage.Character{}
@@ -3678,11 +5556,10 @@ func NoticeBody() []byte {
 func UserStateBody(w *world.World, observer, ch storage.Character) []byte {
 	body := bytes.NewBuffer(make([]byte, 0, 1024))
 	writeI32(body, w.HumanFeatureForCharacter(ch))
-	writeGBKAsciiString(body, w.CharacterDisplayName(ch), 14)
-	writeByte(body, 0)
-	writeU32(body, uint32(w.CharacterNameColorFor(observer, ch)))
-	writeGBKAsciiString(body, "", 20)
-	writeGBKAsciiString(body, "", 14)
+	writeGBKAsciiString(body, w.CharacterDisplayName(ch), 19)
+	writeGBKAsciiString(body, ch.GuildID, 14)
+	writeGBKAsciiString(body, ch.GuildRankName, 14)
+	writeU16(body, w.CharacterNameColorFor(observer, ch))
 	for slot := 0; slot < 13; slot++ {
 		equipped, ok := equippedItem(ch, slot)
 		if !ok {
@@ -3695,11 +5572,8 @@ func UserStateBody(w *world.World, observer, ch storage.Character) []byte {
 			continue
 		}
 		item = world.UpgradeClientItemForDisplay(item, equipped, false)
-		dura, duraMax := bagItemDurability(item, equipped)
-		body.Write(itemBodyForEquipped(observer, item, equipped.Desc, equipped.MakeIndex, dura, duraMax))
+		body.Write(itemBodyForEquipped(observer, item, equipped.Desc, equipped.MakeIndex, equipped.Dura, equipped.DuraMax))
 	}
-	writeByte(body, 0)
-	writeGBKAsciiString(body, "", 14)
 	return body.Bytes()
 }
 
@@ -3788,6 +5662,7 @@ func (s *Server) sendEnterWorldState(conn net.Conn, ch storage.Character) {
 		client.visibleMonsters = map[string]world.Monster{}
 		client.visibleDrops = map[string]world.GroundDrop{}
 		client.visibleNPCs = map[string]npc.Entity{}
+		client.visibleEvents = map[int32]world.SpellGroundEvent{}
 	}
 	s.clientMu.Unlock()
 	actorID := world.CharacterActorID(ch)
@@ -3799,35 +5674,47 @@ func (s *Server) sendEnterWorldState(conn net.Conn, ch storage.Character) {
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMFeatureChanged, Recog: actorID, Param: uint16(feature), Tag: uint16(uint32(feature) >> 16), Series: uint16(s.world.CharacterFeatureEx(ch))}, nil)
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMUserName, Recog: actorID, Param: s.world.CharacterNameColor(ch)}, EncodeString(s.world.CharacterDisplayName(ch)))
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMAreaState, Recog: s.world.CharacterAreaState(ch)}, nil)
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMMapDescription, Recog: -1}, EncodeString(s.world.MapName(ch.MapID)))
 	monsters, _ := s.world.SnapshotAround(ch.MapID, ch.X, ch.Y, s.viewRange())
+	client := s.clientForConn(conn)
 	for _, mon := range monsters {
 		s.sendCommand(conn, MonsterTurnCommand(mon, s.world.MapLight(mon.MapID)), MonsterTurnBody(mon))
 		s.sendCommand(conn, MonsterFeatureCommand(mon), nil)
+		if client != nil {
+			client.mu.Lock()
+			client.visibleMonsters[mon.ID] = mon
+			client.mu.Unlock()
+		}
 	}
 	_, drops := s.world.SnapshotAround(ch.MapID, ch.X, ch.Y, s.viewRange())
 	for _, drop := range drops {
 		s.sendDropShow(conn, drop)
+		if client != nil {
+			client.mu.Lock()
+			client.visibleDrops[drop.ID] = drop
+			client.mu.Unlock()
+		}
 	}
 	s.sendNPCsAround(conn, ch)
 }
 
 func (s *Server) sendSpaceMoveState(conn net.Conn, ch storage.Character) {
+	s.invalidateSpellRef(ch.ID)
 	s.clientMu.Lock()
 	if client := s.clients[conn]; client != nil {
 		client.visibleMonsters = map[string]world.Monster{}
 		client.visibleDrops = map[string]world.GroundDrop{}
 		client.visibleNPCs = map[string]npc.Entity{}
+		client.visibleEvents = map[int32]world.SpellGroundEvent{}
 	}
 	s.clientMu.Unlock()
 	actorID := world.CharacterActorID(ch)
 	showIdent := uint16(mir176.SMSpacemoveShow)
 	showBody := EncodeBuffer(CharDesc(s.world.HumanFeatureForCharacter(ch), s.world.CharacterStatus(ch)))
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMSpacemoveHide, Recog: actorID}, nil)
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMClearObjects, Recog: actorID}, nil)
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMClearObjects}, nil)
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMChangeMap, Recog: actorID, Param: uint16(ch.X), Tag: uint16(ch.Y), Series: uint16(s.world.MapLight(ch.MapID))}, EncodeString(ch.MapID))
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMAreaState, Recog: s.world.CharacterAreaState(ch)}, nil)
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMMapDescription, Recog: -1}, EncodeString(s.world.MapName(ch.MapID)))
+	s.sendServerConfig(conn, ch)
 	s.sendCommand(conn, mir176.Command{Ident: showIdent, Recog: actorID, Param: uint16(ch.X), Tag: uint16(ch.Y), Series: makeWord(byte(ch.Dir), byte(s.world.MapLight(ch.MapID)))}, showBody)
 	s.sendNPCsAround(conn, ch)
 }
@@ -3885,8 +5772,8 @@ func (s *Server) sendInstanceHealGaugeMonster(conn net.Conn, mon world.Monster) 
 func DurabilityCommand(durability world.SpellDurability) mir176.Command {
 	return mir176.Command{
 		Ident: mir176.SMDuraChange,
-		Recog: int32(durability.Dura),
-		Param: uint16(durability.Slot),
+		Recog: int32(durability.Slot),
+		Param: durability.Dura,
 		Tag:   durability.DuraMax,
 	}
 }
@@ -3945,13 +5832,13 @@ func (s *Server) sendWeightChanged(conn net.Conn, stats world.AbilityStats) {
 		Recog:  int32(stats.Weight),
 		Param:  uint16(stats.WearWeight),
 		Tag:    uint16(stats.HandWeight),
-		Series: uint16(((stats.Weight + stats.WearWeight + stats.HandWeight) ^ 0x3A5F ^ 0x1F35 ^ 0xAA21)),
+		Series: 0,
 	}, nil)
 }
 
 func (s *Server) broadcastMonsterAppear(clients []*Client, monsters []world.Monster) {
 	for _, mon := range monsters {
-		if mon.Hidden {
+		if mon.Hidden || mon.FixedHideMode || mon.AdminMode {
 			continue
 		}
 		nearby := s.ClientsAround(mon.MapID, mon.X, mon.Y, s.viewRange())
@@ -3962,7 +5849,7 @@ func (s *Server) broadcastMonsterAppear(clients []*Client, monsters []world.Mons
 }
 
 func (s *Server) dispatchSpellSummon(mon world.Monster) {
-	if mon.Hidden {
+	if mon.Hidden || mon.FixedHideMode || mon.AdminMode {
 		return
 	}
 	for _, client := range s.spellRefClientsFor("monster:"+mon.ID, mon.MapID, mon.X, mon.Y) {
@@ -3998,6 +5885,15 @@ func (s *Server) broadcastTeleportMove(conn net.Conn, from, to storage.Character
 }
 
 func (s *Server) sendTeleportRingMove(conn net.Conn, from, to storage.Character) {
+	s.invalidateSpellRef(to.ID)
+	s.clientMu.Lock()
+	if client := s.clients[conn]; client != nil {
+		client.visibleMonsters = map[string]world.Monster{}
+		client.visibleDrops = map[string]world.GroundDrop{}
+		client.visibleNPCs = map[string]npc.Entity{}
+		client.visibleEvents = map[int32]world.SpellGroundEvent{}
+	}
+	s.clientMu.Unlock()
 	actorID := world.CharacterActorID(to)
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMSpacemoveHide, Recog: actorID}, nil)
 	if from.MapID != "" {
@@ -4241,6 +6137,12 @@ func (s *Server) applyWorldTick(result world.TickResult, now time.Time) {
 			showHPExpiredIDs[ch.ID] = struct{}{}
 		}
 	}
+	revivalIDs := map[string]struct{}{}
+	for _, revival := range result.CharacterRevivals {
+		if revival.Character.ID != "" {
+			revivalIDs[revival.Character.ID] = struct{}{}
+		}
+	}
 	deferredHealthCharacters := map[string]storage.Character{}
 	for _, ch := range result.Characters {
 		previous, hadPrevious := s.ClientByCharacterID(ch.ID)
@@ -4255,6 +6157,9 @@ func (s *Server) applyWorldTick(result world.TickResult, now time.Time) {
 		healthChanged := hadPrevious && (previousCharacter.HP != ch.HP || previousCharacter.MP != ch.MP)
 		if healthChanged {
 			if _, magicHit := magicHitIDs[ch.ID]; magicHit {
+				healthChanged = false
+			}
+			if _, revival := revivalIDs[ch.ID]; revival {
 				healthChanged = false
 			}
 		}
@@ -4399,6 +6304,10 @@ func (s *Server) applyWorldTick(result world.TickResult, now time.Time) {
 			s.broadcastMonsterWalk(clients, action)
 		case world.MonsterActionHit:
 			s.broadcastMonsterHit(clients, action)
+		case world.MonsterActionFlyAxe:
+			s.broadcastMonsterFlyAxe(clients, action)
+		case world.MonsterActionLighting:
+			s.broadcastMonsterLighting(clients, action)
 		case world.MonsterActionTurn:
 			s.broadcastMonsterTurn(clients, action)
 		case world.MonsterActionReveal:
@@ -4478,6 +6387,9 @@ func (s *Server) applyWorldTick(result world.TickResult, now time.Time) {
 	for _, drop := range result.CharacterDrops {
 		s.broadcastDropAppear(s.ClientsAround(drop.MapID, drop.X, drop.Y, s.viewRange()), []world.GroundDrop{drop})
 	}
+	for _, event := range result.GroupSyncEvents {
+		world.ApplyGroupSync(groupSyncAdapter{s: s}, event)
+	}
 	for _, ch := range result.CharacterDeaths {
 		clients := s.spellRefClients(ch)
 		for _, client := range clients {
@@ -4537,7 +6449,7 @@ func (s *Server) broadcastNPCTraining(hits []world.NPCTrainingHit) {
 			}
 			message = fmt.Sprintf("总破坏力%2d, 平均破坏力%2d", hit.Total, average)
 		}
-		s.broadcastHear(s.ClientsAround(hit.NPC.MapID, hit.NPC.X, hit.NPC.Y, s.viewRange()), hit.NPC.Name+":"+message, 0x00, 0xFF)
+		s.broadcastHear(s.ClientsAround(hit.NPC.MapID, hit.NPC.X, hit.NPC.Y, s.viewRange()), s.world.NPCActorID(hit.NPC.ID), hit.NPC.Name+":"+message, 0x00, 0xFF)
 	}
 }
 
@@ -4630,6 +6542,12 @@ const (
 
 func (s *Server) syncVisibleNPCs() {
 	for _, client := range s.allClients() {
+		client.mu.Lock()
+		dealing := client.dealPeerID != ""
+		client.mu.Unlock()
+		if dealing {
+			s.handleDealCancel(client.conn)
+		}
 		ch := client.character()
 		npcs := s.world.NPCsInMap(ch.MapID)
 		current := map[string]struct{}{}
@@ -4824,6 +6742,28 @@ func (s *Server) broadcastMonsterHit(clients []*Client, action world.MonsterActi
 	}
 }
 
+func (s *Server) broadcastMonsterFlyAxe(clients []*Client, action world.MonsterAction) {
+	for _, client := range clients {
+		mon := world.Monster{ID: action.MonsterID, Name: action.Name, RaceImg: action.RaceImg, MonsterWeapon: action.MonsterWeapon, Appr: action.Appr, MapID: action.MapID, X: action.X, Y: action.Y, Dir: action.Dir}
+		client.ensureMonsterVisibleWithStatus(s, mon, action.Status)
+		cmd := MonsterFlyAxeCommand(action)
+		body := MonsterFlyAxeBody(action)
+		s.recordMonsterPacketTrace(client, action, "action", cmd, body)
+		client.writeCommand(s, cmd, body)
+	}
+}
+
+func (s *Server) broadcastMonsterLighting(clients []*Client, action world.MonsterAction) {
+	for _, client := range clients {
+		mon := world.Monster{ID: action.MonsterID, Name: action.Name, RaceImg: action.RaceImg, MonsterWeapon: action.MonsterWeapon, Appr: action.Appr, MapID: action.MapID, X: action.X, Y: action.Y, Dir: action.Dir}
+		client.ensureMonsterVisibleWithStatus(s, mon, action.Status)
+		cmd := MonsterLightingCommand(action)
+		body := MonsterLightingBody(action)
+		s.recordMonsterPacketTrace(client, action, "action", cmd, body)
+		client.writeCommand(s, cmd, body)
+	}
+}
+
 func (s *Server) broadcastMonsterTurn(clients []*Client, action world.MonsterAction) {
 	mon := world.Monster{ID: action.MonsterID, Name: action.Name, RaceImg: action.RaceImg, MonsterWeapon: action.MonsterWeapon, Appr: action.Appr, MapID: action.MapID, X: action.X, Y: action.Y, Dir: action.Dir}
 	for _, client := range clients {
@@ -4891,6 +6831,12 @@ func (c *Client) sendMonsterAction(s *Server, action world.MonsterAction) {
 	case world.MonsterActionHit:
 		c.ensureMonsterVisibleWithStatus(s, mon, action.Status)
 		c.writeCommand(s, MonsterHitCommand(action), nil)
+	case world.MonsterActionFlyAxe:
+		c.ensureMonsterVisibleWithStatus(s, mon, action.Status)
+		c.writeCommand(s, MonsterFlyAxeCommand(action), MonsterFlyAxeBody(action))
+	case world.MonsterActionLighting:
+		c.ensureMonsterVisibleWithStatus(s, mon, action.Status)
+		c.writeCommand(s, MonsterLightingCommand(action), MonsterLightingBody(action))
 	case world.MonsterActionTurn:
 		c.mu.Lock()
 		if c.visibleMonsters == nil {
@@ -4932,9 +6878,13 @@ func (c *Client) sendMonsterAction(s *Server, action world.MonsterAction) {
 }
 
 func (s *Server) broadcastCharacterHit(clients []*Client, ch storage.Character, clientIdent uint16) {
+	s.broadcastCharacterHitBody(clients, ch, clientIdent, nil)
+}
+
+func (s *Server) broadcastCharacterHitBody(clients []*Client, ch storage.Character, clientIdent uint16, body []byte) {
 	cmd := CharacterHitCommand(ch, clientIdent)
 	for _, client := range clients {
-		client.writeCommand(s, cmd, nil)
+		client.writeCommand(s, cmd, body)
 	}
 }
 
@@ -5129,7 +7079,7 @@ func (c *Client) handleQueuedSpellMessage(s *Server, message spellObjectMessage)
 	case spellObjectMessageMonsterAction:
 		c.sendMonsterAction(s, message.monsterAction)
 	case spellObjectMessageSummon:
-		if !message.summoned.Hidden {
+		if !message.summoned.Hidden && !message.summoned.FixedHideMode && !message.summoned.AdminMode {
 			c.ensureMonsterVisible(s, message.summoned)
 		}
 	case spellObjectMessageHealth:
@@ -5432,14 +7382,6 @@ func (s *Server) broadcastCharacterStruck(clients []*Client, hit world.Character
 
 func (s *Server) sendCharacterStruck(clients []*Client, hit world.CharacterHit) {
 	combat := s.world.Gameplay().Combat
-	targetIncluded := false
-	for _, client := range clients {
-		if client.character().ID == hit.Character.ID {
-			targetIncluded = true
-			break
-		}
-	}
-	refreshForSuppression := combat.DisableStruck || (combat.DisableSelfStruck && targetIncluded)
 	attackerID := hit.AttackerActor
 	if attackerID == 0 && hit.AttackerID != "" {
 		attackerID = world.MonsterActorID(world.Monster{ID: hit.AttackerID})
@@ -5456,7 +7398,7 @@ func (s *Server) sendCharacterStruck(clients []*Client, hit world.CharacterHit) 
 		}
 		responses := make([][]byte, 0, 3)
 		suppressed := combat.DisableStruck || (combat.DisableSelfStruck && isTarget)
-		if refreshForSuppression && hit.Damage > 0 {
+		if isTarget && hit.Damage > 0 && (combat.DisableStruck || combat.DisableSelfStruck) {
 			stats := s.world.AbilityStats(hit.Character)
 			responses = append(responses, encodeMessage(mir176.Command{
 				Ident:  mir176.SMHealthSpellChanged,
@@ -5479,18 +7421,14 @@ func (s *Server) sendCharacterStruck(clients []*Client, hit world.CharacterHit) 
 }
 
 func (s *Server) sendCharacterSpellStruck(clients []*Client, caster storage.Character, hit world.CharacterHit) {
-	if hit.Damage <= 0 {
+	struckDamage := hit.Damage
+	if hit.StruckDamage > 0 {
+		struckDamage = hit.StruckDamage
+	}
+	if struckDamage <= 0 {
 		return
 	}
 	combat := s.world.Gameplay().Combat
-	targetIncluded := false
-	for _, client := range clients {
-		if client.character().ID == hit.Character.ID {
-			targetIncluded = true
-			break
-		}
-	}
-	refreshForSuppression := combat.DisableStruck || (combat.DisableSelfStruck && targetIncluded)
 	for _, client := range clients {
 		isTarget := client.character().ID == hit.Character.ID
 		if isTarget {
@@ -5510,7 +7448,7 @@ func (s *Server) sendCharacterSpellStruck(clients []*Client, caster storage.Char
 			}, nil))
 		}
 		suppressed := combat.DisableStruck || (combat.DisableSelfStruck && isTarget)
-		if refreshForSuppression {
+		if isTarget && (combat.DisableStruck || combat.DisableSelfStruck) {
 			stats := s.world.AbilityStats(hit.Character)
 			responses = append(responses, encodeMessage(mir176.Command{
 				Ident:  mir176.SMHealthSpellChanged,
@@ -5525,7 +7463,9 @@ func (s *Server) sendCharacterSpellStruck(clients []*Client, caster storage.Char
 			if attackerID == 0 {
 				attackerID = world.CharacterActorID(caster)
 			}
-			responses = append(responses, encodeMessage(CharacterSpellStruckCommand(hit), EncodeBuffer(MessageBodyWL(s.world.HumanFeatureForCharacter(hit.Character), s.world.CharacterStatus(hit.Character), attackerID, 1))))
+			commandHit := hit
+			commandHit.AttackerActor = attackerID
+			responses = append(responses, encodeMessage(CharacterSpellStruckCommandWithDamage(commandHit, struckDamage), EncodeBuffer(MessageBodyWL(s.world.HumanFeatureForCharacter(hit.Character), s.world.CharacterStatus(hit.Character), attackerID, 1))))
 		}
 		if hit.Dead && !hit.DeathDeferred {
 			responses = append(responses, encodeMessage(CharacterDeathCommand(hit.Character), EncodeBuffer(CharDesc(s.world.HumanFeatureForCharacter(hit.Character), s.world.CharacterStatus(hit.Character)))))
@@ -5646,6 +7586,12 @@ func (s *Server) broadcastMonsterDeathWithDrops(clients []*Client, result world.
 }
 
 func (s *Server) registerClient(conn net.Conn, ch storage.Character) *Client {
+	if ch.ID != "" {
+		if existing, ok := s.ClientByCharacterID(ch.ID); ok && existing.conn != conn {
+			s.unregisterClient(existing.conn)
+			_ = existing.conn.Close()
+		}
+	}
 	s.restoreFireHitState(&ch, time.Now())
 	s.restorePowerHitState(&ch)
 	if ch.ObjectOrder == 0 {
@@ -5675,7 +7621,7 @@ func (s *Server) registerClient(conn net.Conn, ch storage.Character) *Client {
 		if client.powerHitCount < 1 {
 			client.powerHitCount = 1
 		}
-		client.powerHitPointCount = rand.Intn(client.powerHitCount)
+		client.powerHitPointCount = s.world.RandomIntn(client.powerHitCount)
 	}
 	s.rememberFireHitState(ch)
 	s.rememberPowerHitState(ch)
@@ -5690,9 +7636,99 @@ func (s *Server) registerClient(conn net.Conn, ch storage.Character) *Client {
 	delete(s.closed, conn)
 	s.clients[conn] = client
 	s.clientMu.Unlock()
+	s.saveMu.Lock()
+	if _, exists := s.lastCharacterSave[ch.ID]; !exists {
+		s.lastCharacterSave[ch.ID] = time.Now()
+	}
+	s.saveMu.Unlock()
 	go client.runSpellMessages(s)
 	go client.runOutput()
 	return client
+}
+
+func (s *Server) saveDueCharacters(now time.Time) {
+	interval := time.Duration(s.world.Gameplay().Persistence.SaveHumanRcdTimeMS) * time.Millisecond
+	if interval <= 0 {
+		return
+	}
+	for _, client := range s.allClients() {
+		ch := client.character()
+		s.saveMu.Lock()
+		last, exists := s.lastCharacterSave[ch.ID]
+		if !exists {
+			s.lastCharacterSave[ch.ID] = now
+			s.saveMu.Unlock()
+			continue
+		}
+		if now.Sub(last) < interval {
+			s.saveMu.Unlock()
+			continue
+		}
+		s.saveMu.Unlock()
+		client.mu.Lock()
+		dealing := client.dealPeerID != ""
+		client.mu.Unlock()
+		if dealing {
+			s.handleDealCancelWithPersistence(client.conn, false)
+			ch = client.character()
+		}
+		s.saveMu.Lock()
+		active := s.characterSaveActive
+		s.saveMu.Unlock()
+		if active {
+			select {
+			case s.characterSaveQueue <- characterSaveJob{character: ch}:
+			default:
+				continue
+			}
+		} else if err := s.store.SaveCharacter(ch); err != nil {
+			continue
+		}
+		s.saveMu.Lock()
+		s.lastCharacterSave[ch.ID] = now
+		s.saveMu.Unlock()
+	}
+}
+
+func (s *Server) runCharacterSaves(ctx context.Context) {
+	defer close(s.saveDone)
+	for {
+		select {
+		case <-ctx.Done():
+			for {
+				select {
+				case job := <-s.characterSaveQueue:
+					s.saveCharacterJob(job)
+				default:
+					return
+				}
+			}
+		case job := <-s.characterSaveQueue:
+			s.saveCharacterJob(job)
+		}
+	}
+}
+
+func (s *Server) saveCharacterJob(job characterSaveJob) {
+	for {
+		if err := s.store.SaveCharacter(job.character); err == nil || job.retries >= 50 {
+			return
+		}
+		job.retries++
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func (s *Server) closeAllConnections() {
+	s.connMu.Lock()
+	connections := make([]net.Conn, 0, len(s.connections))
+	for conn := range s.connections {
+		connections = append(connections, conn)
+	}
+	s.connMu.Unlock()
+	for _, conn := range connections {
+		_ = conn.Close()
+	}
 }
 
 func (s *Server) clientForConn(conn net.Conn) *Client {
@@ -5704,6 +7740,17 @@ func (s *Server) clientForConn(conn net.Conn) *Client {
 func (s *Server) unregisterClient(conn net.Conn) {
 	s.clientMu.Lock()
 	client := s.clients[conn]
+	s.clientMu.Unlock()
+	if client != nil {
+		client.mu.Lock()
+		dealing := client.dealPeerID != ""
+		client.mu.Unlock()
+		if dealing {
+			s.handleDealCancelWithPersistence(conn, false)
+		}
+	}
+	s.clientMu.Lock()
+	client = s.clients[conn]
 	delete(s.clients, conn)
 	if s.closed == nil {
 		s.closed = map[net.Conn]struct{}{}
@@ -5846,7 +7893,7 @@ func (s *Server) ClientByName(name string) (*Client, bool) {
 	s.clientMu.Lock()
 	defer s.clientMu.Unlock()
 	for _, client := range s.clients {
-		if client.ch.Name == name {
+		if !client.ch.Ghost && strings.EqualFold(client.ch.Name, name) {
 			return client, true
 		}
 	}
@@ -5870,7 +7917,6 @@ func (s *Server) onlineGroupMembers(ownerID string) []*Client {
 			}
 		}
 	}
-	sortClientsByID(clients)
 	return clients
 }
 
@@ -5890,6 +7936,7 @@ func (s *Server) sendGroupMembers(ownerID string) {
 }
 
 func (s *Server) handleClientDisconnect(ch storage.Character) {
+	s.queueCharacterSave(ch)
 	s.world.HandleCharacterDisconnect(ch, time.Now())
 	changed, result, err := s.world.HandleGroupDisconnectWithResult(ch)
 	if err != nil {
@@ -5897,6 +7944,24 @@ func (s *Server) handleClientDisconnect(ch storage.Character) {
 	}
 	_ = changed
 	world.ApplyGroupSync(groupSyncAdapter{s: s}, result)
+}
+
+func (s *Server) queueCharacterSave(ch storage.Character) {
+	if ch.ID == "" {
+		return
+	}
+	s.saveMu.Lock()
+	active := s.characterSaveActive
+	s.saveMu.Unlock()
+	if active {
+		select {
+		case s.characterSaveQueue <- characterSaveJob{character: ch}:
+		default:
+			_ = s.store.SaveCharacter(ch)
+		}
+		return
+	}
+	_ = s.store.SaveCharacter(ch)
 }
 
 func (s *Server) PlayerSnapshots() []world.PlayerSnapshot {
@@ -5976,6 +8041,17 @@ func (s *Server) spellRefClients(caster storage.Character) []*Client {
 	return s.spellRefClientsFor(caster.ID, caster.MapID, caster.X, caster.Y)
 }
 
+func (s *Server) actionRefClients(ch storage.Character, except net.Conn) []*Client {
+	clients := s.spellRefClientsFor(ch.ID, ch.MapID, ch.X, ch.Y)
+	filtered := clients[:0]
+	for _, client := range clients {
+		if client.conn != except {
+			filtered = append(filtered, client)
+		}
+	}
+	return filtered
+}
+
 func (s *Server) invalidateSpellRef(ownerID string) {
 	s.spellRefMu.Lock()
 	delete(s.spellRefs, ownerID)
@@ -6050,14 +8126,14 @@ func sortClientsByID(clients []*Client) {
 	})
 }
 
-func (s *Server) broadcastHear(clients []*Client, msg string, fg, bg byte) {
+func (s *Server) broadcastHear(clients []*Client, actorID int32, msg string, fg, bg byte) {
 	for _, client := range clients {
-		client.writeCommand(s, mir176.Command{Ident: mir176.SMHear, Param: makeWord(fg, bg), Series: 1}, EncodeString(msg))
+		client.writeCommand(s, mir176.Command{Ident: mir176.SMHear, Recog: actorID, Param: makeWord(fg, bg), Series: 1}, EncodeString(msg))
 	}
 }
 
-func (s *Server) sendHear(conn net.Conn, msg string, fg, bg byte) {
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMHear, Param: makeWord(fg, bg), Series: 1}, EncodeString(msg))
+func (s *Server) sendHear(conn net.Conn, actorID int32, msg string, fg, bg byte) {
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMHear, Recog: actorID, Param: makeWord(fg, bg), Series: 1}, EncodeString(msg))
 }
 
 func (s *Server) sendSystemMessage(conn net.Conn, ch storage.Character, msg string) {
@@ -6068,11 +8144,11 @@ func (s *Server) sendSystemMessageStyle(conn net.Conn, ch storage.Character, msg
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMSystemMessage, Recog: world.CharacterActorID(ch), Param: makeWord(foreground, background), Series: 1}, EncodeString(msg))
 }
 
-func (s *Server) sendMerchantSay(conn net.Conn, npcName, msg string) {
+func (s *Server) sendMerchantSay(conn net.Conn, npcID int32, npcName, msg string) {
 	if msg == "" {
 		return
 	}
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMMerchantSay, Series: 1}, EncodeString(npcName+"/"+msg))
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMMerchantSay, Recog: npcID, Series: 1}, EncodeString(npcName+"/"+msg))
 }
 
 func (s *Server) sendMerchantDlgClose(conn net.Conn, merchantID int32) {
@@ -6080,7 +8156,7 @@ func (s *Server) sendMerchantDlgClose(conn net.Conn, merchantID int32) {
 }
 
 func (s *Server) sendNPCConversation(conn net.Conn, conversation npc.Conversation) {
-	s.sendMerchantSay(conn, conversation.NPC.Name, conversation.Text)
+	s.sendMerchantSay(conn, s.world.NPCActorID(conversation.NPC.ID), conversation.NPC.Name, conversation.Text)
 }
 
 func (c *Client) writeCommand(s *Server, cmd mir176.Command, text []byte) {
@@ -6094,6 +8170,9 @@ func (c *Client) ensureMonsterVisible(s *Server, mon world.Monster) {
 }
 
 func (c *Client) ensureMonsterVisibleWithStatus(s *Server, mon world.Monster, status int32) {
+	if mon.Hidden || mon.FixedHideMode || mon.AdminMode {
+		return
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.visibleMonsters == nil {
@@ -6254,7 +8333,7 @@ func encodeMessage(cmd mir176.Command, text []byte) []byte {
 
 func (s *Server) characterByName(account, name string) (storage.Character, bool) {
 	for _, ch := range s.store.Characters(account) {
-		if ch.Name == name {
+		if strings.EqualFold(ch.Name, name) {
 			return ch, true
 		}
 	}
@@ -6267,6 +8346,15 @@ func MessageBodyWL(param1, param2, tag1, tag2 int32) []byte {
 	binary.LittleEndian.PutUint32(body[4:8], uint32(param2))
 	binary.LittleEndian.PutUint32(body[8:12], uint32(tag1))
 	binary.LittleEndian.PutUint32(body[12:16], uint32(tag2))
+	return body
+}
+
+func MessageBodyW(param1, param2 int, tag1 int32) []byte {
+	body := make([]byte, 8)
+	binary.LittleEndian.PutUint16(body[0:2], uint16(param1))
+	binary.LittleEndian.PutUint16(body[2:4], uint16(param2))
+	binary.LittleEndian.PutUint16(body[4:6], uint16(tag1))
+	binary.LittleEndian.PutUint16(body[6:8], uint16(uint32(tag1)>>16))
 	return body
 }
 
@@ -6291,8 +8379,7 @@ func SubAbilityCommand(stats world.SubAbilityStats) mir176.Command {
 func ServerConfigCommand() mir176.Command {
 	return mir176.Command{
 		Ident:  mir176.SMServerConfig,
-		Recog:  0,
-		Param:  0,
+		Param:  makeWord(5, 0),
 		Tag:    0,
 		Series: 0,
 	}
@@ -6308,27 +8395,78 @@ func DayChangingCommand(bright, dayBright byte) mir176.Command {
 	}
 }
 
-func ServerConfigBody() []byte {
-	body := bytes.NewBuffer(make([]byte, 0, 18))
-	writeByte(body, 17)
-	writeByte(body, 1)
-	writeByte(body, 1)
-	writeByte(body, 1)
+func (s *Server) serverConfigCommand(ch storage.Character) mir176.Command {
+	runHuman, runMon, runNPC, runWar := s.serverRunFlags(ch)
+	return mir176.Command{
+		Ident: mir176.SMServerConfig,
+		Recog: int32(uint32(makeWord(boolByte(runHuman), boolByte(runMon))) | uint32(makeWord(boolByte(runNPC), boolByte(runWar)))<<16),
+		Param: makeWord(5, 0),
+	}
+}
+
+func (s *Server) serverConfigBody(ch storage.Character) []byte {
+	gameplay := s.world.Gameplay()
+	combat := gameplay.Combat
+	runHuman, runMon, runNPC, runWar := s.serverRunFlags(ch)
+	body := bytes.NewBuffer(make([]byte, 0, 24))
 	writeByte(body, 0)
-	writeByte(body, 1)
-	writeByte(body, 1)
-	writeByte(body, 1)
+	writeByte(body, boolByte(runHuman))
+	writeByte(body, boolByte(runMon))
+	writeByte(body, boolByte(runNPC))
+	writeByte(body, boolByte(runWar))
+	writeByte(body, 0)
+	_ = binary.Write(body, binary.LittleEndian, uint16(maxInt(combat.MagicHitIntervalMS+300, 0)))
+	_ = binary.Write(body, binary.LittleEndian, uint16(maxInt(combat.HitIntervalMS+500, 0)))
+	_ = binary.Write(body, binary.LittleEndian, uint16(0))
+	writeByte(body, 0)
+	writeByte(body, 0)
+	writeByte(body, boolByte(combat.ParalyCanRun))
+	writeByte(body, boolByte(combat.ParalyCanWalk))
+	writeByte(body, boolByte(combat.ParalyCanHit))
+	writeByte(body, boolByte(combat.ParalyCanSpell))
 	writeByte(body, 0)
 	writeByte(body, 0)
 	writeByte(body, 0)
 	writeByte(body, 0)
 	writeByte(body, 0)
-	writeByte(body, 0)
-	writeByte(body, 0)
-	writeByte(body, 0)
-	writeByte(body, 1)
 	writeByte(body, 0)
 	return body.Bytes()
+}
+
+func (s *Server) serverRunFlags(ch storage.Character) (runHuman, runMon, runNPC, runWar bool) {
+	gameplay := s.world.Gameplay()
+	if gameplay.Movement.DisableHumanRun {
+		return true, true, true, true
+	}
+	return gameplay.Movement.RunHuman || s.world.MapRunHuman(ch.MapID), gameplay.Movement.RunMon, gameplay.Movement.RunNPC, gameplay.Movement.RunWarAll
+}
+
+func (s *Server) sendServerConfig(conn net.Conn, ch storage.Character) {
+	client := s.clientForConn(conn)
+	if client == nil {
+		return
+	}
+	client.mu.Lock()
+	version := client.softVersion
+	client.mu.Unlock()
+	if version == 0 {
+		return
+	}
+	s.sendCommand(conn, s.serverConfigCommand(ch), EncodeBuffer(s.serverConfigBody(ch)))
+}
+
+func boolByte(value bool) byte {
+	if value {
+		return 1
+	}
+	return 0
+}
+
+func maxInt(value, minimum int) int {
+	if value < minimum {
+		return minimum
+	}
+	return value
 }
 
 func GoldNameBody() []byte {
@@ -6546,6 +8684,28 @@ func MonsterHitCommand(action world.MonsterAction) mir176.Command {
 	}
 }
 
+func MonsterFlyAxeCommand(action world.MonsterAction) mir176.Command {
+	return mir176.Command{
+		Ident:  mir176.SMFlyAxe,
+		Recog:  world.MonsterActorID(world.Monster{ID: action.MonsterID}),
+		Param:  uint16(action.X),
+		Tag:    uint16(action.Y),
+		Series: uint16(action.Dir),
+	}
+}
+
+func MonsterFlyAxeBody(action world.MonsterAction) []byte {
+	return EncodeBuffer(MessageBodyW(action.TargetX, action.TargetY, action.TargetActor))
+}
+
+func MonsterLightingCommand(action world.MonsterAction) mir176.Command {
+	return mir176.Command{Ident: mir176.SMLighting, Recog: world.MonsterActorID(world.Monster{ID: action.MonsterID}), Param: uint16(action.X), Tag: uint16(action.Y), Series: uint16(action.Dir)}
+}
+
+func MonsterLightingBody(action world.MonsterAction) []byte {
+	return EncodeBuffer(MessageBodyWL(int32(action.TargetX), int32(action.TargetY), action.TargetActor, 1))
+}
+
 func CharacterHitCommand(ch storage.Character, clientIdent uint16) mir176.Command {
 	return mir176.Command{
 		Ident:  HitServerIdent(clientIdent),
@@ -6578,7 +8738,7 @@ func HitServerIdent(clientIdent uint16) uint16 {
 func CharacterStruckCommand(hit world.CharacterHit) mir176.Command {
 	return mir176.Command{
 		Ident:  mir176.SMStruck,
-		Recog:  world.CharacterActorID(hit.Character),
+		Recog:  characterStruckAttackerID(hit),
 		Param:  uint16(hit.Character.HP),
 		Tag:    uint16(hit.Character.MaxHP),
 		Series: uint16(hit.Damage),
@@ -6586,13 +8746,28 @@ func CharacterStruckCommand(hit world.CharacterHit) mir176.Command {
 }
 
 func CharacterSpellStruckCommand(hit world.CharacterHit) mir176.Command {
+	damage := hit.Damage
+	if hit.StruckDamage > 0 {
+		damage = hit.StruckDamage
+	}
+	return CharacterSpellStruckCommandWithDamage(hit, damage)
+}
+
+func CharacterSpellStruckCommandWithDamage(hit world.CharacterHit, damage int) mir176.Command {
 	return mir176.Command{
 		Ident:  mir176.SMStruck,
-		Recog:  world.CharacterActorID(hit.Character),
+		Recog:  characterStruckAttackerID(hit),
 		Param:  uint16(hit.Character.HP),
 		Tag:    uint16(hit.Character.MaxHP),
-		Series: uint16(hit.Damage),
+		Series: uint16(damage),
 	}
+}
+
+func characterStruckAttackerID(hit world.CharacterHit) int32 {
+	if hit.AttackerActor != 0 {
+		return hit.AttackerActor
+	}
+	return world.MonsterActorID(world.Monster{ID: hit.AttackerID})
 }
 
 func CharacterDeathCommand(ch storage.Character) mir176.Command {

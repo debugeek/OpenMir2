@@ -118,6 +118,8 @@ type SpellGroundEvent struct {
 	Param    int
 	Duration time.Duration
 	StartAt  time.Time
+	RunTick  time.Duration
+	ClosedAt time.Time
 }
 
 type SpellDurability struct {
@@ -334,7 +336,6 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 	if ch.MapID == "" {
 		return SkillCastResult{}, fmt.Errorf("character has no current map")
 	}
-	ch.Dir = Direction(ch.X, ch.Y, targetX, targetY)
 	targetIDResolved := false
 	startTargetID := int32(0)
 	if targetID != 0 {
@@ -380,18 +381,8 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 			}
 		}
 	}
+	ch.Dir = Direction(ch.X, ch.Y, targetX, targetY)
 	cost := w.SpellCost(skill, state)
-	if ch.MP < cost {
-		return SkillCastResult{Character: ch, SkillID: skillID, ManaCost: cost, CooldownMS: skill.Delay}, fmt.Errorf("not enough mp")
-	}
-	ch.MP -= cost
-	start := ch
-	if ch.EquippedItems != nil {
-		start.EquippedItems = make(map[int]storage.UserItem, len(ch.EquippedItems))
-		for slot, item := range ch.EquippedItems {
-			start.EquippedItems[slot] = item
-		}
-	}
 	result = SkillCastResult{
 		Character:        ch,
 		SkillID:          skillID,
@@ -401,7 +392,7 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 		StartTargetID:    startTargetID,
 		SpellStarted:     false,
 		ManaCost:         cost,
-		ManaConsumed:     cost > 0,
+		ManaConsumed:     false,
 		CooldownMS:       skill.Delay,
 	}
 	if !w.SpellTargetInRange(ch, targetX, targetY) {
@@ -411,6 +402,19 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 		result.Events = w.spellFailureEventsWithoutStart(ch, result)
 		return result, fmt.Errorf("spell target out of range")
 	}
+	if ch.MP < cost {
+		return result, fmt.Errorf("not enough mp")
+	}
+	ch.MP -= cost
+	start := ch
+	if ch.EquippedItems != nil {
+		start.EquippedItems = make(map[int]storage.UserItem, len(ch.EquippedItems))
+		for slot, item := range ch.EquippedItems {
+			start.EquippedItems[slot] = item
+		}
+	}
+	result.Character = ch
+	result.ManaConsumed = cost > 0
 	spellStarted := false
 	defer func() {
 		if err != nil && spellStarted {
@@ -467,7 +471,7 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 			break
 		}
 		target, ok := w.explicitCharacterTargetLocked(players, ch.MapID, targetX, targetY, targetID)
-		if !ok || !w.magCanHitTargetLocked(ch.MapID, ch.X, ch.Y, target.X, target.Y) || !w.isProperCharacterTargetLocked(ch, target) || !w.characterMagicHitAllowedLocked(target) {
+		if !ok || !w.magCanHitTargetLocked(ch.MapID, ch.X, ch.Y, target.X, target.Y) || !w.isProperCharacterTargetLocked(ch, target) || !w.characterMagicHitAllowedLocked(target) || abs(target.X-targetX) > 1 || abs(target.Y-targetY) > 1 {
 			result.TargetIDResolved = false
 			result.Character = ch
 			break
@@ -576,7 +580,7 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 		}
 		skillTrained = validTargets
 	case "魔法盾":
-		if ch.BubbleDefenceUntil > 0 {
+		if ch.BubbleDefenceUntil != 0 {
 			result.Character = ch
 			break
 		}
@@ -655,7 +659,7 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 		for _, areaTarget := range affected {
 			if areaTarget.Character != nil {
 				target := *areaTarget.Character
-				if target.TransparentUntil > 0 {
+				if target.TransparentUntil != 0 {
 					continue
 				}
 				w.pendingSpells = append(w.pendingSpells, pendingSpell{DueAt: now.Add(800 * time.Millisecond), CasterID: ch.ID, TargetCharacterID: target.ID, TargetX: target.X, TargetY: target.Y, TransparentDuration: duration})
@@ -826,7 +830,7 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 			break
 		}
 		target, ok := w.explicitCharacterTargetLocked(players, ch.MapID, targetX, targetY, targetID)
-		if !ok || !w.magCanHitTargetLocked(ch.MapID, ch.X, ch.Y, target.X, target.Y) || !w.isProperCharacterTargetLocked(ch, target) || !w.characterMagicHitAllowedLocked(target) {
+		if !ok || !w.magCanHitTargetLocked(ch.MapID, ch.X, ch.Y, target.X, target.Y) || !w.isProperCharacterTargetLocked(ch, target) || !w.characterMagicHitAllowedLocked(target) || abs(target.X-targetX) > 1 || abs(target.Y-targetY) > 1 {
 			result.TargetIDResolved = false
 			result.Character = ch
 			break
@@ -836,7 +840,7 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 		result.MagicTargetID = CharacterActorID(target)
 	case "雷电术":
 		if mon := w.explicitMonsterTargetLocked(ch.MapID, targetX, targetY, targetID, 1); mon != nil {
-			if !w.isProperMonsterTargetLocked(ch, players, mon) || !w.monsterMagicHitAllowedLocked(mon) {
+			if !w.magCanHitTargetLocked(ch.MapID, ch.X, ch.Y, mon.X, mon.Y) || !w.isProperMonsterTargetLocked(ch, players, mon) || !w.monsterMagicHitAllowedLocked(mon) {
 				result.TargetIDResolved = false
 				result.Character = ch
 				break
@@ -861,7 +865,7 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 			break
 		}
 		target, ok := w.explicitCharacterTargetLocked(players, ch.MapID, targetX, targetY, targetID)
-		if !ok || !w.isProperCharacterTargetLocked(ch, target) || !w.characterMagicHitAllowedLocked(target) {
+		if !ok || !w.magCanHitTargetLocked(ch.MapID, ch.X, ch.Y, target.X, target.Y) || !w.isProperCharacterTargetLocked(ch, target) || !w.characterMagicHitAllowedLocked(target) {
 			result.TargetIDResolved = false
 			result.Character = ch
 			break
@@ -908,7 +912,7 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 		}
 		skillTrained = fireWallCreated > 0
 	case "召唤骷髅", "召唤神兽":
-		templateID := "骷髅"
+		templateID := "变异骷髅"
 		amuletCost := uint16(1)
 		if skillID == "召唤神兽" {
 			templateID = "神兽"
@@ -1125,8 +1129,8 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 			if mon != nil || !w.characterCannotParalyzeLocked(target) {
 				control := pendingSpell{
 					DueAt: now.Add(650 * time.Millisecond), CasterID: ch.ID,
-					ParalysisDuration:  time.Duration(paralysisPoint) * time.Second,
-					PoisonNotification: target.ID != "" && mon == nil, PoisonPoint: int(state.Level),
+					ParalysisDuration:  time.Duration(state.Level) * time.Second,
+					PoisonNotification: target.ID != "" && mon == nil, PoisonPoint: paralysisPoint,
 				}
 				if mon != nil {
 					control.TargetMonsterID = mon.ID
@@ -1137,7 +1141,7 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 			}
 			skillTrained = true
 		}
-		result.Character = ch
+
 	default:
 		return result, fmt.Errorf("skill %s effect not implemented", skillID)
 	}
@@ -1812,7 +1816,7 @@ func (w *World) isProperFriendLocked(a, b storage.Character) bool {
 		if a.ID == b.ID || (a.GuildID != "" && a.GuildID == b.GuildID) {
 			return true
 		}
-		return a.GuildWarArea && b.GuildWarArea && a.GuildAllianceID != "" && a.GuildAllianceID == b.GuildAllianceID
+		return a.GuildWarArea && b.GuildWarArea && charactersShareAlliance(a, b)
 	case 4:
 		if a.ID == b.ID {
 			return true

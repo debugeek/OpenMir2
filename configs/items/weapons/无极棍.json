@@ -1,7 +1,6 @@
 {
   "id": "无极棍",
   "name": "无极棍",
-  "kind": "weapon",
   "weight": 15,
   "stats": {
     "min_attack": 8,
@@ -22,6 +21,5 @@
   "need": 3,
   "need_level": 25,
   "price": 30000,
-  "stock": 5,
-  "color": 251
+  "ani_count": 0
 }

@@ -2,8 +2,10 @@ package world
 
 import (
 	"fmt"
+	"math/rand"
 	"time"
 
+	"openmir2/internal/data"
 	"openmir2/internal/storage"
 	"openmir2/internal/world/core"
 )
@@ -93,13 +95,55 @@ func (w *World) homeTeleportRandomCharacterLocked(ch storage.Character) (storage
 	if !ok {
 		return ch, fmt.Errorf("map %s not found", mapID)
 	}
-	next, err := core.TeleportRandomInMap(ch, mp, w.rand)
+	next, err := randomMoveToHomeMap(ch, mp, w.rand)
 	if err != nil {
 		return ch, err
 	}
 	w.refreshCharacterObjectOrderLocked(&next)
 	next.MapMoveAt = time.Now().UnixNano()
 	return next, nil
+}
+
+func randomMoveToHomeMap(ch storage.Character, mp data.StdMap, rng *rand.Rand) (storage.Character, error) {
+	if rng == nil {
+		return ch, fmt.Errorf("teleport rng is nil")
+	}
+	if mp.Width <= 0 || mp.Height <= 0 {
+		return ch, fmt.Errorf("map %s is invalid", mp.ID)
+	}
+	edge := 50
+	if mp.Height < 150 {
+		edge = 20
+		if mp.Height < 30 {
+			edge = 2
+		}
+	}
+	maxX := mp.Width - edge - 1
+	maxY := mp.Height - edge - 1
+	if maxX <= edge || maxY <= edge {
+		return core.TeleportRandomInMap(ch, mp, rng)
+	}
+	x := rng.Intn(maxX) + edge
+	y := rng.Intn(maxY) + edge
+	for attempt := 0; attempt < 201; attempt++ {
+		if mp.Walkable(x, y) {
+			ch.MapID = mp.ID
+			ch.X = x
+			ch.Y = y
+			return ch, nil
+		}
+		if x < maxX {
+			x++
+		} else {
+			x = rng.Intn(mp.Width)
+			if y < maxY {
+				y++
+			} else {
+				y = rng.Intn(mp.Height)
+			}
+		}
+	}
+	return ch, fmt.Errorf("no available teleport position")
 }
 
 func (w *World) ReviveCharacterAtHome(ch storage.Character) (storage.Character, error) {

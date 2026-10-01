@@ -1,7 +1,6 @@
 {
   "id": "地狱火",
   "name": "地狱火",
-  "kind": "book",
   "weight": 1,
   "stats": {
     "min_attack": 0,
@@ -19,6 +18,8 @@
   "shape": 1,
   "dura_max": 16,
   "price": 1000,
-  "stock": 5,
-  "color": 251
+  "looks": 0,
+  "need": 0,
+  "need_level": 0,
+  "ani_count": 0
 }

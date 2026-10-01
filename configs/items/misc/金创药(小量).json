@@ -1,7 +1,6 @@
 {
   "id": "金创药(小量)",
   "name": "金创药(小量)",
-  "kind": "consumable",
   "weight": 1,
   "stats": {
     "min_attack": 0,
@@ -17,6 +16,10 @@
   },
   "looks": 398,
   "price": 80,
-  "stock": 200,
-  "color": 251
+  "std_mode": 0,
+  "shape": 0,
+  "dura_max": 0,
+  "need": 0,
+  "need_level": 0,
+  "ani_count": 102
 }

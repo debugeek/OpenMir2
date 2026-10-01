@@ -2,6 +2,7 @@
   "id": "沙城总管-0150",
   "name": "沙城总管",
   "kind": "normal",
+  "castle_official": true,
   "map_id": "0150",
   "x": 6,
   "y": 16,

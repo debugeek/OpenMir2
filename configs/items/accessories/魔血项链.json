@@ -1,7 +1,6 @@
 {
   "id": "魔血项链",
   "name": "魔血项链",
-  "kind": "misc",
   "weight": 2,
   "stats": {
     "min_attack": 2,
@@ -21,6 +20,6 @@
   "dura_max": 4000,
   "need_level": 33,
   "price": 10000,
-  "stock": 5,
-  "color": 251
+  "need": 0,
+  "ani_count": 25
 }

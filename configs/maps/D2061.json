@@ -40,6 +40,9 @@
       "to_y": 16
     }
   ],
+  "doors": [
+    {"x": 16, "y": 175, "group": 36700343}
+  ],
   "monster_spawns": [
     {
       "monster_id": "宝箱",

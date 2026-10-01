@@ -9,5 +9,12 @@
   "spell": 10,
   "delay": 60,
   "need_level_1": 16,
-  "train_level_1": 100
+  "train_level_1": 100,
+  "def_spell": 10,
+  "def_power": 6,
+  "def_max_power": 6,
+  "need_level_2": 21,
+  "need_level_3": 26,
+  "train_level_2": 500,
+  "train_level_3": 1500
 }

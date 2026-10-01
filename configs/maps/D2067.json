@@ -19,6 +19,9 @@
       "to_y": 181
     }
   ],
+  "doors": [
+    {"x": 155, "y": 159, "group": 32640141}
+  ],
   "monster_spawns": [
     {
       "monster_id": "骷髅弓箭手1",

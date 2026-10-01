@@ -19,6 +19,9 @@
       "to_y": 88
     }
   ],
+  "doors": [
+    {"x": 201, "y": 147, "group": 36879507}
+  ],
   "monster_spawns": [
     {
       "monster_id": "幻影蜘蛛",

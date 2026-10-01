@@ -28,6 +28,58 @@ const (
 	testMPItemID        = "魔法药(小量)"
 )
 
+func TestCharacterFeatureExUsesEquippedDressEffects(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	w.mu.Lock()
+	w.data.Items["test-right-hand-effect"] = data.StdItem{ID: "test-right-hand-effect", Shape: 10}
+	w.data.Items["test-dress-effect"] = data.StdItem{ID: "test-dress-effect", Shape: 2, AniCount: 7}
+	w.mu.Unlock()
+	ch.EquippedItems = map[int]storage.UserItem{
+		SlotRightHand: {ItemID: "test-right-hand-effect"},
+	}
+
+	if got, want := w.CharacterFeatureEx(ch), int32(10<<8); got != want {
+		t.Fatalf("CharacterFeatureEx() = %d, want %d from right-hand effect", got, want)
+	}
+	ch.EquippedItems[SlotDress] = storage.UserItem{ItemID: "test-dress-effect", Desc: [14]byte{5: 4}}
+	if got, want := w.CharacterFeatureEx(ch), int32(7<<8); got != want {
+		t.Fatalf("CharacterFeatureEx() = %d, want %d with dress override", got, want)
+	}
+}
+
+func TestEquipHonorMedalRequiresCreditPoints(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	ch.BagItems = []storage.UserItem{{ItemID: "荣誉勋章21号", MakeIndex: 1, Dura: 50000, DuraMax: 50000}}
+	if _, err := w.EquipItemByBagIndex(ch, SlotRightHand, 1, "荣誉勋章21号"); err == nil {
+		t.Fatal("EquipItemByBagIndex() succeeded without credit points")
+	}
+	ch.CreditPoint = 14
+	if updated, err := w.EquipItemByBagIndex(ch, SlotRightHand, 1, "荣誉勋章21号"); err != nil {
+		t.Fatalf("EquipItemByBagIndex() with credit points: %v", err)
+	} else if updated.EquippedItems[SlotRightHand].ItemID != "荣誉勋章21号" {
+		t.Fatalf("equipped item = %+v, want honor medal", updated.EquippedItems[SlotRightHand])
+	}
+}
+
+func TestEquipAndUnequipMatchDisplayNameCaseInsensitively(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	w.mu.Lock()
+	w.data.Items["test-blade"] = data.StdItem{ID: "test-blade", Name: "Test Blade", StdMode: 5, DuraMax: 100}
+	w.mu.Unlock()
+	ch.BagItems = []storage.UserItem{{ItemID: "test-blade", MakeIndex: 9, Dura: 100, DuraMax: 100}}
+	updated, err := w.EquipItemByBagIndex(ch, SlotWeapon, 9, "test blade")
+	if err != nil {
+		t.Fatalf("EquipItemByBagIndex() = %v", err)
+	}
+	updated, _, err = w.UnequipItemByMakeIndexWithResult(updated, SlotWeapon, 9, "TEST BLADE")
+	if err != nil {
+		t.Fatalf("UnequipItemByMakeIndex() = %v", err)
+	}
+	if len(updated.BagItems) != 1 || updated.BagItems[0].ItemID != "test-blade" {
+		t.Fatalf("bag after round trip = %+v, want test-blade", updated.BagItems)
+	}
+}
+
 func TestStandardSkillMagicIDsMatchReference(t *testing.T) {
 	want := map[string]uint16{
 		"火球术": 1, "治愈术": 2, "基本剑术": 3, "精神力战法": 4,
@@ -157,6 +209,58 @@ func TestCharacterDeathScattersBagAndDetachesGroupWithoutDefaultGoldDrop(t *test
 	}
 }
 
+func TestDeadGroupMemberIsRemovedFromStoredGroup(t *testing.T) {
+	w, _ := newTestWorldCharacter(t)
+	owner := storage.Character{ID: "owner", GroupOwnerID: "owner", GroupMembers: []string{"owner", "dead"}, MapID: testMapID, HP: 100}
+	dead := storage.Character{ID: "dead", GroupOwnerID: "owner", MapID: testMapID, HP: 0}
+	if err := w.store.SaveCharacter(owner); err != nil {
+		t.Fatalf("SaveCharacter(owner) error = %v", err)
+	}
+	if err := w.store.SaveCharacter(dead); err != nil {
+		t.Fatalf("SaveCharacter(dead) error = %v", err)
+	}
+	w.mu.Lock()
+	players := map[string]storage.Character{owner.ID: owner, dead.ID: dead}
+	event, err := w.settleDeadCharacterGroupLocked(&dead, players)
+	w.mu.Unlock()
+	if err != nil {
+		t.Fatalf("settleDeadCharacterGroupLocked() error = %v", err)
+	}
+	updated, ok := w.store.Character(owner.ID)
+	if !ok || updated.GroupOwnerID != "" || updated.GroupMembers != nil {
+		t.Fatalf("stored owner = %+v, want dissolved one member group", updated)
+	}
+	if len(event.Cancel) != 1 || event.Cancel[0].ID != dead.ID {
+		t.Fatalf("cancel event = %+v, want dead member", event.Cancel)
+	}
+}
+
+func TestDeadGroupOwnerCancelsStoredGroup(t *testing.T) {
+	w, _ := newTestWorldCharacter(t)
+	owner := storage.Character{ID: "owner", GroupOwnerID: "owner", GroupMembers: []string{"owner", "member"}, MapID: testMapID, HP: 0}
+	member := storage.Character{ID: "member", GroupOwnerID: "owner", MapID: testMapID, HP: 100}
+	if err := w.store.SaveCharacter(owner); err != nil {
+		t.Fatalf("SaveCharacter(owner) error = %v", err)
+	}
+	if err := w.store.SaveCharacter(member); err != nil {
+		t.Fatalf("SaveCharacter(member) error = %v", err)
+	}
+	w.mu.Lock()
+	players := map[string]storage.Character{owner.ID: owner, member.ID: member}
+	event, err := w.settleDeadCharacterGroupLocked(&owner, players)
+	w.mu.Unlock()
+	if err != nil {
+		t.Fatalf("settleDeadCharacterGroupLocked() error = %v", err)
+	}
+	updated, ok := w.store.Character(member.ID)
+	if !ok || updated.GroupOwnerID != "" {
+		t.Fatalf("stored member = %+v, want cleared group owner", updated)
+	}
+	if len(event.Cancel) != 2 || event.Cancel[0].ID != member.ID || event.Cancel[1].ID != owner.ID {
+		t.Fatalf("cancel event = %+v, want member then owner", event.Cancel)
+	}
+}
+
 func TestPKDeathAddsPKPointsWithoutChangingExperienceOrLevel(t *testing.T) {
 	w, _ := newTestWorldCharacter(t)
 	victim := storage.Character{ID: "victim", MapID: "map", Level: 9, Experience: 77}
@@ -259,6 +363,34 @@ func TestExperienceGroupMembersUsesMapLifeAndDistance(t *testing.T) {
 	members := w.experienceGroupMembersLocked(killer, players)
 	if len(members) != 2 {
 		t.Fatalf("group members = %+v, want killer and near member", members)
+	}
+}
+
+func TestExperienceGroupMembersUsesReferenceRepeatedXDistanceCheck(t *testing.T) {
+	w, _ := newTestWorldCharacter(t)
+	killer := storage.Character{ID: "killer", GroupOwnerID: "group", MapID: "map", X: 10, Y: 10, HP: 100}
+	member := storage.Character{ID: "member", GroupOwnerID: "group", MapID: "map", X: 10, Y: 100, HP: 100}
+
+	members := w.experienceGroupMembersLocked(killer, map[string]storage.Character{member.ID: member})
+	if len(members) != 1 || members[0].ID != member.ID {
+		t.Fatalf("members = %+v, want reference repeated-X distance behavior", members)
+	}
+}
+
+func TestExperienceGroupMembersUsesStoredGroupOrder(t *testing.T) {
+	w, _ := newTestWorldCharacter(t)
+	killer := storage.Character{ID: "killer", GroupOwnerID: "owner", MapID: "map", X: 10, Y: 10, HP: 100}
+	owner := storage.Character{ID: "owner", GroupOwnerID: "owner", GroupMembers: []string{"member-b", "owner", "member-a"}, MapID: "map", X: 10, Y: 10, HP: 100}
+	players := map[string]storage.Character{
+		"owner":    owner,
+		"killer":   killer,
+		"member-a": {ID: "member-a", GroupOwnerID: "owner", MapID: "map", X: 10, Y: 10, HP: 100},
+		"member-b": {ID: "member-b", GroupOwnerID: "owner", MapID: "map", X: 10, Y: 10, HP: 100},
+	}
+
+	members := w.experienceGroupMembersLocked(killer, players)
+	if len(members) != 3 || members[0].ID != "member-b" || members[1].ID != "owner" || members[2].ID != "member-a" {
+		t.Fatalf("members = %+v, want stored group order", members)
 	}
 }
 
@@ -447,8 +579,8 @@ func TestCharacterDeathIsDiscardedWhenObjectLeavesWorldSnapshot(t *testing.T) {
 
 func TestUnsupportedReferenceMagicIDDoesNotAliasStandardSkill(t *testing.T) {
 	w := &World{}
-	if name, ok := w.SkillIDByMagicID(16); ok {
-		t.Fatalf("SkillIDByMagicID(16) = (%q, true), want no standard alias", name)
+	if name, ok := w.SkillIDByMagicID(34); ok {
+		t.Fatalf("SkillIDByMagicID(34) = (%q, true), want no standard alias", name)
 	}
 }
 
@@ -564,6 +696,11 @@ type twoSource struct{}
 
 func (twoSource) Int63() int64 { return 2 }
 func (twoSource) Seed(int64)   {}
+
+type twentySource struct{}
+
+func (twentySource) Int63() int64 { return 1 << 62 }
+func (twentySource) Seed(int64)   {}
 
 type seqSource struct {
 	vals []int64
@@ -763,8 +900,8 @@ func TestNormalizeMonsterDefaultAttackIntervalUsesReferenceBaseValue(t *testing.
 	if got := bundle.Monsters["archer-guard"].ViewRange; got != 12 {
 		t.Fatalf("archer guard view range = %d, want 12", got)
 	}
-	if got := bundle.Monsters["archer-legacy"].ViewRange; got != 12 {
-		t.Fatalf("legacy archer view range = %d, want 12", got)
+	if got := bundle.Monsters["archer-legacy"].ViewRange; got != 5 {
+		t.Fatalf("legacy archer view range = %d, want 5", got)
 	}
 	for _, test := range []struct {
 		id   string
@@ -805,8 +942,8 @@ func TestMonsterInitialSearchDelayUsesReferenceRaceRanges(t *testing.T) {
 		{race: 106, min: 1500, max: 2999},
 		{race: 200, min: 1500, max: 2999},
 		{race: 82, min: 1500, max: 2999},
-		{race: 81, min: 1500, max: 2999},
 		{race: 83, min: 1500, max: 2999},
+		{race: 100, min: 2500, max: 3999},
 		{race: 84, min: 1500, max: 2999},
 		{race: 118, min: 1500, max: 2999},
 		{race: 119, min: 1500, max: 2999},
@@ -815,11 +952,13 @@ func TestMonsterInitialSearchDelayUsesReferenceRaceRanges(t *testing.T) {
 		{race: 101, min: 1500, max: 2999},
 		{race: 102, min: 1500, max: 2999},
 		{race: 95, min: 2500, max: 3999},
+		{race: 85, min: 2500, max: 3999},
 		{race: 96, min: 2500, max: 3999},
 		{race: 103, min: 2500, max: 3999},
 		{race: 116, min: 2500, max: 3999},
 		{race: 117, min: 2500, max: 3999},
 		{race: 97, min: 1500, max: 2999},
+		{race: 53, min: 1500, max: 2999},
 		{race: 80, min: 3000, max: 4999},
 	} {
 		got := w.monsterInitialSearchDelayMSLocked(&Monster{Race: tc.race})
@@ -827,8 +966,9 @@ func TestMonsterInitialSearchDelayUsesReferenceRaceRanges(t *testing.T) {
 			t.Fatalf("race %d initial search delay = %d, want %d..%d", tc.race, got, tc.min, tc.max)
 		}
 	}
-	if got := w.monsterInitialSearchDelayMSLocked(&Monster{Race: 87, TemplateID: "掷斧骷髅"}); got != 3000 {
-		t.Fatalf("race 87 thrown-axe initial search delay = %d, want 3000", got)
+	got := w.monsterInitialSearchDelayMSLocked(&Monster{Race: 87, TemplateID: "掷斧骷髅"})
+	if got < 3000 || got > 4999 {
+		t.Fatalf("race 87 dual-axe initial search delay = %d, want 3000..4999", got)
 	}
 }
 
@@ -843,6 +983,24 @@ func TestZilkinZombieSchedulesLimitedRebirth(t *testing.T) {
 	delay := mon.RespawnAt.Sub(now)
 	if delay < 4*time.Second || delay > 23*time.Second {
 		t.Fatalf("zilkin rebirth delay = %s, want 4s..23s", delay)
+	}
+}
+
+func TestZilkinZombieUsesTATPeriodicSearch(t *testing.T) {
+	w := &World{}
+	if !w.monsterUsesReferencePeriodicSearchLocked(&Monster{Race: 96}) {
+		t.Fatal("zilkin zombie does not use TAT periodic search")
+	}
+}
+
+func TestZilkinZombieRebirthHalvesExperience(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	mon := &Monster{ID: "zilkin-respawn-exp", TemplateID: "zilkin-template", Race: 96, MaxHP: 100, HP: 0, Experience: 101, Alive: false, ZilkinRebirth: true, RespawnAt: time.Unix(1, 0), Spawn: data.StdSpawn{MapID: ch.MapID, MonsterID: "zilkin-template", X: ch.X + 2, Y: ch.Y}}
+	w.data.Monsters[mon.TemplateID] = data.StdMonster{ID: mon.TemplateID, Race: 96, HP: 100}
+	w.monsters[mon.ID] = mon
+	w.respawnLocked(time.Unix(10, 0))
+	if mon.Alive != true || mon.MaxHP != 50 || mon.Experience != 50 || !mon.LastWalkAt.Equal(time.Unix(11, 0)) {
+		t.Fatalf("zilkin rebirth = alive:%t max_hp:%d experience:%d last_walk:%v, want true/50/50/11s", mon.Alive, mon.MaxHP, mon.Experience, mon.LastWalkAt)
 	}
 }
 
@@ -879,7 +1037,7 @@ func TestAnimalRaceUsesFleeRouteWhenConfiguredAsAnimal(t *testing.T) {
 	}
 }
 
-func TestChickenAndSheepRacesUseReferenceFleeRouteWithoutTemplateFlag(t *testing.T) {
+func TestChickenAndDeerUsePassiveRouteWithoutFleeFlag(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
 	now := time.Unix(10, 0)
 	for _, race := range []int{51, 52} {
@@ -888,12 +1046,26 @@ func TestChickenAndSheepRacesUseReferenceFleeRouteWithoutTemplateFlag(t *testing
 		if err != nil {
 			t.Fatalf("race %d tick error = %v", race, err)
 		}
-		if !mon.RunAwayMode || mon.TargetCharacterID != ch.ID {
-			t.Fatalf("race %d state = %+v, want reference flee target", race, mon)
+		if mon.RunAwayMode || mon.TargetCharacterID != "" {
+			t.Fatalf("race %d state = %+v, want passive route", race, mon)
 		}
-		if len(actions) == 0 {
-			t.Fatalf("race %d actions = %+v, want flee action", race, actions)
+		if len(actions) > 0 {
+			t.Fatalf("race %d actions = %+v, want no target action", race, actions)
 		}
+	}
+}
+
+func TestChickenRetaliatesAfterBeingStruck(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	now := time.Unix(10, 0)
+	mon := &Monster{ID: "chicken-retaliate", TemplateID: "鸡", Race: 51, Animal: true, MapID: ch.MapID, X: ch.X, Y: ch.Y, Alive: true, HP: 5, MaxHP: 5, MinAttack: 1, MaxAttack: 1, AttackIntervalMS: 3000, LastAttackAt: time.Unix(1, 0), TargetCharacterID: ch.ID}
+	ch.X++
+	actions, hits, _, err := w.tickAnimalMonsterLocked(mon, map[string]storage.Character{ch.ID: ch}, now)
+	if err != nil {
+		t.Fatalf("tickAnimalMonsterLocked() error = %v", err)
+	}
+	if len(actions) != 1 || actions[0].Kind != MonsterActionHit || len(hits) != 1 {
+		t.Fatalf("chicken retaliation = actions:%+v hits:%+v, want one melee hit", actions, hits)
 	}
 }
 
@@ -944,6 +1116,11 @@ func TestProductionAnimalTemplatesUseReferenceRoutes(t *testing.T) {
 			if !ok {
 				t.Fatalf("production monster %q missing", tc.id)
 			}
+			if tc.id == "鸡" || tc.id == "鹿" {
+				if _, ok := bundle.Drops[tc.id]; ok {
+					t.Fatalf("production animal %q has a ground drop table", tc.id)
+				}
+			}
 			mon := &Monster{TemplateID: tpl.ID, Behavior: tpl.Behavior, Race: tpl.Race, Animal: tpl.Animal, FleeOnSight: tpl.FleeOnSight}
 			if w.monsterIsPassiveLocked(mon) != tc.passive || w.monsterIsAnimalLocked(mon) != tc.animal {
 				t.Fatalf("route = passive:%t animal:%t, want passive:%t animal:%t", w.monsterIsPassiveLocked(mon), w.monsterIsAnimalLocked(mon), tc.passive, tc.animal)
@@ -953,12 +1130,33 @@ func TestProductionAnimalTemplatesUseReferenceRoutes(t *testing.T) {
 			}
 		})
 	}
+	chicken := bundle.Monsters["鸡"]
+	deer := bundle.Monsters["鹿"]
+	unknownDeer := bundle.Monsters["鹿1"]
+	if chicken.WalkSpeedMS != 500 || deer.WalkSpeedMS != 1400 {
+		t.Fatalf("animal walk speeds = chicken:%d deer:%d, want 500/1400", chicken.WalkSpeedMS, deer.WalkSpeedMS)
+	}
+	if unknownDeer.Race != 97 || unknownDeer.WalkSpeedMS != 600 {
+		t.Fatalf("unknown hall deer template = race:%d speed:%d, want 97/600", unknownDeer.Race, unknownDeer.WalkSpeedMS)
+	}
+	if drops := bundle.Drops[unknownDeer.ID]; containsDropItem(drops, "鹿血") {
+		t.Fatal("unknown hall deer incorrectly uses animal blood drop")
+	}
+}
+
+func containsDropItem(table data.StdDropTable, itemID string) bool {
+	for _, entry := range table.Entries {
+		if entry.ItemID == itemID {
+			return true
+		}
+	}
+	return false
 }
 
 func TestMonsterInitialSearchDelayUsesReferenceBaseRange(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
 	now := time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC)
-	mon := &Monster{ID: "initial-search-delay", MapID: ch.MapID, Spawn: data.StdSpawn{MapID: ch.MapID}, X: ch.X, Y: ch.Y, Alive: true, HP: 100, MaxHP: 100}
+	mon := &Monster{ID: "initial-search-delay", MapID: ch.MapID, Spawn: data.StdSpawn{MapID: "test-map"}, X: ch.X, Y: ch.Y, Alive: true, HP: 100, MaxHP: 100}
 	if _, _, _, err := w.tickMonsterLocked(mon, map[string]storage.Character{}, now); err != nil {
 		t.Fatalf("tickMonsterLocked() error = %v", err)
 	}
@@ -1027,7 +1225,7 @@ func TestMonsterRunIntervalGatesSubsequentWorldTicks(t *testing.T) {
 	}
 }
 
-func TestMonsterAttackMissLeavesMonsterUnchanged(t *testing.T) {
+func TestMonsterAttackMissDoesNotStrikeMonster(t *testing.T) {
 	w, ch := prepareHitDamageTestWorld(t, nil)
 	w.mu.Lock()
 	var mon *Monster
@@ -1051,7 +1249,7 @@ func TestMonsterAttackMissLeavesMonsterUnchanged(t *testing.T) {
 		t.Fatalf("attackMonsterWithBaseDamageLocked() error = %v", err)
 	}
 	if result.Damage != 0 || mon.HP != 100 || mon.TargetCharacterID != "" || mon.LastHitterID != "" {
-		t.Fatalf("miss result = %+v, monster = %+v, want unchanged monster", result, mon)
+		t.Fatalf("miss result = %+v, monster = %+v, want no struck target or hitter", result, mon)
 	}
 }
 
@@ -1110,14 +1308,29 @@ func TestNormalMonsterZeroDamageEmitsActionWithoutCharacterHit(t *testing.T) {
 	}
 }
 
-func TestMonsterSpawnFacesSouth(t *testing.T) {
+func TestNormalMonsterChaseStoresTargetPosition(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "chase-target"
+	target.X += 3
+	mon := &Monster{ID: "chase-position-monster", MapID: ch.MapID, X: ch.X, Y: ch.Y, Alive: true, HP: 100, MaxHP: 100, TargetCharacterID: target.ID, TargetX: -1, TargetY: -1, WalkSpeedMS: 1, LastWalkAt: time.Unix(1, 0)}
+	actions, hits, _, err := w.tickMonsterTargetLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickMonsterTargetLocked() error = %v", err)
+	}
+	if len(actions) != 1 || actions[0].Kind != MonsterActionWalk || len(hits) != 0 || mon.TargetX != target.X || mon.TargetY != target.Y {
+		t.Fatalf("chase state = actions:%+v hits:%+v target:(%d,%d), want walk and target:(%d,%d)", actions, hits, mon.TargetX, mon.TargetY, target.X, target.Y)
+	}
+}
+
+func TestMonsterSpawnUsesReferenceDirectionRange(t *testing.T) {
 	w, _ := newAIWorldCharacter(t)
 	monsters, _ := w.SnapshotAround(testMapID, 0, 0, 99999)
 	if len(monsters) == 0 {
 		t.Fatalf("expected spawned monsters")
 	}
-	if monsters[0].Dir != 4 {
-		t.Fatalf("spawned monster dir = %d, want 4", monsters[0].Dir)
+	if monsters[0].Dir < 0 || monsters[0].Dir >= 8 {
+		t.Fatalf("spawned monster dir = %d, want reference Random(8) range", monsters[0].Dir)
 	}
 }
 
@@ -1300,8 +1513,8 @@ func TestAnimalMonsterDoesNotRunAwayFromPlayer(t *testing.T) {
 	w.mu.Lock()
 	updated := w.monsters[mon.ID]
 	w.mu.Unlock()
-	if updated == nil || !updated.RunAwayMode || updated.TargetCharacterID != ch.ID {
-		t.Fatalf("updated monster = %+v, want reference flee behavior", updated)
+	if updated == nil || updated.RunAwayMode || updated.TargetCharacterID != "" {
+		t.Fatalf("updated monster = %+v, want passive behavior", updated)
 	}
 	if len(result.MonsterActions) > 0 {
 		action := result.MonsterActions[0]
@@ -1448,7 +1661,7 @@ func TestWhiteSkeletonRevealsOnFirstTick(t *testing.T) {
 
 func TestWhiteSkeletonReferenceRacesRevealOnFirstTick(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
-	for _, race := range []int{87, 100} {
+	for _, race := range []int{100} {
 		t.Run(fmt.Sprintf("race-%d", race), func(t *testing.T) {
 			mon := &Monster{ID: fmt.Sprintf("white-first-%d", race), TemplateID: "变异骷髅", Race: race, MapID: ch.MapID, X: ch.X, Y: ch.Y, Alive: true, Hidden: true, FixedHideMode: true, FirstRevealPending: true, WalkSpeedMS: 1}
 			w.mu.Lock()
@@ -1462,6 +1675,14 @@ func TestWhiteSkeletonReferenceRacesRevealOnFirstTick(t *testing.T) {
 				t.Fatalf("race %d first tick = actions:%+v monster:%+v", race, result.MonsterActions, mon)
 			}
 		})
+	}
+}
+
+func TestWhiteSkeletonTimingUsesSlaveLevel(t *testing.T) {
+	mon := &Monster{Race: 100, SlaveMakeLevel: 2}
+	applyWhiteSkeletonTiming(mon)
+	if mon.AttackIntervalMS != 1800 || mon.WalkSpeedMS != 700 {
+		t.Fatalf("white skeleton timing = attack:%d walk:%d, want 1800/700", mon.AttackIntervalMS, mon.WalkSpeedMS)
 	}
 }
 
@@ -1513,6 +1734,20 @@ func TestStickMonsterHidesWhenTargetLeaves(t *testing.T) {
 	w.mu.Unlock()
 	if updated == nil || !updated.Hidden || !updated.FixedHideMode {
 		t.Fatalf("updated monster = %+v, want hidden flower after come-down", updated)
+	}
+}
+
+func TestStickMonsterUsesFixedHideModeAsDigState(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "stick-fixed-hide-target"
+	mon := &Monster{ID: "stick-fixed-hide", Race: 85, MapID: ch.MapID, X: ch.X, Y: ch.Y, Alive: true, Hidden: false, FixedHideMode: true}
+	actions, hits, _, err := w.tickStickMonsterLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickStickMonsterLocked() error = %v", err)
+	}
+	if len(actions) != 1 || actions[0].Kind != MonsterActionReveal || len(hits) != 0 || mon.FixedHideMode {
+		t.Fatalf("fixed hide state = actions:%+v hits:%+v fixed:%t, want reveal", actions, hits, mon.FixedHideMode)
 	}
 }
 
@@ -1585,6 +1820,7 @@ func TestCentipedeKingDoesNotHideImmediately(t *testing.T) {
 	mon.SearchNoTargetMS = 1
 	mon.SearchHasTargetMS = 1
 	mon.TargetFocusAt = time.Unix(0, 0)
+	mon.CentipedeHideAt = time.Unix(0, 0)
 	w.mu.Unlock()
 	ch := storage.Character{ID: "player-1", MapID: testMapID, X: mon.X + 1, Y: mon.Y, HP: 20, MaxHP: 20}
 	result, err := w.Tick([]PlayerSnapshot{{Character: ch}}, time.Unix(10, 0))
@@ -1627,16 +1863,67 @@ func TestCentipedeKingDoesNotHideImmediately(t *testing.T) {
 	}
 }
 
+func TestCentipedeKingUsesFixedHideModeAsHiddenState(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "centipede-fixed-hide-target"
+	mon := &Monster{ID: "centipede-fixed-hide", Behavior: "centipede_king", Race: 107, MapID: ch.MapID, X: ch.X, Y: ch.Y, Alive: true, Hidden: false, FixedHideMode: true, TargetFocusAt: time.Unix(1, 0)}
+	actions, hits, _, err := w.tickCentipedeMonsterLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(20, 0))
+	if err != nil {
+		t.Fatalf("tickCentipedeMonsterLocked() error = %v", err)
+	}
+	if len(actions) != 1 || actions[0].Kind != MonsterActionReveal || len(hits) != 0 || mon.FixedHideMode {
+		t.Fatalf("fixed hide state = actions:%+v hits:%+v fixed:%t, want reveal", actions, hits, mon.FixedHideMode)
+	}
+}
+
+func TestCentipedeKingRestoresHealthWhenRevealed(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "centipede-reveal-target"
+	target.X++
+	mon := &Monster{ID: "centipede-reveal-heal", Behavior: "centipede_king", Race: 107, MapID: ch.MapID, X: ch.X, Y: ch.Y, HP: 1, MaxHP: 100, Alive: true, Hidden: true, FixedHideMode: true, TargetFocusAt: time.Unix(0, 0)}
+	actions, hits, _, err := w.tickCentipedeMonsterLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(20, 0))
+	if err != nil {
+		t.Fatalf("tickCentipedeMonsterLocked() error = %v", err)
+	}
+	if len(actions) != 1 || actions[0].Kind != MonsterActionReveal || len(hits) != 0 || mon.HP != mon.MaxHP {
+		t.Fatalf("centipede reveal = actions:%+v hits:%+v hp:%d, want reveal and full health", actions, hits, mon.HP)
+	}
+}
+
+func TestStoneStatueRevealsNearbyStatuesTogether(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "stone-trigger-target"
+	target.X++
+	mon := &Monster{ID: "stone-statue", Race: 101, MapID: ch.MapID, X: ch.X, Y: ch.Y, Alive: true, StoneMode: true, ViewRange: 7}
+	nearby := &Monster{ID: "stone-statue-nearby", Race: 101, MapID: ch.MapID, X: ch.X + 3, Y: ch.Y, Alive: true, StoneMode: true}
+	far := &Monster{ID: "stone-statue-far", Race: 101, MapID: ch.MapID, X: ch.X + 8, Y: ch.Y, Alive: true, StoneMode: true}
+	w.monsters[mon.ID] = mon
+	w.monsters[nearby.ID] = nearby
+	w.monsters[far.ID] = far
+	actions, hits, _, err := w.tickStoneMonsterLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickStoneMonsterLocked() error = %v", err)
+	}
+	if len(actions) != 2 || actions[0].Kind != MonsterActionReveal || actions[1].Kind != MonsterActionReveal || len(hits) != 0 || mon.StoneMode || nearby.StoneMode || !far.StoneMode {
+		t.Fatalf("stone reveal = actions:%+v hits:%+v self:%t nearby:%t far:%t, want nearby statue cleared only", actions, hits, mon.StoneMode, nearby.StoneMode, far.StoneMode)
+	}
+}
+
 func TestCentipedeKingQueuesDelayedMultiTargetMagicAttack(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
+	w.rand = rand.New(zeroSource{})
 	first := ch
 	first.ID = "centipede-target-1"
 	first.X++
 	second := ch
 	second.ID = "centipede-target-2"
 	second.Y++
+	now := time.Unix(10, 0)
 	mon := &Monster{ID: "centipede-multi", Behavior: "centipede_king", Race: 107, MapID: ch.MapID, X: ch.X, Y: ch.Y, HP: 100, MaxHP: 100, MinAttack: 10, MaxAttack: 10, ViewRange: 6, Alive: true, TargetFocusAt: time.Unix(-20, 0), AttackIntervalMS: 1}
-	actions, hits, _, err := w.tickCentipedeMonsterLocked(mon, map[string]storage.Character{first.ID: first, second.ID: second}, time.Unix(10, 0))
+	actions, hits, _, err := w.tickCentipedeMonsterLocked(mon, map[string]storage.Character{first.ID: first, second.ID: second}, now)
 	if err != nil {
 		t.Fatalf("tickCentipedeMonsterLocked() error = %v", err)
 	}
@@ -1645,6 +1932,64 @@ func TestCentipedeKingQueuesDelayedMultiTargetMagicAttack(t *testing.T) {
 	}
 	if len(w.pendingMonsterAttacks[0].TargetIDs) != 2 || w.pendingMonsterAttacks[0].ImpactDelay != 600*time.Millisecond {
 		t.Fatalf("pending centipede attack = %+v, want two targets and 600ms impact", w.pendingMonsterAttacks[0])
+	}
+	if len(w.pendingSpells) != 2 || w.pendingSpells[0].DueAt != now || w.pendingSpells[1].DueAt != now {
+		t.Fatalf("pending centipede poison = %+v, want immediate poison effects", w.pendingSpells)
+	}
+}
+
+func TestMonsterMagicDelayHitsSummonWithoutSavingMonsterAsCharacter(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	attacker := &Monster{ID: "lighting-attacker", Race: 94, MapID: ch.MapID, X: ch.X, Y: ch.Y, HP: 100, MaxHP: 100, Alive: true}
+	target := &Monster{ID: "lighting-summon", MasterID: "summon-owner", MapID: ch.MapID, X: ch.X + 1, Y: ch.Y, HP: 100, MaxHP: 100, MagicDefense: 0, Alive: true}
+	w.monsters[attacker.ID] = attacker
+	w.monsters[target.ID] = target
+	owner := ch
+	owner.ID = "summon-owner"
+	w.pendingMonsterAttacks = append(w.pendingMonsterAttacks, pendingMonsterAttack{
+		DueAt:     time.Unix(11, 0),
+		MonsterID: attacker.ID,
+		Targets:   []pendingMonsterTarget{{ID: target.ID, Monster: true, Damage: 10}},
+	})
+	players := []PlayerSnapshot{{Character: owner}}
+	before, err := w.Tick(players, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("early Tick() error = %v", err)
+	}
+	if len(before.MonsterHits) != 0 || target.HP != 100 {
+		t.Fatalf("early summon hit = %+v hp=%d, want no hit and hp 100", before.MonsterHits, target.HP)
+	}
+	after, err := w.Tick(players, time.Unix(11, 0))
+	if err != nil {
+		t.Fatalf("due Tick() error = %v", err)
+	}
+	if len(after.MonsterHits) != 1 || target.HP >= 100 {
+		t.Fatalf("due summon hit = %+v hp=%d pending=%+v attacker=%+v target=%+v, want one hit and reduced hp", after.MonsterHits, target.HP, w.pendingMonsterAttacks, attacker, target)
+	}
+	if _, ok := w.store.Character(attacker.ID); ok {
+		t.Fatalf("monster attacker %q was saved as a character", attacker.ID)
+	}
+}
+
+func TestLightingZombieKeepsEightSecondSearchGate(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "lighting-gate-target"
+	target.X += 5
+	mon := &Monster{ID: "lighting-gate", Race: 94, MapID: ch.MapID, X: ch.X, Y: ch.Y, HP: 100, MaxHP: 100, Alive: true, TargetCharacterID: target.ID, LastTargetSearchAt: time.Unix(10, 0), LastAttackAt: time.Unix(0, 0), AttackIntervalMS: 1}
+	actions, _, _, err := w.tickLightingZombieLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(11, 0))
+	if err != nil {
+		t.Fatalf("early tickLightingZombieLocked() error = %v", err)
+	}
+	if len(actions) != 0 {
+		t.Fatalf("early lighting actions = %+v, want none inside eight-second gate", actions)
+	}
+	actions, _, _, err = w.tickLightingZombieLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(19, 0))
+	if err != nil {
+		t.Fatalf("ready tickLightingZombieLocked() error = %v", err)
+	}
+	if len(actions) != 1 || actions[0].Kind != MonsterActionLighting {
+		t.Fatalf("ready lighting actions = %+v, want one lighting action", actions)
 	}
 }
 
@@ -1657,14 +2002,14 @@ func TestRace107ProductionBehaviorsAreExplicitlyMapped(t *testing.T) {
 			t.Fatalf("monster %q behavior = %q, want %q", id, tpl.Behavior, want)
 		}
 		mon := &Monster{TemplateID: id, Behavior: tpl.Behavior, Race: tpl.Race}
-		if want == "" && w.monsterIsCentipedeLocked(mon) {
-			t.Fatalf("monster %q incorrectly uses centipede behavior", id)
+		if tpl.Race == 107 && !w.monsterIsCentipedeLocked(mon) {
+			t.Fatalf("monster %q does not use race 107 centipede behavior", id)
 		}
 	}
 	mon := &Monster{Race: 107, Dir: 4}
 	applyMonsterTemplateState(mon, data.StdMonster{Race: 107})
-	if mon.Dir != 4 {
-		t.Fatalf("unclassified race 107 direction = %d, want unchanged 4", mon.Dir)
+	if mon.Dir != 5 {
+		t.Fatalf("race 107 direction = %d, want 5", mon.Dir)
 	}
 }
 
@@ -1730,6 +2075,21 @@ func TestArcherGuardClearsExperienceHitterOnSuccessfulHit(t *testing.T) {
 	}
 	if len(hits) != 1 || hits[0].Damage <= 0 || mon.ExpHitterID != "" || !mon.ExpHitterAt.IsZero() {
 		t.Fatalf("archer hit/experience state = hit:%+v exp:%q at:%v, want damage and cleared experience hitter", hits, mon.ExpHitterID, mon.ExpHitterAt)
+	}
+}
+
+func TestArcherGuardZeroDamageStillSendsFlyAxeOnly(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "archer-zero-target"
+	target.X++
+	mon := &Monster{ID: "archer-zero", Race: 112, MapID: ch.MapID, X: ch.X, Y: ch.Y, ViewRange: 12, LeashRange: 12, TargetCharacterID: target.ID, MinAttack: 0, MaxAttack: 0, Alive: true, AttackIntervalMS: 1}
+	actions, hits, updated, err := w.tickArcherMonsterLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickArcherMonsterLocked() error = %v", err)
+	}
+	if len(actions) != 1 || actions[0].Kind != MonsterActionFlyAxe || len(hits) != 0 || len(updated) != 0 {
+		t.Fatalf("zero-damage archer result = actions:%+v hits:%+v updated:%+v, want fly axe only", actions, hits, updated)
 	}
 }
 
@@ -1808,6 +2168,31 @@ func TestStoneMonsterRevealsWhenApproached(t *testing.T) {
 	if updated == nil || updated.StoneMode {
 		t.Fatalf("updated monster = %+v, want stone mode cleared after reveal", updated)
 	}
+	w.mu.Lock()
+	if len(w.groundEvents) != 0 {
+		t.Fatalf("stone monster ground events = %d, want none", len(w.groundEvents))
+	}
+	w.mu.Unlock()
+}
+
+func TestStoneKingRevealCreatesTypeSixEvent(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	mon := &Monster{ID: "stone-king-reveal", Race: 102, MapID: ch.MapID, X: ch.X, Y: ch.Y, Alive: true, StoneMode: true, ViewRange: 8}
+	target := ch
+	target.ID = "stone-king-reveal-target"
+	target.X++
+	actions, _, _, err := w.tickStoneMonsterLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickStoneMonsterLocked() error = %v", err)
+	}
+	if len(actions) != 1 || len(w.groundEvents) != 1 {
+		t.Fatalf("stone king reveal = actions:%+v events:%d, want one action and event", actions, len(w.groundEvents))
+	}
+	for _, event := range w.groundEvents {
+		if event.Type != 6 || event.Duration != 5*time.Minute {
+			t.Fatalf("stone king event = %+v, want type 6 for five minutes", event)
+		}
+	}
 }
 
 func TestStoneKingUsesMagicAttackAfterReveal(t *testing.T) {
@@ -1822,6 +2207,39 @@ func TestStoneKingUsesMagicAttackAfterReveal(t *testing.T) {
 	}
 	if len(hits) != 1 || !hits[0].Magic {
 		t.Fatalf("stone king hits = %+v, want one magic hit", hits)
+	}
+}
+
+func TestStoneKingCallsSlavesWithExistingTargetOnSearchInterval(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "stone-king-slave-target"
+	target.X++
+	mon := &Monster{ID: "stone-king-slave", Race: 102, MapID: ch.MapID, X: ch.X, Y: ch.Y, HP: 40, MaxHP: 100, Alive: true, StoneDangerLevel: 5, TargetCharacterID: target.ID, NextSearchAt: time.Unix(10, 0), ViewRange: 8}
+	w.mu.Lock()
+	w.monsters[mon.ID] = mon
+	w.mu.Unlock()
+	_, _, _, err := w.tickStoneMonsterLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickStoneMonsterLocked() error = %v", err)
+	}
+	if mon.StoneDangerLevel != 4 || w.countMonsterChildrenLocked(mon.ID) == 0 {
+		t.Fatalf("stone king danger/slaves = %d/%d, want 4 and positive", mon.StoneDangerLevel, w.countMonsterChildrenLocked(mon.ID))
+	}
+}
+
+func TestStoneKingAttackBreaksHolySeize(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "stone-king-holy-target"
+	target.X++
+	mon := &Monster{ID: "stone-king-holy", Race: 102, MapID: ch.MapID, X: ch.X, Y: ch.Y, Alive: true, StoneMode: false, TargetCharacterID: target.ID, MinAttack: 10, MaxAttack: 10, MagicAttack: 10, MagicAttackMax: 10, AttackIntervalMS: 1, HolySeizeUntil: time.Unix(20, 0)}
+	actions, hits, _, err := w.tickStoneMonsterLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickStoneMonsterLocked() error = %v", err)
+	}
+	if len(actions) != 1 || len(hits) != 1 || !mon.HolySeizeUntil.IsZero() {
+		t.Fatalf("stone king attack = actions:%+v hits:%+v until:%v, want hit and cleared state", actions, hits, mon.HolySeizeUntil)
 	}
 }
 
@@ -1897,6 +2315,23 @@ func TestBigHeartMonsterHitsMultipleTargets(t *testing.T) {
 	}
 }
 
+func TestBigHeartMonsterIgnoresOtherMapVisibility(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	mon := &Monster{ID: "big-heart-cross-map", Race: 115, MapID: ch.MapID, X: ch.X, Y: ch.Y, ViewRange: 16, Alive: true, AttackIntervalMS: 1}
+	other := ch
+	other.ID = "big-heart-other-map"
+	other.MapID = "other-map"
+	other.X = mon.X
+	other.Y = mon.Y
+	actions, hits, _, err := w.tickBigHeartLocked(mon, map[string]storage.Character{other.ID: other}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickBigHeartMonsterLocked() error = %v", err)
+	}
+	if len(actions) != 0 || len(hits) != 0 {
+		t.Fatalf("cross-map visibility = actions:%+v hits:%+v, want no output", actions, hits)
+	}
+}
+
 func TestSpawnMonsterRoutesIgnoreInvalidTargets(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
 	cases := []struct {
@@ -1936,8 +2371,8 @@ func TestBigHeartMonsterDoesNotActOnOnlyProtectedTargets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tickBigHeartLocked() error = %v", err)
 	}
-	if len(actions) != 0 || len(hits) != 0 || len(w.pendingMonsterAttacks) != 0 {
-		t.Fatalf("protected-only result = actions:%+v hits:%+v pending:%+v, want no attack", actions, hits, w.pendingMonsterAttacks)
+	if len(actions) != 1 || actions[0].Kind != MonsterActionHit || len(hits) != 0 || len(w.pendingMonsterAttacks) != 0 {
+		t.Fatalf("protected-only result = actions:%+v hits:%+v pending:%+v, want attack action without target damage", actions, hits, w.pendingMonsterAttacks)
 	}
 }
 
@@ -1998,7 +2433,7 @@ func TestSpiderHouseSpawnsChildOnTarget(t *testing.T) {
 	}
 }
 
-func TestSpiderHouseSkipsChildWhenChildTileIsOccupied(t *testing.T) {
+func TestSpiderHouseSpawnsChildWhenChildTileIsOccupied(t *testing.T) {
 	bundle := loadTestBundle(t)
 	addSpawnNearDefault(t, &bundle, "幻影蜘蛛", 2, 0)
 	store, err := storage.Open(filepath.Join(t.TempDir(), "state.json"))
@@ -2051,8 +2486,8 @@ func TestSpiderHouseSkipsChildWhenChildTileIsOccupied(t *testing.T) {
 			childCount++
 		}
 	}
-	if childCount != 0 {
-		t.Fatalf("spawned spider children = %d, want none when child tile is occupied", childCount)
+	if childCount != 1 {
+		t.Fatalf("spawned spider children = %d, want one when child tile is occupied", childCount)
 	}
 }
 
@@ -2147,6 +2582,22 @@ func TestBeeQueenClearsInvalidTargetBeforeSpawning(t *testing.T) {
 	}
 }
 
+func TestBeeQueenDoesNotDeduplicateDelayedSpawns(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "bee-queen-repeat-target"
+	target.X++
+	mon := &Monster{ID: "bee-queen-repeat", Race: 103, MapID: ch.MapID, X: ch.X, Y: ch.Y, Alive: true, TargetCharacterID: target.ID, AttackIntervalMS: 1, LastAttackAt: time.Unix(1, 0)}
+	first, _, _, err := w.tickBeeQueenLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0))
+	if err != nil || len(first) != 1 || len(w.pendingMonsterSpawns) != 1 {
+		t.Fatalf("first bee queen tick = actions:%+v pending:%d err:%v", first, len(w.pendingMonsterSpawns), err)
+	}
+	second, _, _, err := w.tickBeeQueenLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0).Add(2*time.Millisecond))
+	if err != nil || len(second) != 1 || len(w.pendingMonsterSpawns) != 2 {
+		t.Fatalf("second bee queen tick = actions:%+v pending:%d err:%v", second, len(w.pendingMonsterSpawns), err)
+	}
+}
+
 func TestStickMonsterStaysFixedWhenPlayerApproaches(t *testing.T) {
 	bundle := loadTestBundle(t)
 	addSpawnNearDefault(t, &bundle, "食人花", 2, 0)
@@ -2218,9 +2669,10 @@ func TestCentipedeKingStaysFixedWhenPlayerApproaches(t *testing.T) {
 	}
 	w.mu.Lock()
 	mon.TargetFocusAt = time.Unix(0, 0)
+	mon.CentipedeHideAt = time.Unix(0, 0)
 	w.mu.Unlock()
 	ch := storage.Character{ID: "player-1", MapID: testMapID, X: mon.X + 1, Y: mon.Y, HP: 20, MaxHP: 20}
-	result, err := w.Tick([]PlayerSnapshot{{Character: ch}}, time.Unix(11, 0))
+	result, err := w.Tick([]PlayerSnapshot{{Character: ch}}, time.Unix(14, 100000000))
 	if err != nil {
 		t.Fatalf("Tick() error = %v", err)
 	}
@@ -2243,7 +2695,7 @@ func TestCentipedeKingHidesAfterLockedTargetDisappears(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tickCentipedeMonsterLocked() error = %v", err)
 	}
-	if len(hits) != 0 || len(actions) != 1 || actions[0].Kind != MonsterActionHide || mon.TargetCharacterID != "" || !mon.Hidden || !mon.FixedHideMode || !mon.StoneMode {
+	if len(hits) != 0 || len(actions) != 1 || actions[0].Kind != MonsterActionHide || mon.TargetCharacterID != "" || !mon.Hidden || !mon.FixedHideMode || mon.StoneMode {
 		t.Fatalf("invalid centipede target = actions:%+v hits:%+v target:%q hidden:%t fixed:%t stone:%t", actions, hits, mon.TargetCharacterID, mon.Hidden, mon.FixedHideMode, mon.StoneMode)
 	}
 }
@@ -2383,8 +2835,11 @@ func TestMonsterTickStopsChasingPastLeashRange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second Tick() error = %v", err)
 	}
-	if len(result.MonsterActions) != 0 || len(result.CharacterHits) != 0 {
-		t.Fatalf("tick result after leash break = %+v, want no actions", result)
+	if len(result.CharacterHits) != 0 {
+		t.Fatalf("tick result after delayed leash check = %+v, want no character hits", result)
+	}
+	if mon.TargetCharacterID != "" || mon.TargetX != -1 || mon.TargetY != -1 {
+		t.Fatalf("target after delayed leash check = id:%q x:%d y:%d, want cleared", mon.TargetCharacterID, mon.TargetX, mon.TargetY)
 	}
 }
 
@@ -2477,6 +2932,29 @@ func TestMonsterTargetSearchRejectsProtectedCharacters(t *testing.T) {
 	}
 }
 
+func TestGenericMonsterRunSkipsFixedHideAndStoneModes(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	for _, tc := range []struct {
+		name string
+		set  func(*Monster)
+	}{
+		{name: "fixed-hide", set: func(mon *Monster) { mon.FixedHideMode = true }},
+		{name: "stone", set: func(mon *Monster) { mon.StoneMode = true }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mon := &Monster{ID: "generic-mode-" + tc.name, Race: 50, MapID: ch.MapID, X: ch.X, Y: ch.Y, HP: 100, MaxHP: 100, Alive: true, WalkSpeedMS: 1}
+			tc.set(mon)
+			actions, hits, _, err := w.tickMonsterLocked(mon, map[string]storage.Character{ch.ID: ch}, time.Unix(10, 0))
+			if err != nil {
+				t.Fatalf("tickMonsterLocked() error = %v", err)
+			}
+			if len(actions) != 0 || len(hits) != 0 {
+				t.Fatalf("actions:%+v hits:%+v, want no inherited run", actions, hits)
+			}
+		})
+	}
+}
+
 func TestSummonedMonsterTargetSearchRejectsSafeMap(t *testing.T) {
 	w, master := newTestWorldCharacter(t)
 	w.data.Maps[master.MapID] = data.StdMap{ID: master.MapID, Safe: true}
@@ -2547,7 +3025,7 @@ func TestSummonedMonsterClearsAdminTargetBeforeAttack(t *testing.T) {
 	}
 }
 
-func TestElectronicScorpionChasesTargetOutsideAttackRange(t *testing.T) {
+func TestElectronicScorpionMovesOutsideAttackRange(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
 	target := ch
 	target.ID = "electronic-target"
@@ -2559,6 +3037,27 @@ func TestElectronicScorpionChasesTargetOutsideAttackRange(t *testing.T) {
 	}
 	if len(actions) != 1 || actions[0].Kind != MonsterActionWalk {
 		t.Fatalf("actions = %+v, want one walk action", actions)
+	}
+}
+
+func TestElectronicScorpionDelaysInitialSearch(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "electronic-search-target"
+	target.X++
+	mon := &Monster{ID: "electronic-search", Race: 200, MapID: ch.MapID, X: ch.X, Y: ch.Y, HP: 100, MaxHP: 100, Alive: true, ViewRange: 12, NextSearchAt: time.Unix(1, 0)}
+	players := map[string]storage.Character{target.ID: target}
+	if _, _, _, err := w.tickElectronicScorpionLocked(mon, players, time.Unix(10, 0)); err != nil {
+		t.Fatalf("initial tick error = %v", err)
+	}
+	if mon.TargetCharacterID != "" {
+		t.Fatalf("initial target = %q, want no target before one second", mon.TargetCharacterID)
+	}
+	if _, _, _, err := w.tickElectronicScorpionLocked(mon, players, time.Unix(11, 500000000)); err != nil {
+		t.Fatalf("delayed tick error = %v", err)
+	}
+	if mon.TargetCharacterID != target.ID {
+		t.Fatalf("delayed target = %q, want %q", mon.TargetCharacterID, target.ID)
 	}
 }
 
@@ -2589,6 +3088,21 @@ func TestElectronicScorpionMagicHitRestoresHealthFromDamage(t *testing.T) {
 	}
 	if mon.HP <= 40 {
 		t.Fatalf("electronic scorpion hp = %d, want restored health", mon.HP)
+	}
+}
+
+func TestElectronicScorpionHealthyHitUsesMagicAttack(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "electronic-healthy-target"
+	target.X += 2
+	mon := &Monster{ID: "electronic-healthy", Race: 200, MapID: ch.MapID, X: ch.X, Y: ch.Y, HP: 100, MaxHP: 100, MP: 2, MinAttack: 1, MaxAttack: 1, MagicAttack: 10, MagicAttackMax: 10, Alive: true, AttackIntervalMS: 1, TargetCharacterID: target.ID, LastAttackAt: time.Unix(1, 0)}
+	_, hits, _, err := w.tickElectronicScorpionLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickElectronicScorpionLocked() error = %v", err)
+	}
+	if len(hits) != 1 || !hits[0].Magic {
+		t.Fatalf("healthy electronic hit = %+v, want one magic hit", hits)
 	}
 }
 
@@ -2624,8 +3138,70 @@ func TestMagicCowUsesDelayedMagicAttack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tickMagicCowMonsterLocked() error = %v", err)
 	}
-	if len(actions) != 1 || len(hits) != 1 || hits[0].Magic || hits[0].ImpactDelay != 300*time.Millisecond {
-		t.Fatalf("magic cow result = actions:%+v hits:%+v, want delayed mixed attack", actions, hits)
+	if len(actions) != 1 || len(hits) != 1 || !hits[0].Magic || hits[0].ImpactDelay != 300*time.Millisecond {
+		t.Fatalf("magic cow result = actions:%+v hits:%+v, want delayed magic attack", actions, hits)
+	}
+}
+
+func TestMagicCowAttackBreaksHolySeize(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "magic-cow-holy-target"
+	target.X++
+	mon := &Monster{ID: "magic-cow-holy", Race: 91, MapID: ch.MapID, X: ch.X, Y: ch.Y, Alive: true, TargetCharacterID: target.ID, MinAttack: 10, MaxAttack: 10, MagicAttack: 10, MagicAttackMax: 10, AttackIntervalMS: 1, HolySeizeUntil: time.Unix(20, 0)}
+	actions, hits, _, err := w.tickMagicCowMonsterLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickMagicCowMonsterLocked() error = %v", err)
+	}
+	if len(actions) != 1 || len(hits) != 1 || !mon.HolySeizeUntil.IsZero() {
+		t.Fatalf("magic cow attack = actions:%+v hits:%+v until:%v, want hit and cleared state", actions, hits, mon.HolySeizeUntil)
+	}
+}
+
+func TestMagicCowRetargetsExistingTargetAfterTATSearchInterval(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	oldTarget := ch
+	oldTarget.ID = "magic-cow-old-target"
+	oldTarget.X += 4
+	newTarget := ch
+	newTarget.ID = "magic-cow-new-target"
+	newTarget.X++
+	mon := &Monster{ID: "magic-cow-retarget", Race: 91, MapID: ch.MapID, X: ch.X, Y: ch.Y, Alive: true, ViewRange: 10, TargetCharacterID: oldTarget.ID, LastTargetSearchAt: time.Unix(10, 0), NextSearchAt: time.Unix(100, 0)}
+	_, _, _, err := w.tickMagicCowMonsterLocked(mon, map[string]storage.Character{oldTarget.ID: oldTarget, newTarget.ID: newTarget}, time.Unix(19, 0))
+	if err != nil {
+		t.Fatalf("tickMagicCowMonsterLocked() error = %v", err)
+	}
+	if mon.TargetCharacterID != newTarget.ID {
+		t.Fatalf("retargeted target = %q, want %q", mon.TargetCharacterID, newTarget.ID)
+	}
+}
+
+func TestSpiderHouseConsumesCooldownBeforeSearchingWithoutTarget(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	mon := &Monster{ID: "spider-house-no-target", Race: 116, MapID: ch.MapID, X: ch.X, Y: ch.Y, Alive: true, LastAttackAt: time.Unix(1, 0), AttackIntervalMS: 1}
+	now := time.Unix(10, 0)
+	actions, hits, updated, err := w.tickSpiderHouseLocked(mon, map[string]storage.Character{}, now)
+	if err != nil {
+		t.Fatalf("tickSpiderHouseLocked() error = %v", err)
+	}
+	if len(actions) != 0 || len(hits) != 0 || len(updated) != 0 || !mon.LastAttackAt.Equal(now) {
+		t.Fatalf("spider house no-target = actions:%+v hits:%+v updated:%+v last_attack:%v, want cooldown consumed before search", actions, hits, updated, mon.LastAttackAt)
+	}
+}
+
+func TestSpiderHouseDoesNotDeduplicateDelayedSpawns(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "spider-house-repeat-target"
+	target.X++
+	mon := &Monster{ID: "spider-house-repeat", Race: 116, MapID: ch.MapID, X: ch.X, Y: ch.Y, Alive: true, TargetCharacterID: target.ID, AttackIntervalMS: 1, LastAttackAt: time.Unix(1, 0)}
+	first, _, _, err := w.tickSpiderHouseLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0))
+	if err != nil || len(first) != 1 || len(w.pendingMonsterSpawns) != 1 {
+		t.Fatalf("first spider house tick = actions:%+v pending:%d err:%v", first, len(w.pendingMonsterSpawns), err)
+	}
+	second, _, _, err := w.tickSpiderHouseLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0).Add(2*time.Millisecond))
+	if err != nil || len(second) != 1 || len(w.pendingMonsterSpawns) != 2 {
+		t.Fatalf("second spider house tick = actions:%+v pending:%d err:%v", second, len(w.pendingMonsterSpawns), err)
 	}
 }
 
@@ -2647,12 +3223,27 @@ func TestMagicCowLowHealthPhaseTemporarilyStopsAndAccelerates(t *testing.T) {
 	}
 }
 
-func TestMagicCowPeriodicMoveUsesSpaceMoveAction(t *testing.T) {
+func TestCowKingAttackUsesReferenceImpactDelay(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "cow-king-target"
+	target.X++
+	mon := &Monster{ID: "cow-king-attack", Race: 92, MapID: ch.MapID, X: ch.X, Y: ch.Y, HP: 100, MaxHP: 100, MinAttack: 10, MaxAttack: 10, Alive: true, TargetCharacterID: target.ID, AttackIntervalMS: 1, LastAttackAt: time.Unix(1, 0)}
+	_, hits, _, err := w.tickMagicCowMonsterLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickMagicCowMonsterLocked() error = %v", err)
+	}
+	if len(hits) != 1 || hits[0].ImpactDelay != 200*time.Millisecond {
+		t.Fatalf("cow king hit = %+v, want one hit with 200ms impact", hits)
+	}
+}
+
+func TestMagicCowPeriodicMoveWithoutTargetDoesNotMove(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
 	mon := &Monster{ID: "cow-king-move", Race: 92, MapID: ch.MapID, X: ch.X, Y: ch.Y, Alive: true, CowKingMoveAt: time.Unix(10, 0)}
-	action, moved := w.runMagicCowPeriodicMoveLocked(mon, nil, time.Unix(40, 0))
-	if !moved || action.Kind != MonsterActionSpaceMove {
-		t.Fatalf("periodic move = moved:%v action:%+v, want space move", moved, action)
+	action, moved := w.runMagicCowPeriodicMoveLocked(mon, nil, time.Unix(41, 0))
+	if moved || action.Kind != 0 {
+		t.Fatalf("periodic move = moved:%v action:%+v, want no move", moved, action)
 	}
 }
 
@@ -2689,6 +3280,14 @@ func TestDigOutZombieRevealsOnlyWithinThreeTiles(t *testing.T) {
 	if err != nil || len(actions) != 1 || actions[0].Kind != MonsterActionReveal || mon.Hidden {
 		t.Fatalf("dig-out reveal = actions:%+v hidden:%v err:%v", actions, mon.Hidden, err)
 	}
+	if len(w.groundEvents) != 1 {
+		t.Fatalf("dig-out ground events = %d, want one", len(w.groundEvents))
+	}
+	for _, event := range w.groundEvents {
+		if event.Type != 1 || event.Duration != 5*time.Minute || event.X != mon.X || event.Y != mon.Y {
+			t.Fatalf("dig-out ground event = %+v, want type 1 at monster for 5m", event)
+		}
+	}
 	mon.Hidden, mon.FixedHideMode = true, true
 	target.X = mon.X + 4
 	actions, _, _, err = w.tickDigOutZombieLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(11, 0))
@@ -2721,6 +3320,37 @@ func TestDigOutZombieStaysHiddenWithoutValidTarget(t *testing.T) {
 	}
 }
 
+func TestLightingZombieCastsAtFourTileTargetAfterBackPosition(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "lighting-four-away"
+	target.X += 4
+	mon := &Monster{ID: "lighting-four", Race: 94, MapID: ch.MapID, X: ch.X, Y: ch.Y, Dir: 6, HP: 100, MaxHP: 100, Alive: true, TargetCharacterID: target.ID, LastTargetSearchAt: time.Unix(1, 0), LastAttackAt: time.Unix(1, 0), AttackIntervalMS: 1, MinAttack: 10, MaxAttack: 10}
+	backDir := mon.Dir
+	actions, _, _, err := w.tickLightingZombieLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickLightingZombieLocked() error = %v", err)
+	}
+	if len(actions) != 1 || actions[0].Kind != MonsterActionLighting {
+		t.Fatalf("lighting actions = %+v, want one lighting action", actions)
+	}
+	if mon.TargetX != mon.X-dirOffsets[backDir][0] || mon.TargetY != mon.Y-dirOffsets[backDir][1] {
+		t.Fatalf("back position = (%d,%d), want (%d,%d)", mon.TargetX, mon.TargetY, mon.X-dirOffsets[backDir][0], mon.Y-dirOffsets[backDir][1])
+	}
+}
+
+func TestDigOutZombieUsesFixedHideModeAsDigState(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	mon := &Monster{ID: "dig-hidden-flag-only", Race: 95, MapID: ch.MapID, X: ch.X, Y: ch.Y, Hidden: true, Alive: true, NextSearchAt: time.Unix(20, 0)}
+	actions, hits, _, err := w.tickDigOutZombieLocked(mon, map[string]storage.Character{}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickDigOutZombieLocked() error = %v", err)
+	}
+	if len(actions) != 0 || len(hits) != 0 || !mon.Hidden || mon.FixedHideMode {
+		t.Fatalf("hidden flag only state = actions:%+v hits:%+v hidden:%t fixed:%t, want dedicated route to defer inherited behavior", actions, hits, mon.Hidden, mon.FixedHideMode)
+	}
+}
+
 func TestDigOutZombieContinuesActiveRouteAfterReveal(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
 	target := ch
@@ -2732,8 +3362,8 @@ func TestDigOutZombieContinuesActiveRouteAfterReveal(t *testing.T) {
 		t.Fatalf("first dig-out tick = actions:%+v hits:%+v err:%v", actions, hits, err)
 	}
 	actions, hits, _, err = w.tickNormalMonsterLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 300000000))
-	if err != nil || len(actions) != 1 || actions[0].Kind != MonsterActionHit || len(hits) != 1 {
-		t.Fatalf("post-reveal dig-out tick = actions:%+v hits:%+v err:%v", actions, hits, err)
+	if err != nil || len(actions) != 0 || len(hits) != 0 || mon.TargetCharacterID != "" {
+		t.Fatalf("post-reveal dig-out tick = actions:%+v hits:%+v target:%q err:%v", actions, hits, mon.TargetCharacterID, err)
 	}
 }
 
@@ -2758,6 +3388,39 @@ func TestGasMonsterUsesMagicResultAndDelayedImpact(t *testing.T) {
 	}
 }
 
+func TestGasMonsterSearchesEmptyTargetAfterOneSecond(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "gas-search-target"
+	target.X++
+	mon := &Monster{ID: "gas-search", Race: 90, MapID: ch.MapID, X: ch.X, Y: ch.Y, HP: 100, MaxHP: 100, ViewRange: 10, Alive: true, MinAttack: 10, MaxAttack: 10, Hit: 100, AttackIntervalMS: 1, LastTargetSearchAt: time.Unix(10, 0)}
+	players := map[string]storage.Character{target.ID: target}
+	if actions, hits, _, err := w.tickGasAttackMonsterLocked(mon, players, time.Unix(11, 0)); err != nil || len(actions) != 0 || len(hits) != 0 {
+		t.Fatalf("gas search at one-second boundary = actions:%+v hits:%+v err:%v, want no search", actions, hits, err)
+	}
+	actions, hits, _, err := w.tickGasAttackMonsterLocked(mon, players, time.Unix(11, 0).Add(time.Nanosecond))
+	if err != nil || len(actions) != 1 || len(hits) != 1 {
+		t.Fatalf("gas search after one second = actions:%+v hits:%+v err:%v, want one action and one hit", actions, hits, err)
+	}
+}
+
+func TestGasMonsterReseachesTargetAfterEightSeconds(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	oldTarget := ch
+	oldTarget.ID = "gas-existing-target"
+	oldTarget.X += 2
+	newTarget := ch
+	newTarget.ID = "gas-closer-target"
+	newTarget.X++
+	mon := &Monster{ID: "gas-existing", Race: 90, MapID: ch.MapID, X: ch.X, Y: ch.Y, HP: 100, MaxHP: 100, ViewRange: 10, Alive: true, TargetCharacterID: oldTarget.ID, TargetFocusAt: time.Unix(1, 0), LastTargetSearchAt: time.Unix(1, 0)}
+	if _, _, _, err := w.tickGasAttackMonsterLocked(mon, map[string]storage.Character{oldTarget.ID: oldTarget, newTarget.ID: newTarget}, time.Unix(10, 0)); err != nil {
+		t.Fatalf("tickGasAttackMonsterLocked() error = %v", err)
+	}
+	if mon.TargetCharacterID != newTarget.ID {
+		t.Fatalf("gas target = %q, want closer target %q", mon.TargetCharacterID, newTarget.ID)
+	}
+}
+
 func TestGasMonsterMissOmitsCharacterImpact(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
 	w.rand = rand.New(zeroSource{})
@@ -2771,6 +3434,21 @@ func TestGasMonsterMissOmitsCharacterImpact(t *testing.T) {
 	}
 	if len(actions) != 1 || actions[0].Kind != MonsterActionHit || len(hits) != 0 {
 		t.Fatalf("gas miss result = actions:%+v hits:%+v, want action without impact", actions, hits)
+	}
+}
+
+func TestGasMonsterAttackBreaksHolySeizeOnMiss(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "gas-holy-target"
+	target.X++
+	mon := &Monster{ID: "gas-holy", Race: 105, MapID: ch.MapID, X: ch.X, Y: ch.Y, Alive: true, TargetCharacterID: target.ID, MinAttack: 10, MaxAttack: 10, Hit: 0, AttackIntervalMS: 1, HolySeizeUntil: time.Unix(20, 0)}
+	actions, hits, _, err := w.tickGasAttackMonsterLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickGasAttackMonsterLocked() error = %v", err)
+	}
+	if len(actions) != 1 || len(hits) != 0 || !mon.HolySeizeUntil.IsZero() {
+		t.Fatalf("gas holy-seize miss = actions:%+v hits:%+v until:%v, want action, no hit, cleared state", actions, hits, mon.HolySeizeUntil)
 	}
 }
 
@@ -2810,6 +3488,42 @@ func TestGasMonsterQueuesPoisonStoneParalysis(t *testing.T) {
 	}
 }
 
+func TestGasMothCanRefreshHiddenTargetTransparency(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	w.rand = rand.New(zeroSource{})
+	target := ch
+	target.ID = "gas-moth-hidden-target"
+	target.X++
+	hidden := true
+	target.TransparentHideMode = &hidden
+	mon := &Monster{ID: "gas-moth-transparent", Race: 105, MapID: ch.MapID, X: ch.X, Y: ch.Y, HP: 100, MaxHP: 100, Alive: true, TargetCharacterID: target.ID, MinAttack: 10, MaxAttack: 10, Hit: 100, AttackIntervalMS: 1}
+	_, hits, updated, err := w.tickGasAttackMonsterLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickGasAttackMonsterLocked() error = %v", err)
+	}
+	if len(hits) != 1 || len(updated) != 1 || updated[0].TransparentUntil != time.Unix(10, 0).Add(time.Second).UnixNano() {
+		t.Fatalf("gas moth transparency = hits:%+v updated:%+v, want one hit and one-second transparency", hits, updated)
+	}
+}
+
+func TestGasMothSearchesHiddenTarget(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	now := time.Unix(10, 0)
+	hidden := true
+	target := ch
+	target.ID = "gas-hidden-search-target"
+	target.X++
+	target.TransparentHideMode = &hidden
+	mon := &Monster{ID: "gas-hidden-search", Race: 105, MapID: ch.MapID, X: ch.X, Y: ch.Y, HP: 100, MaxHP: 100, MinAttack: 10, MaxAttack: 10, AttackIntervalMS: 1, LastAttackAt: time.Unix(1, 0), LastTargetSearchAt: now.Add(-2 * time.Second), ViewRange: 10}
+	_, _, _, err := w.tickGasAttackMonsterLocked(mon, map[string]storage.Character{target.ID: target}, now)
+	if err != nil {
+		t.Fatalf("tickGasAttackMonsterLocked() error = %v", err)
+	}
+	if mon.TargetCharacterID != target.ID {
+		t.Fatalf("hidden search = target:%q, want target:%q", mon.TargetCharacterID, target.ID)
+	}
+}
+
 func TestMonsterKeepsLockedTransparentTargetForAttack(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
 	now := time.Unix(10, 0)
@@ -2823,6 +3537,24 @@ func TestMonsterKeepsLockedTransparentTargetForAttack(t *testing.T) {
 	w.clearInvalidMonsterTargetLocked(mon, map[string]storage.Character{target.ID: target}, now.Add(time.Second))
 	if mon.TargetCharacterID != target.ID {
 		t.Fatalf("target cleared = %q, want locked transparent target retained", mon.TargetCharacterID)
+	}
+}
+
+func TestSpitSpiderSearchesAfterOneSecondWithoutTarget(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	now := time.Unix(10, 0)
+	mon := &Monster{ID: "spit-search-delay", Race: 118, MapID: ch.MapID, X: ch.X, Y: ch.Y, Alive: true, HP: 100, MaxHP: 100, ViewRange: 10, NextSearchAt: now.Add(time.Minute)}
+	if _, _, _, err := w.tickSpitSpiderLocked(mon, nil, now); err != nil {
+		t.Fatalf("initial tickSpitSpiderLocked() error = %v", err)
+	}
+	target := ch
+	target.ID = "spit-search-target"
+	target.X += 3
+	if _, _, _, err := w.tickSpitSpiderLocked(mon, map[string]storage.Character{target.ID: target}, now.Add(1100*time.Millisecond)); err != nil {
+		t.Fatalf("delayed tickSpitSpiderLocked() error = %v", err)
+	}
+	if mon.TargetCharacterID != target.ID {
+		t.Fatalf("target = %q, want %q after one-second no-target interval", mon.TargetCharacterID, target.ID)
 	}
 }
 
@@ -2853,6 +3585,37 @@ func TestSpitSpiderHitsMultipleTargetsInDirection(t *testing.T) {
 	}
 }
 
+func TestSpitSpiderZeroPowerEmitsNoAttack(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "spit-zero-power-target"
+	target.X++
+	mon := &Monster{ID: "spit-zero-power", Race: 118, MapID: ch.MapID, X: ch.X, Y: ch.Y, HP: 100, MaxHP: 100, Alive: true, TargetCharacterID: target.ID, MinAttack: 0, MaxAttack: 0, Hit: 100, AttackIntervalMS: 1}
+	actions, hits, updated, err := w.tickSpitSpiderLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickSpitSpiderLocked() error = %v", err)
+	}
+	if len(actions) != 0 || len(hits) != 0 || len(updated) != 0 {
+		t.Fatalf("zero-power result = actions:%+v hits:%+v updated:%+v, want no attack output", actions, hits, updated)
+	}
+}
+
+func TestSpitSpiderRejectsTargetOutsideDirectionPattern(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "spit-outside-pattern"
+	target.X += 2
+	target.Y++
+	mon := &Monster{ID: "spit-pattern", Race: 119, MapID: ch.MapID, X: ch.X, Y: ch.Y, HP: 100, MaxHP: 100, Alive: true, TargetCharacterID: target.ID, MinAttack: 10, MaxAttack: 10, Hit: 100, AttackIntervalMS: 1}
+	actions, hits, _, err := w.tickSpitSpiderLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickSpitSpiderLocked() error = %v", err)
+	}
+	if len(actions) != 0 || len(hits) != 0 || mon.TargetX != target.X || mon.TargetY != target.Y {
+		t.Fatalf("outside-pattern result = actions:%+v hits:%+v target:%d,%d, want movement target without attack", actions, hits, mon.TargetX, mon.TargetY)
+	}
+}
+
 func TestSpitSpiderPoisonRouteDependsOnRace(t *testing.T) {
 	for _, race := range []int{82, 118, 119} {
 		w, ch := newTestWorldCharacter(t)
@@ -2865,12 +3628,44 @@ func TestSpitSpiderPoisonRouteDependsOnRace(t *testing.T) {
 		if err != nil {
 			t.Fatalf("race %d tickSpitSpiderLocked() error = %v", race, err)
 		}
-		if (race == 82 || race == 119) && len(w.pendingSpells) != 1 {
+		if (race == 82 || race == 118 || race == 119) && len(w.pendingSpells) != 1 {
 			t.Fatalf("race %d pending spells = %d, want one poison delivery", race, len(w.pendingSpells))
 		}
-		if race == 118 && len(w.pendingSpells) != 0 {
-			t.Fatalf("race 118 pending spells = %d, want no poison delivery", len(w.pendingSpells))
-		}
+	}
+}
+
+func TestSpitSpiderPoisonChanceUsesMonsterAntiPoison(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	w.rand = rand.New(twentySource{})
+	target := ch
+	target.ID = "spit-anti-poison-target"
+	target.X++
+	mon := &Monster{ID: "spit-anti-poison", Race: 119, MapID: ch.MapID, X: ch.X, Y: ch.Y, HP: 100, MaxHP: 100, Alive: true, TargetCharacterID: target.ID, MinAttack: 10, MaxAttack: 10, Hit: 100, Speed: 1, AntiPoison: 100, AttackIntervalMS: 1}
+	if _, _, _, err := w.tickSpitSpiderLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0)); err != nil {
+		t.Fatalf("tickSpitSpiderLocked() error = %v", err)
+	}
+	if len(w.pendingSpells) != 0 {
+		t.Fatalf("pending spells = %d, want no poison from monster anti-poison", len(w.pendingSpells))
+	}
+}
+
+func TestSpitSpiderPoisonAppliesOnLethalDamage(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	w.rand = rand.New(zeroSource{})
+	target := ch
+	target.ID = "spit-lethal-target"
+	target.X++
+	target.HP = 1
+	mon := &Monster{ID: "spit-lethal", Race: 82, MapID: ch.MapID, X: ch.X, Y: ch.Y, HP: 100, MaxHP: 100, Alive: true, TargetCharacterID: target.ID, MinAttack: 10, MaxAttack: 10, Hit: 100, Speed: 1, AttackIntervalMS: 1}
+	_, hits, _, err := w.tickSpitSpiderLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickSpitSpiderLocked() error = %v", err)
+	}
+	if len(hits) != 1 || hits[0].Damage <= 0 {
+		t.Fatalf("spit hits = %+v, want one lethal positive hit", hits)
+	}
+	if len(w.pendingSpells) != 1 {
+		t.Fatalf("pending spells = %d, want one poison delivery after lethal hit", len(w.pendingSpells))
 	}
 }
 
@@ -2923,6 +3718,24 @@ func TestSpitSpiderClearsInvalidTargetBeforeAttack(t *testing.T) {
 	}
 }
 
+func TestSpitSpiderPeriodicallyRetargetsAnExistingTarget(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	oldTarget := ch
+	oldTarget.ID = "spit-old-target"
+	oldTarget.X += 4
+	newTarget := ch
+	newTarget.ID = "spit-new-target"
+	newTarget.X++
+	mon := &Monster{ID: "spit-retarget", Race: 118, MapID: ch.MapID, X: ch.X, Y: ch.Y, Alive: true, ViewRange: 10, TargetCharacterID: oldTarget.ID, LastTargetSearchAt: time.Unix(10, 0), NextSearchAt: time.Unix(100, 0)}
+	_, _, _, err := w.tickSpitSpiderLocked(mon, map[string]storage.Character{oldTarget.ID: oldTarget, newTarget.ID: newTarget}, time.Unix(19, 0))
+	if err != nil {
+		t.Fatalf("tickSpitSpiderLocked() error = %v", err)
+	}
+	if mon.TargetCharacterID != newTarget.ID {
+		t.Fatalf("retargeted target = %q, want %q", mon.TargetCharacterID, newTarget.ID)
+	}
+}
+
 func TestSpitSpiderAttackCooldownReturnsBeforeTargetEffects(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
 	now := time.Unix(10, 0)
@@ -2939,11 +3752,26 @@ func TestSpitSpiderAttackCooldownReturnsBeforeTargetEffects(t *testing.T) {
 	}
 }
 
+func TestSpitSpiderAttackBreaksHolySeize(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "spit-holy-target"
+	target.X++
+	mon := &Monster{ID: "spit-holy", Race: 118, MapID: ch.MapID, X: ch.X, Y: ch.Y, Alive: true, TargetCharacterID: target.ID, MinAttack: 10, MaxAttack: 10, Hit: 100, Speed: 1, AttackIntervalMS: 1, HolySeizeUntil: time.Unix(20, 0)}
+	actions, hits, _, err := w.tickSpitSpiderLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickSpitSpiderLocked() error = %v", err)
+	}
+	if len(actions) != 1 || len(hits) != 1 || !mon.HolySeizeUntil.IsZero() {
+		t.Fatalf("spit spider attack = actions:%+v hits:%+v until:%v, want hit and cleared state", actions, hits, mon.HolySeizeUntil)
+	}
+}
+
 func TestDualAxeMonsterChasesTargetOutsideAttackRange(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
 	target := ch
 	target.ID = "dual-axe-target"
-	target.X, target.Y = firstWalkableAround(t, w, ch.MapID, ch.X+8, ch.Y, 12)
+	target.X, target.Y = ch.X+8, ch.Y
 	mon := &Monster{ID: "dual-axe", TemplateID: "掷斧骷髅", Race: 87, MapID: ch.MapID, X: ch.X, Y: ch.Y, HP: 100, MaxHP: 100, Alive: true, ViewRange: 12, TargetCharacterID: target.ID, TargetX: -1, TargetY: -1, WalkSpeedMS: 1, WalkStep: 1, AttackIntervalMS: 1}
 	oldDistance := abs(mon.X-target.X) + abs(mon.Y-target.Y)
 	actions, _, _, err := w.tickDualAxeMonsterLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0))
@@ -2953,6 +3781,91 @@ func TestDualAxeMonsterChasesTargetOutsideAttackRange(t *testing.T) {
 	newDistance := abs(mon.X-target.X) + abs(mon.Y-target.Y)
 	if len(actions) != 1 || actions[0].Kind != MonsterActionWalk || newDistance >= oldDistance {
 		t.Fatalf("actions = %+v, distance = %d -> %d, want one advancing walk", actions, oldDistance, newDistance)
+	}
+}
+
+func TestDualAxeMonsterChasesTargetOutsideVerticalAttackRange(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "dual-axe-vertical-target"
+	target.Y = ch.Y + 8
+	mon := &Monster{ID: "dual-axe-vertical", Race: 87, MapID: ch.MapID, X: ch.X, Y: ch.Y, HP: 100, MaxHP: 100, Alive: true, ViewRange: 12, TargetCharacterID: target.ID, TargetX: -1, TargetY: -1, WalkSpeedMS: 1, WalkStep: 1, AttackIntervalMS: 1}
+	actions, _, _, err := w.tickDualAxeMonsterLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickDualAxeMonsterLocked() error = %v", err)
+	}
+	if len(actions) != 1 || actions[0].Kind != MonsterActionWalk {
+		t.Fatalf("actions = %+v, want one advancing walk", actions)
+	}
+}
+
+func TestDualAxeMonsterRetainsCrossMapTargetUntilAttackCooldown(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "dual-cross-map"
+	target.MapID = ch.MapID + "-other"
+	mon := &Monster{ID: "dual-cross-map", Race: 87, MapID: ch.MapID, X: ch.X, Y: ch.Y, Alive: true, ViewRange: 5, TargetCharacterID: target.ID, AttackIntervalMS: 1000, LastAttackAt: time.Unix(10, 0), LastWalkAt: time.Unix(1, 0)}
+	_, _, _, err := w.tickMonsterLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0).Add(500*time.Millisecond))
+	if err != nil {
+		t.Fatalf("tickMonsterLocked() error = %v", err)
+	}
+	if mon.TargetCharacterID != target.ID {
+		t.Fatalf("target = %q, want cross-map target retained before cooldown", mon.TargetCharacterID)
+	}
+	_, _, _, err = w.tickMonsterLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(12, 0))
+	if err != nil {
+		t.Fatalf("tickMonsterLocked() after cooldown error = %v", err)
+	}
+	if mon.TargetCharacterID != "" {
+		t.Fatalf("target after cooldown = %q, want cleared", mon.TargetCharacterID)
+	}
+}
+
+func TestThornDarkRetainsCrossMapTargetUntilAttackCooldown(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "thorn-cross-map"
+	target.MapID = ch.MapID + "-other"
+	mon := &Monster{ID: "thorn-cross-map", Race: 93, MapID: ch.MapID, X: ch.X, Y: ch.Y, Alive: true, ViewRange: 5, TargetCharacterID: target.ID, AttackIntervalMS: 1000, LastAttackAt: time.Unix(10, 0), LastWalkAt: time.Unix(1, 0)}
+	_, _, _, err := w.tickMonsterLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0).Add(500*time.Millisecond))
+	if err != nil {
+		t.Fatalf("tickMonsterLocked() error = %v", err)
+	}
+	if mon.TargetCharacterID != target.ID {
+		t.Fatalf("target = %q, want cross-map target retained before cooldown", mon.TargetCharacterID)
+	}
+}
+
+func TestDualAxeMonsterReseachesAndReplacesTargetEveryFiveSeconds(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	oldTarget := ch
+	oldTarget.ID = "dual-axe-old-target"
+	oldTarget.X += 5
+	newTarget := ch
+	newTarget.ID = "dual-axe-new-target"
+	newTarget.X++
+	now := time.Unix(10, 0)
+	mon := &Monster{ID: "dual-axe-research", TemplateID: "掷斧骷髅", Race: 87, MapID: ch.MapID, X: ch.X, Y: ch.Y, Alive: true, ViewRange: 12, TargetCharacterID: oldTarget.ID, TargetFocusAt: now, LastTargetSearchAt: now.Add(-5 * time.Second), AttackIntervalMS: 3600000000}
+	_, _, _, err := w.tickDualAxeMonsterLocked(mon, map[string]storage.Character{oldTarget.ID: oldTarget, newTarget.ID: newTarget}, now)
+	if err != nil {
+		t.Fatalf("tickDualAxeMonsterLocked() error = %v", err)
+	}
+	if mon.TargetCharacterID != newTarget.ID || !mon.LastTargetSearchAt.Equal(now) {
+		t.Fatalf("researched target = %q search_at=%v, want %q at %v", mon.TargetCharacterID, mon.LastTargetSearchAt, newTarget.ID, now)
+	}
+}
+
+func TestNormalMonsterDoesNotAttackSameTileTarget(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "same-tile-target"
+	mon := &Monster{ID: "same-tile-monster", MapID: ch.MapID, X: ch.X, Y: ch.Y, Alive: true, TargetCharacterID: target.ID, MinAttack: 10, MaxAttack: 10, AttackIntervalMS: 1}
+	actions, hits, _, err := w.tickMonsterTargetLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickMonsterTargetLocked() error = %v", err)
+	}
+	if len(hits) != 0 || !mon.LastAttackAt.IsZero() {
+		t.Fatalf("same-tile attack = actions:%+v hits:%+v last_attack:%v, want no attack", actions, hits, mon.LastAttackAt)
 	}
 }
 
@@ -2968,6 +3881,39 @@ func TestDualAxeMonsterUsesFlyingAxeImpactDelayAndDefaultCount(t *testing.T) {
 	}
 	if len(actions) != 1 || len(hits) != 1 || hits[0].ImpactDelay != 700*time.Millisecond || mon.AttackMax != 2 {
 		t.Fatalf("dual-axe result = actions:%+v hits:%+v attack_max:%d, want flying-axe delay 700ms and max 2", actions, hits, mon.AttackMax)
+	}
+}
+
+func TestArcherMonsterUsesReferenceAttackCount(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "archer-count-target"
+	target.X += 2
+	mon := &Monster{ID: "archer-count", Race: 104, MapID: ch.MapID, X: ch.X, Y: ch.Y, HP: 100, MaxHP: 100, MinAttack: 10, MaxAttack: 10, Alive: true, TargetCharacterID: target.ID, AttackIntervalMS: 1}
+	_, _, _, err := w.tickDualAxeMonsterLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickDualAxeMonsterLocked() error = %v", err)
+	}
+	if mon.AttackMax != 6 {
+		t.Fatalf("archer attack max = %d, want 6", mon.AttackMax)
+	}
+}
+
+func TestDualAxeMonsterConsumesBlockedFlyingAxeWithoutOutput(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "dual-axe-blocked-target"
+	target.X += 2
+	blockedMap := w.data.Maps[ch.MapID]
+	blockedMap.Blocked = append(blockedMap.Blocked, data.StdPoint{X: ch.X + 1, Y: ch.Y})
+	w.data.Maps[ch.MapID] = blockedMap
+	mon := &Monster{ID: "dual-axe-blocked", TemplateID: "掷斧骷髅", Race: 87, MapID: ch.MapID, X: ch.X, Y: ch.Y, HP: 100, MaxHP: 100, MinAttack: 10, MaxAttack: 10, Alive: true, TargetCharacterID: target.ID, AttackIntervalMS: 1}
+	actions, hits, updated, err := w.tickDualAxeMonsterLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickDualAxeMonsterLocked() error = %v", err)
+	}
+	if len(actions) != 0 || len(hits) != 0 || len(updated) != 0 || mon.AttackCount != 1 {
+		t.Fatalf("blocked flying axe = actions:%+v hits:%+v updated:%+v attack_count:%d, want no output and consumed attack", actions, hits, updated, mon.AttackCount)
 	}
 }
 
@@ -3014,19 +3960,19 @@ func TestDualAxeRoutesRejectInvalidTargets(t *testing.T) {
 func TestStandardMonsterRoutesUseTemplateSemanticsForConflictingRaces(t *testing.T) {
 	w, _ := newTestWorldCharacter(t)
 	archer := &Monster{TemplateID: "祖玛弓箭手", Race: 104}
-	if !w.monsterIsArcherLocked(archer) || w.monsterIsDualAxeLocked(archer) {
-		t.Fatalf("race 104 archer route = archer:%t dual-axe:%t, want archer only", w.monsterIsArcherLocked(archer), w.monsterIsDualAxeLocked(archer))
+	if w.monsterIsArcherLocked(archer) || !w.monsterIsDualAxeLocked(archer) {
+		t.Fatalf("race 104 archer route = archer:%t dual-axe:%t, want dual-axe only", w.monsterIsArcherLocked(archer), w.monsterIsDualAxeLocked(archer))
 	}
 	whiteSkeleton := &Monster{TemplateID: "变异骷髅", Race: 87}
-	if !w.monsterIsWhiteSkeletonLocked(whiteSkeleton) || w.monsterIsDualAxeLocked(whiteSkeleton) {
-		t.Fatalf("mutated skeleton route = white:%t dual-axe:%t, want white only", w.monsterIsWhiteSkeletonLocked(whiteSkeleton), w.monsterIsDualAxeLocked(whiteSkeleton))
+	if w.monsterIsWhiteSkeletonLocked(whiteSkeleton) || !w.monsterIsDualAxeLocked(whiteSkeleton) {
+		t.Fatalf("mutated skeleton route = white:%t dual-axe:%t, want dual-axe only", w.monsterIsWhiteSkeletonLocked(whiteSkeleton), w.monsterIsDualAxeLocked(whiteSkeleton))
 	}
 	if !w.monsterIsWhiteSkeletonLocked(&Monster{Race: 100}) {
 		t.Fatal("reference white skeleton race 100 did not use white skeleton route")
 	}
 	leader := &Monster{TemplateID: "半兽统领", Race: 87}
-	if w.monsterIsWhiteSkeletonLocked(leader) || w.monsterIsDualAxeLocked(leader) {
-		t.Fatalf("half-beast leader route = white:%t dual-axe:%t, want generic route", w.monsterIsWhiteSkeletonLocked(leader), w.monsterIsDualAxeLocked(leader))
+	if w.monsterIsWhiteSkeletonLocked(leader) || !w.monsterIsDualAxeLocked(leader) {
+		t.Fatalf("half-beast leader route = white:%t dual-axe:%t, want dual-axe only", w.monsterIsWhiteSkeletonLocked(leader), w.monsterIsDualAxeLocked(leader))
 	}
 	dualAxe := &Monster{TemplateID: "掷斧骷髅", Race: 87}
 	if w.monsterIsWhiteSkeletonLocked(dualAxe) || !w.monsterIsDualAxeLocked(dualAxe) {
@@ -3199,9 +4145,22 @@ func TestCombatDropPickupAndPersistence(t *testing.T) {
 	if len(monsters) == 0 {
 		t.Fatalf("expected monsters")
 	}
+	var targetMonster Monster
+	for _, candidate := range monsters {
+		if candidate.TemplateID == testMonsterID {
+			targetMonster = candidate
+			break
+		}
+	}
+	if targetMonster.ID == "" {
+		t.Fatalf("expected chicken target")
+	}
+	w.mu.Lock()
+	w.monsters[targetMonster.ID].HP = 1
+	w.mu.Unlock()
 	var result AttackResult
 	for i := 0; i < 10; i++ {
-		result, err = attackMonsterForTest(w, ch, monsters[0].ID)
+		result, err = attackMonsterForTest(w, ch, targetMonster.ID)
 		if err != nil {
 			t.Fatalf("Attack() error = %v", err)
 		}
@@ -3222,14 +4181,24 @@ func TestCombatDropPickupAndPersistence(t *testing.T) {
 	if result.Experience == 0 {
 		t.Fatalf("expected experience")
 	}
-	if len(result.Drops) == 0 {
-		t.Fatalf("expected drops")
+	if len(result.Drops) != 0 {
+		t.Fatalf("animal drops = %+v, want none", result.Drops)
 	}
-	ch.X, ch.Y = result.Drops[0].X, result.Drops[0].Y
-	ch, _, err = w.PickupWithResult(ch, result.Drops[0].ID)
-	if err != nil {
-		t.Fatalf("Pickup() error = %v", err)
+	corpse := targetMonster
+	var butcher ButcherResult
+	for i := 0; i < 20; i++ {
+		butcher, err = w.ButcherAnimal(ch, MonsterActorID(corpse), corpse.X, corpse.Y, ch.Dir)
+		if err == nil && butcher.FoundItem {
+			break
+		}
 	}
+	if err != nil || !butcher.FoundItem || butcher.AddedItem.ItemID != "鸡肉" {
+		t.Fatalf("ButcherAnimal() = %+v, err=%v, want chicken meat", butcher, err)
+	}
+	if !butcher.Skeleton {
+		t.Fatalf("ButcherAnimal() skeleton = false, want corpse skeletonization")
+	}
+	ch = butcher.Character
 	reopened, err := storage.Open(path)
 	if err != nil {
 		t.Fatalf("reopen error = %v", err)
@@ -3241,8 +4210,8 @@ func TestCombatDropPickupAndPersistence(t *testing.T) {
 	if saved.Experience == 0 {
 		t.Fatalf("experience was not persisted")
 	}
-	if len(saved.BagItems) < 2 {
-		t.Fatalf("pickup was not persisted")
+	if len(saved.BagItems) < 1 {
+		t.Fatalf("butchered meat was not persisted")
 	}
 }
 
@@ -3314,25 +4283,70 @@ func TestMonsterCharacterDamageDecrementsRecoveryCounters(t *testing.T) {
 	}
 }
 
-func TestExplosionSpiderCharacterDamageUsesDelayedImpact(t *testing.T) {
+func TestMonsterCharacterDamageAppliesStruckDurability(t *testing.T) {
+	w, _ := newTestWorldCharacter(t)
+	mon := &Monster{ID: "mon-dura-hit", MapID: testMapID, HP: 100, MaxHP: 100, Alive: true, MinAttack: 1, MaxAttack: 1}
+	ch := storage.Character{
+		ID: "player-dura-hit", MapID: testMapID, HP: 100, MaxHP: 100,
+		EquippedItems: map[int]storage.UserItem{SlotDress: {ItemID: "armor", Dura: 1, DuraMax: 100}},
+	}
+	next, hit, err := w.monsterAttackCharacterWithDamageLocked(mon, ch, 10)
+	if err != nil {
+		t.Fatalf("monsterAttackCharacterWithDamageLocked() error = %v", err)
+	}
+	if next.EquippedItems[SlotDress].ItemID != "" || len(hit.DeletedItems) != 1 || !hit.FeatureChanged {
+		t.Fatalf("struck durability = item:%+v deleted:%d feature:%t, want deleted armor", next.EquippedItems[SlotDress], len(hit.DeletedItems), hit.FeatureChanged)
+	}
+}
+
+func TestUndeadMonsterAttackDoesNotUseTargetUndeadDamage(t *testing.T) {
+	w, _ := newTestWorldCharacter(t)
+	w.data.Items["holy-ring"] = data.StdItem{ID: "holy-ring", StdMode: 19, Undead: 7}
+	mon := &Monster{ID: "undead-attacker", MapID: testMapID, HP: 100, MaxHP: 100, Alive: true, Undead: 1}
+	ch := storage.Character{
+		ID: "undead-target", MapID: testMapID,
+		EquippedItems: map[int]storage.UserItem{SlotArmRingL: {ItemID: "holy-ring"}},
+	}
+	_, hit, err := w.monsterAttackCharacterWithDamageLocked(mon, ch, 10)
+	if err != nil {
+		t.Fatalf("monsterAttackCharacterWithDamageLocked() error = %v", err)
+	}
+	if hit.Damage != 10 {
+		t.Fatalf("undead monster damage = %d, want 10", hit.Damage)
+	}
+}
+
+func TestStickMonsterAttackBreaksHolySeize(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "stick-holy-target"
+	target.X++
+	mon := &Monster{ID: "stick-holy", Race: 85, MapID: ch.MapID, X: ch.X, Y: ch.Y, Alive: true, TargetCharacterID: target.ID, MinAttack: 10, MaxAttack: 10, AttackIntervalMS: 1, HolySeizeUntil: time.Unix(20, 0)}
+	actions, hits, _, err := w.tickStickMonsterLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickStickMonsterLocked() error = %v", err)
+	}
+	if len(actions) != 1 || len(hits) != 1 || !mon.HolySeizeUntil.IsZero() {
+		t.Fatalf("stick attack = actions:%+v hits:%+v until:%v, want hit and cleared state", actions, hits, mon.HolySeizeUntil)
+	}
+}
+
+func TestExplosionSpiderCharacterDamageAppliesImmediatelyWithDelayedImpact(t *testing.T) {
 	w, _ := newTestWorldCharacter(t)
 	mon := &Monster{ID: "exploder", MapID: testMapID, X: 10, Y: 10, MinAttack: 4, MaxAttack: 4, Alive: true, HP: 1, MaxHP: 1}
 	ch := storage.Character{ID: "player-explode", MapID: testMapID, X: 10, Y: 10, HP: 100, MaxHP: 100, PerHealth: 5, PerSpell: 5, SpellTick: 700}
-	_, hits, updated, err := w.explosionSpiderLocked(mon, map[string]storage.Character{ch.ID: ch})
+	actions, hits, updated, err := w.explosionSpiderLocked(mon, map[string]storage.Character{ch.ID: ch}, time.Now())
 	if err != nil {
 		t.Fatalf("explosionSpiderLocked() error = %v", err)
 	}
-	if len(hits) != 1 || len(updated) != 1 {
-		t.Fatalf("explosion result = hits:%d updated:%d, want one each", len(hits), len(updated))
+	if len(hits) != 1 || len(updated) != 1 || len(w.pendingMonsterAttacks) != 0 {
+		t.Fatalf("explosion result = hits:%d updated:%d pending:%d, want immediate result", len(hits), len(updated), len(w.pendingMonsterAttacks))
 	}
-	if hits[0].ImpactDelay != 700*time.Millisecond {
-		t.Fatalf("ImpactDelay = %s, want 700ms", hits[0].ImpactDelay)
+	if len(actions) != 0 {
+		t.Fatalf("explosion actions = %+v, want no ordinary hit action", actions)
 	}
-	if updated[0].PerHealth != 4 || updated[0].PerSpell != 4 || updated[0].SpellTick != 0 {
-		t.Fatalf("recovery state = %+v, want counters 4/4 and zero SpellTick", updated[0])
-	}
-	if hits[0].Damage != 4 {
-		t.Fatalf("Damage = %d, want combined physical and magic halves", hits[0].Damage)
+	if hits[0].ImpactDelay != 700*time.Millisecond || updated[0].HP >= ch.HP {
+		t.Fatalf("explosion hit = %+v updated=%+v, want 700ms delayed notification and reduced HP", hits[0], updated[0])
 	}
 	if mon.HP != 0 {
 		t.Fatalf("exploder HP = %d, want zero after explosion", mon.HP)
@@ -3346,7 +4360,7 @@ func TestExplosionSpiderOmitsZeroDamageResult(t *testing.T) {
 	w, _ := newTestWorldCharacter(t)
 	mon := &Monster{ID: "zero-explode", MapID: testMapID, X: 10, Y: 10, MinAttack: 1, MaxAttack: 1, Alive: true, HP: 1, MaxHP: 1}
 	ch := storage.Character{ID: "zero-explode-target", MapID: testMapID, X: 10, Y: 10, HP: 100, MaxHP: 100, BonusAbil: storage.BonusAbility{AC: 0xffff, MAC: 0xffff}}
-	_, hits, updated, err := w.explosionSpiderLocked(mon, map[string]storage.Character{ch.ID: ch})
+	_, hits, updated, err := w.explosionSpiderLocked(mon, map[string]storage.Character{ch.ID: ch}, time.Now())
 	if err != nil {
 		t.Fatalf("explosionSpiderLocked() error = %v", err)
 	}
@@ -3476,7 +4490,7 @@ func TestDoSpellRejectsWarriorEntrySkills(t *testing.T) {
 	}
 }
 
-func TestDoSpellConsumesResourceBeforeOutOfRangeFailure(t *testing.T) {
+func TestDoSpellPreservesResourceBeforeOutOfRangeFailure(t *testing.T) {
 	w, caster := newTestWorldCharacter(t)
 	caster.Skills = storage.SkillStates{{ID: "火球术", Level: 0, Train: 0}}
 	caster.MP = 100
@@ -3489,8 +4503,8 @@ func TestDoSpellConsumesResourceBeforeOutOfRangeFailure(t *testing.T) {
 	if err == nil {
 		t.Fatal("DoSpell() expected range rejection")
 	}
-	if result.SpellStarted || result.ManaCost != cost || result.Character.MP != caster.MP-cost || !result.ManaConsumed || len(result.Events) != 1 || result.Events[0].Kind != SpellEventCasterState {
-		t.Fatalf("range failure result = %+v, want consumed resource and caster state without spell start", result)
+	if result.SpellStarted || result.ManaCost != cost || result.Character.MP != caster.MP || result.ManaConsumed || len(result.Events) != 1 || result.Events[0].Kind != SpellEventCasterState {
+		t.Fatalf("range failure result = %+v, want preserved resource and caster state without spell start", result)
 	}
 }
 
@@ -3675,8 +4689,12 @@ func TestWalkMovesOneTileAndSetsDirection(t *testing.T) {
 func TestWalkRejectsOccupiedPlayerTile(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
 	blocker := storage.Character{ID: "movement-blocker", MapID: ch.MapID, X: ch.X + 1, Y: ch.Y, HP: 100, MaxHP: 100}
-	if _, err := w.Walk(ch, blocker.X, blocker.Y, 2, blocker); err == nil {
+	updated, err := w.Walk(ch, blocker.X, blocker.Y, 2, blocker)
+	if err == nil {
 		t.Fatal("Walk() moved onto another player")
+	}
+	if updated.Dir != 2 || updated.X != ch.X || updated.Y != ch.Y {
+		t.Fatalf("failed Walk() state = %+v, want direction 2 with unchanged position", updated)
 	}
 	if ch.X == blocker.X && ch.Y == blocker.Y {
 		t.Fatal("source character was already on blocker tile")
@@ -3690,8 +4708,12 @@ func TestRunRejectsOccupiedMonsterTileOnEitherStep(t *testing.T) {
 	w.monsters[mon.ID] = mon
 	w.occupyMonsterLocked(mon)
 	w.mu.Unlock()
-	if _, err := w.Run(ch, ch.X+2, ch.Y, 2); err == nil {
+	updated, err := w.Run(ch, ch.X+2, ch.Y, 2)
+	if err == nil {
 		t.Fatal("Run() crossed an occupied intermediate monster tile")
+	}
+	if updated.Dir != 2 || updated.X != ch.X || updated.Y != ch.Y {
+		t.Fatalf("failed Run() state = %+v, want direction 2 with unchanged position", updated)
 	}
 }
 
@@ -3711,15 +4733,12 @@ func TestWalkIgnoresFixedHiddenMonsterTile(t *testing.T) {
 	}
 }
 
-func TestWalkIgnoresAdminPlayerTile(t *testing.T) {
+func TestWalkBlocksAdminPlayerTile(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
 	blocker := storage.Character{ID: "movement-admin-blocker", MapID: ch.MapID, X: ch.X + 1, Y: ch.Y, HP: 100, MaxHP: 100, AdminMode: true}
 	updated, err := w.Walk(ch, blocker.X, blocker.Y, 2, blocker)
-	if err != nil {
-		t.Fatalf("Walk() error = %v", err)
-	}
-	if updated.X != blocker.X || updated.Y != blocker.Y {
-		t.Fatalf("Walk() = %+v, want admin-player tile", updated)
+	if err == nil {
+		t.Fatalf("Walk() = %+v, want admin-player collision", updated)
 	}
 }
 
@@ -3849,10 +4868,221 @@ func TestReloadedTransparentStatusDoesNotHideFromMonsterTargets(t *testing.T) {
 	}
 }
 
-func TestWalkRejectsTooFar(t *testing.T) {
+func TestWalkUsesDirectionWhenRequestedDestinationIsFurtherAway(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
-	if _, err := w.Walk(ch, ch.X+2, ch.Y, 2); err == nil {
-		t.Fatalf("Walk() expected error for a two-tile step")
+	updated, err := w.Walk(ch, ch.X+2, ch.Y, 2)
+	if err != nil {
+		t.Fatalf("Walk() error = %v", err)
+	}
+	if updated.X != ch.X+1 || updated.Y != ch.Y || updated.Dir != 2 {
+		t.Fatalf("Walk() = %+v, want one rightward step", updated)
+	}
+}
+
+func TestWalkFollowsStandardMapConnection(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	targetMapID := "movement-gate-target"
+	w.mu.Lock()
+	sourceMap := w.data.Maps[ch.MapID]
+	targetMap := data.StdMap{ID: targetMapID, Width: sourceMap.Width, Height: sourceMap.Height}
+	w.data.Maps[targetMapID] = targetMap
+	sourceMap.Connections = append(sourceMap.Connections, data.StdMapConnection{
+		ToMap: targetMapID,
+		FromX: ch.X + 1,
+		FromY: ch.Y,
+		ToX:   4,
+		ToY:   4,
+	})
+	w.data.Maps[ch.MapID] = sourceMap
+	w.mu.Unlock()
+
+	updated, err := w.Walk(ch, ch.X+1, ch.Y, 2)
+	if err != nil {
+		t.Fatalf("Walk() error = %v", err)
+	}
+	if updated.MapID != targetMapID || updated.X != 4 || updated.Y != 4 {
+		t.Fatalf("Walk() = %+v, want gate destination %s (4,4)", updated, targetMapID)
+	}
+	blocker := storage.Character{ID: "gate-blocker", MapID: targetMapID, X: 4, Y: 4, HP: 100, MaxHP: 100}
+	if moved, err := w.Walk(ch, ch.X+1, ch.Y, 2, blocker); err != nil {
+		t.Fatalf("Walk() through occupied gate error = %v", err)
+	} else if moved.MapID != targetMapID || moved.X != 4 || moved.Y != 4 {
+		t.Fatalf("Walk() through occupied gate = %+v, want gate destination", moved)
+	}
+}
+
+func TestDoorStateOpensGateAndExpires(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	now := time.Now()
+	w.mu.Lock()
+	mp := w.data.Maps[ch.MapID]
+	mp.Doors = []data.StdMapDoor{{X: ch.X + 1, Y: ch.Y, Group: 1}}
+	w.data.Maps[ch.MapID] = mp
+	w.mu.Unlock()
+	if w.DoorsOpenAround(ch.MapID, ch.X+1, ch.Y, now) {
+		t.Fatal("DoorsOpenAround() = true before opening")
+	}
+	if !w.OpenDoor(ch.MapID, ch.X+1, ch.Y, now) {
+		t.Fatal("OpenDoor() = false for configured door")
+	}
+	if !w.DoorsOpenAround(ch.MapID, ch.X+1, ch.Y, now.Add(time.Second)) {
+		t.Fatal("DoorsOpenAround() = false while door is open")
+	}
+	if changes := w.ExpireDoors(now.Add(doorOpenDuration)); len(changes) != 1 {
+		t.Fatalf("ExpireDoors() changes = %d, want 1", len(changes))
+	}
+	if w.DoorsOpenAround(ch.MapID, ch.X+1, ch.Y, now.Add(doorOpenDuration)) {
+		t.Fatal("DoorsOpenAround() = true after expiry")
+	}
+}
+
+func TestWalkRequiresActiveDigOutEventForNeedHoleGate(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	targetMapID := "movement-hole-target"
+	w.mu.Lock()
+	sourceMap := w.data.Maps[ch.MapID]
+	targetMap := data.StdMap{ID: targetMapID, Width: sourceMap.Width, Height: sourceMap.Height, NeedHole: true}
+	w.data.Maps[targetMapID] = targetMap
+	sourceMap.Connections = append(sourceMap.Connections, data.StdMapConnection{
+		ToMap: targetMapID,
+		FromX: ch.X + 1,
+		FromY: ch.Y,
+		ToX:   4,
+		ToY:   4,
+	})
+	w.data.Maps[ch.MapID] = sourceMap
+	w.mu.Unlock()
+
+	if _, err := w.Walk(ch, ch.X+1, ch.Y, 2); err == nil {
+		t.Fatal("Walk() through NeedHole gate without event = nil error, want rejection")
+	}
+	w.mu.Lock()
+	w.groundEvents[99] = SpellGroundEvent{ID: 99, MapID: ch.MapID, X: ch.X + 1, Y: ch.Y, Type: 1, StartAt: time.Now().Add(-2 * time.Minute), Duration: time.Minute}
+	w.mu.Unlock()
+	if _, err := w.Walk(ch, ch.X+1, ch.Y, 2); err == nil {
+		t.Fatal("Walk() through NeedHole gate with expired event = nil error, want rejection")
+	}
+	w.mu.Lock()
+	w.groundEvents[99] = SpellGroundEvent{ID: 99, MapID: ch.MapID, X: ch.X + 1, Y: ch.Y, Type: 1, StartAt: time.Now(), Duration: time.Minute}
+	w.mu.Unlock()
+	updated, err := w.Walk(ch, ch.X+1, ch.Y, 2)
+	if err != nil {
+		t.Fatalf("Walk() with active dig-out event error = %v", err)
+	}
+	if updated.MapID != targetMapID || updated.X != 4 || updated.Y != 4 {
+		t.Fatalf("Walk() = %+v, want gate destination %s (4,4)", updated, targetMapID)
+	}
+}
+
+func TestWorldTickOrdersExpiredGroundEventHidesByViewOrder(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	now := time.Now()
+	w.mu.Lock()
+	w.groundEvents[30] = SpellGroundEvent{ID: 30, MapID: ch.MapID, X: ch.X + 2, Y: ch.Y, Type: 5, StartAt: now.Add(-2 * time.Minute), Duration: time.Minute}
+	w.groundEvents[10] = SpellGroundEvent{ID: 10, MapID: ch.MapID, X: ch.X + 1, Y: ch.Y, Type: 5, StartAt: now.Add(-2 * time.Minute), Duration: time.Minute}
+	w.mu.Unlock()
+	result, err := w.Tick([]PlayerSnapshot{{Character: ch}}, now)
+	if err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	if got, want := result.GroundEventHides, []int32{10, 30}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("ground event hides = %v, want %v", got, want)
+	}
+}
+
+func TestWorldTickRetainsClosedGroundEventForReferenceGracePeriod(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	now := time.Unix(1000, 0)
+	w.groundEvents[91] = SpellGroundEvent{ID: 91, MapID: ch.MapID, X: ch.X, Y: ch.Y, Type: 5, StartAt: now.Add(-time.Minute), Duration: time.Second}
+	result, err := w.Tick([]PlayerSnapshot{{Character: ch}}, now)
+	if err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	if len(result.GroundEventHides) != 1 || len(w.groundEvents) != 0 {
+		t.Fatalf("expired event state = hides:%v active:%d, want one hide and no active event", result.GroundEventHides, len(w.groundEvents))
+	}
+	closed, ok := w.closedGroundEvents[91]
+	if !ok || closed.ClosedAt != now {
+		t.Fatalf("closed event = %+v, want retained with close tick %v", closed, now)
+	}
+	_, err = w.Tick([]PlayerSnapshot{{Character: ch}}, now.Add(5*time.Minute))
+	if err != nil {
+		t.Fatalf("cleanup Tick() error = %v", err)
+	}
+	if _, ok := w.closedGroundEvents[91]; ok {
+		t.Fatal("closed event should be released after five minutes")
+	}
+}
+
+func TestWalkAppliesGroundEventDamageBeforeReturningMovement(t *testing.T) {
+	w, target := newTestWorldCharacter(t)
+	owner, err := w.CreateCharacterWithAppearance("event-owner", "event-owner", "warrior", 0, 0, target.MapID, target.X+3, target.Y)
+	if err != nil {
+		t.Fatalf("CreateCharacterWithAppearance() error = %v", err)
+	}
+	owner.AttackMode = 0
+	now := time.Now()
+	w.mu.Lock()
+	key := fireFieldKey{MapID: target.MapID, X: target.X + 1, Y: target.Y}
+	w.fireFields[key] = fireField{
+		MapID: key.MapID, X: key.X, Y: key.Y, OwnerID: owner.ID, Owner: owner,
+		Damage: 10, ExpiresAt: now.Add(time.Minute), NextTick: now.Add(time.Minute),
+	}
+	w.mu.Unlock()
+
+	result, err := w.WalkWithEvents(target, target.X+1, target.Y, 2)
+	if err != nil {
+		t.Fatalf("WalkWithEvents() error = %v", err)
+	}
+	if len(result.CharacterHits) != 1 {
+		t.Fatalf("CharacterHits = %d, want 1", len(result.CharacterHits))
+	}
+	if result.CharacterHits[0].AttackerID != owner.ID || result.CharacterHits[0].Damage <= 0 {
+		t.Fatalf("movement event hit = %+v, want owner %q and positive damage", result.CharacterHits[0], owner.ID)
+	}
+	if result.Character.HP >= target.HP {
+		t.Fatalf("movement result HP = %d, want less than %d", result.Character.HP, target.HP)
+	}
+}
+
+func TestWalkGateFailureKeepsEntryEventBeforeRollback(t *testing.T) {
+	w, target := newTestWorldCharacter(t)
+	owner, err := w.CreateCharacterWithAppearance("gate-event-owner", "gate-event-owner", "warrior", 0, 0, target.MapID, target.X+3, target.Y)
+	if err != nil {
+		t.Fatalf("CreateCharacterWithAppearance() error = %v", err)
+	}
+	now := time.Now()
+	w.mu.Lock()
+	sourceMap := w.data.Maps[target.MapID]
+	sourceMap.Doors = []data.StdMapDoor{{X: target.X + 1, Y: target.Y, Group: 1}}
+	sourceMap.Connections = append(sourceMap.Connections, data.StdMapConnection{ToMap: "gate-event-target", FromX: target.X + 1, FromY: target.Y, ToX: 4, ToY: 4})
+	w.data.Maps[target.MapID] = sourceMap
+	w.data.Maps["gate-event-target"] = data.StdMap{ID: "gate-event-target", Width: sourceMap.Width, Height: sourceMap.Height}
+	w.fireFields[fireFieldKey{MapID: target.MapID, X: target.X + 1, Y: target.Y}] = fireField{MapID: target.MapID, X: target.X + 1, Y: target.Y, OwnerID: owner.ID, Owner: owner, Damage: 10, ExpiresAt: now.Add(time.Minute), NextTick: now.Add(time.Minute)}
+	w.mu.Unlock()
+
+	result, err := w.WalkWithEvents(target, target.X+1, target.Y, 2)
+	if err == nil || len(result.CharacterHits) != 1 {
+		t.Fatalf("WalkWithEvents() error=%v hits=%d, want gate failure with entry hit", err, len(result.CharacterHits))
+	}
+	if result.Character.MapID != target.MapID || result.Character.X != target.X || result.Character.Y != target.Y {
+		t.Fatalf("rolled back character = %+v, want original position", result.Character)
+	}
+}
+
+func TestWalkInvalidGateDestinationRollsBack(t *testing.T) {
+	w, target := newTestWorldCharacter(t)
+	w.mu.Lock()
+	sourceMap := w.data.Maps[target.MapID]
+	sourceMap.Connections = append(sourceMap.Connections, data.StdMapConnection{ToMap: "missing-gate-map", FromX: target.X + 1, FromY: target.Y, ToX: 4, ToY: 4})
+	w.data.Maps[target.MapID] = sourceMap
+	w.mu.Unlock()
+	updated, err := w.Walk(target, target.X+1, target.Y, 2)
+	if err == nil {
+		t.Fatalf("Walk() = %+v, want invalid gate failure", updated)
+	}
+	if updated.MapID != target.MapID || updated.X != target.X || updated.Y != target.Y {
+		t.Fatalf("invalid gate result = %+v, want original position", updated)
 	}
 }
 
@@ -3885,10 +5115,31 @@ func TestRunMovesTwoTiles(t *testing.T) {
 	}
 }
 
-func TestRunRejectsCoordinatesOffTheDirectionLine(t *testing.T) {
+func TestRunUsesDirectionWhenRequestedDestinationIsOffLine(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
-	if _, err := w.Run(ch, ch.X+2, ch.Y+1, 2); err == nil {
-		t.Fatalf("Run() expected error for a destination direction 2 (right) cannot reach")
+	dir := -1
+	var wantX, wantY int
+	w.mu.Lock()
+	mp := w.data.Maps[ch.MapID]
+	for candidate, off := range dirOffsets {
+		firstX, firstY := ch.X+off[0], ch.Y+off[1]
+		secondX, secondY := ch.X+off[0]*2, ch.Y+off[1]*2
+		if mp.Walkable(firstX, firstY) && mp.Walkable(secondX, secondY) && !w.monsterAtLocked(ch.MapID, firstX, firstY, "") && !w.monsterAtLocked(ch.MapID, secondX, secondY, "") {
+			dir = candidate
+			wantX, wantY = secondX, secondY
+			break
+		}
+	}
+	w.mu.Unlock()
+	if dir < 0 {
+		t.Fatal("test map has no clear two-tile run path")
+	}
+	updated, err := w.Run(ch, wantX+1, wantY+1, dir)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if updated.X != wantX || updated.Y != wantY || updated.Dir != dir {
+		t.Fatalf("Run() = %+v, want two directional steps to (%d,%d)", updated, wantX, wantY)
 	}
 }
 
@@ -4060,8 +5311,45 @@ func TestPhysicalMonsterHitConsumesAttackerWeaponDurability(t *testing.T) {
 	if got := result.Character.EquippedItems[SlotWeapon].Dura; got != 998 {
 		t.Fatalf("weapon durability = %d, want 998", got)
 	}
-	if len(result.Durability) != 1 || result.Durability[0].Slot != SlotWeapon || result.Durability[0].Dura != 998 {
-		t.Fatalf("weapon durability events = %+v, want weapon 998 display update", result.Durability)
+	if len(result.Durability) != 0 {
+		t.Fatalf("weapon durability events = %+v, want no display update within the same rounded value", result.Durability)
+	}
+}
+
+func TestPhysicalMonsterHitAppliesWeaponStrongToDurabilityLoss(t *testing.T) {
+	w, ch := prepareHitDamageTestWorld(t, nil)
+	w.mu.Lock()
+	item := w.data.Items[testWeaponID]
+	item.Strong = 2
+	w.data.Items[testWeaponID] = item
+	w.mu.Unlock()
+	ch.EquippedItems = map[int]storage.UserItem{
+		SlotWeapon: {ItemID: testWeaponID, Dura: 1000, DuraMax: 1000},
+	}
+	result, err := w.HitWithIdent(ch, ch.X, ch.Y, 2, mir176.CMHit)
+	if err != nil {
+		t.Fatalf("HitWithIdent() error = %v", err)
+	}
+	if got := result.Character.EquippedItems[SlotWeapon].Dura; got < 996 || got > 1000 {
+		t.Fatalf("weapon durability = %d, want loss 0-4 after weapon strong", got)
+	}
+}
+
+func TestPhysicalMonsterHitDeletesZeroDurabilityWeapon(t *testing.T) {
+	w, ch := prepareHitDamageTestWorld(t, nil)
+	ch.EquippedItems = map[int]storage.UserItem{
+		SlotWeapon: {ItemID: testWeaponID, Dura: 0, DuraMax: 1000},
+	}
+	result, err := w.HitWithIdent(ch, ch.X, ch.Y, 2, mir176.CMHit)
+	if err != nil {
+		t.Fatalf("HitWithIdent() error = %v", err)
+	}
+	weapon := result.Character.EquippedItems[SlotWeapon]
+	if weapon.ItemID != "" || weapon.Dura != 0 {
+		t.Fatalf("weapon = %+v, want deleted zero durability weapon", weapon)
+	}
+	if len(result.DeletedItems) != 1 || len(result.Durability) != 1 {
+		t.Fatalf("weapon sync = deleted:%d durability:%d, want one each", len(result.DeletedItems), len(result.Durability))
 	}
 }
 
@@ -4117,7 +5405,7 @@ func TestCombatStatsIncludesWeaponSkillBonuses(t *testing.T) {
 	}
 	got := w.CombatStats(ch)
 	if got.Hit != 3 {
-		t.Fatalf("CombatStats().Hit = %d, want basic sword hit bonus", got.Hit)
+		t.Fatalf("CombatStats().Hit = %d, want spirit accuracy bonus", got.Hit)
 	}
 	if got.Speed != 0 {
 		t.Fatalf("CombatStats().Speed = %d, want no speed bonus from skills", got.Speed)
@@ -4135,8 +5423,8 @@ func TestAbilitiesIncludesSpiritPowerBonus(t *testing.T) {
 	if got.DC != PackWord(base.DC, base.DCMax, 0, 0) {
 		t.Fatalf("Abilities().DC = %d, want no basic sword bonus there", got.DC)
 	}
-	if got.SC != PackWord(base.SC+2, base.SCMax+2, 0, 0) {
-		t.Fatalf("Abilities().SC = %d, want spirit power bonus applied", got.SC)
+	if sub := w.SubAbilityStats(ch); sub.HitPoint != 8 {
+		t.Fatalf("SubAbilityStats().HitPoint = %d, want spirit accuracy bonus applied", sub.HitPoint)
 	}
 }
 
@@ -4150,7 +5438,7 @@ func TestHitWithWarriorSkillsImprovesHitChance(t *testing.T) {
 		break
 	}
 	baseW.mu.Unlock()
-	skillW, skillCh := prepareHitDamageTestWorld(t, storage.SkillStates{{ID: "基本剑术", Level: 0, Train: 0}})
+	skillW, skillCh := prepareHitDamageTestWorld(t, storage.SkillStates{{ID: "基本剑术", Level: 1, Train: 0}})
 	skillHit := skillW.characterHitPointLocked(skillCh)
 	skillW.mu.Lock()
 	for _, mon := range skillW.monsters {
@@ -4296,6 +5584,31 @@ func TestHeavyHitMinesConfiguredMapWithPickaxe(t *testing.T) {
 	t.Fatal("no mine result after 20 heavy hits")
 }
 
+func TestHeavyHitMiningUsesReferenceRecoveryDelay(t *testing.T) {
+	w, ch := prepareHitDamageTestWorld(t, nil)
+	w.mu.Lock()
+	mapData := w.data.Maps[ch.MapID]
+	mapData.Mine = true
+	mapData.Blocked = append(mapData.Blocked, data.StdPoint{X: ch.X + 1, Y: ch.Y})
+	w.data.Maps[ch.MapID] = mapData
+	w.gameplay.Combat.MineHitRate = 1
+	w.gameplay.Combat.MineRate = 1
+	w.mineCounts[monsterPosition{MapID: ch.MapID, X: ch.X + 1, Y: ch.Y}] = 1
+	w.mu.Unlock()
+	ch.EquippedItems = map[int]storage.UserItem{SlotWeapon: {ItemID: "鹤嘴锄", MakeIndex: 1, Dura: 1000, DuraMax: 1000}}
+	ch.HealthTick = 100
+	ch.SpellTick = 100
+	ch.PerHealth = 10
+	ch.PerSpell = 10
+	result, err := w.HitWithIdent(ch, ch.X, ch.Y, 2, mir176.CMHeavyHit)
+	if err != nil {
+		t.Fatalf("HitWithIdent() error = %v", err)
+	}
+	if result.Character.HealthTick != 70 || result.Character.SpellTick != 50 || result.Character.PerHealth != 8 || result.Character.PerSpell != 8 {
+		t.Fatalf("mining recovery = %+v, want health 70 spell 50 per-health 8 per-spell 8", result.Character)
+	}
+}
+
 func TestHeavyHitDoesNotMineWithoutPickaxe(t *testing.T) {
 	w, ch := prepareHitDamageTestWorld(t, nil)
 	w.mu.Lock()
@@ -4330,6 +5643,28 @@ func TestHeavyHitDoesNotMineWhenFrontTileIsWalkable(t *testing.T) {
 	}
 	if len(result.AddedItems) != 0 || len(result.Durability) != 0 {
 		t.Fatalf("mining result on walkable front tile = %+v, want no mining side effects", result)
+	}
+}
+
+func TestHeavyHitDoesNotCreatePileOverAnotherGroundEvent(t *testing.T) {
+	w, ch := prepareHitDamageTestWorld(t, nil)
+	w.mu.Lock()
+	mapData := w.data.Maps[ch.MapID]
+	mapData.Mine = true
+	mapData.Blocked = append(mapData.Blocked, data.StdPoint{X: ch.X + 1, Y: ch.Y})
+	w.data.Maps[ch.MapID] = mapData
+	w.gameplay.Combat.MineHitRate = 1
+	w.gameplay.Combat.MineRate = 1
+	w.mineCounts[monsterPosition{MapID: ch.MapID, X: ch.X + 1, Y: ch.Y}] = 1
+	w.groundEvents[77] = SpellGroundEvent{ID: 77, MapID: ch.MapID, X: ch.X, Y: ch.Y, Type: 5, Param: 1, Duration: time.Minute, StartAt: time.Now()}
+	w.mu.Unlock()
+	ch.EquippedItems = map[int]storage.UserItem{SlotWeapon: {ItemID: "鹤嘴锄", MakeIndex: 1, Dura: 1000, DuraMax: 1000}}
+	result, err := w.HitWithIdent(ch, ch.X, ch.Y, 2, mir176.CMHeavyHit)
+	if err != nil {
+		t.Fatalf("HitWithIdent() error = %v", err)
+	}
+	if len(result.GroundEvents) != 0 || len(w.groundEvents) != 1 {
+		t.Fatalf("ground events = result:%+v world:%+v, want existing event only", result.GroundEvents, w.groundEvents)
 	}
 }
 
@@ -4813,7 +6148,7 @@ func TestCastSkillDoesNotResolveDeadMonsterTargetID(t *testing.T) {
 	}
 }
 
-func TestDoSpellUsesRequestedTargetDirection(t *testing.T) {
+func TestDoSpellUsesResolvedTargetDirection(t *testing.T) {
 	w, caster := newTestWorldCharacter(t)
 	target, err := w.CreateCharacterWithAppearance("test2", "direction-target", "warrior", 0, 0, caster.MapID, caster.X+1, caster.Y)
 	if err != nil {
@@ -4825,9 +6160,9 @@ func TestDoSpellUsesRequestedTargetDirection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DoSpell() error = %v", err)
 	}
-	want := Direction(caster.X, caster.Y, target.X+1, target.Y+1)
+	want := Direction(caster.X, caster.Y, target.X, target.Y)
 	if result.Character.Dir != want {
-		t.Fatalf("direction = %d, want requested-target direction %d", result.Character.Dir, want)
+		t.Fatalf("direction = %d, want resolved-target direction %d", result.Character.Dir, want)
 	}
 }
 
@@ -5487,45 +6822,6 @@ func TestImmediateCharacterSpellPersistsCasterPKFlag(t *testing.T) {
 	}
 }
 
-func TestMabeCharacterSuccessEmitsCasterNameColor(t *testing.T) {
-	w, caster := newTestWorldCharacter(t)
-	x, y := startCoordsForMap(t, w.data, testMapID)
-	caster.MapID = testMapID
-	caster.X = x
-	caster.Y = y
-	caster.Level = 100
-	caster.FreePKArea = true
-	caster.MP = 100
-	caster.Skills = storage.SkillStates{{ID: "困魔咒", Level: 5, Train: 0}}
-	target := storage.Character{ID: "char-2", MapID: caster.MapID, X: caster.X + 1, Y: caster.Y, HP: 100, MaxHP: 100, Level: 1, FreePKArea: true}
-	if err := w.store.SaveCharacter(target); err != nil {
-		t.Fatalf("SaveCharacter() target error = %v", err)
-	}
-	w.mu.Lock()
-	if !w.isProperCharacterTargetLocked(caster, target) {
-		t.Fatal("mabe target rejected")
-	}
-	if !w.magCanHitTargetLocked(caster.MapID, caster.X, caster.Y, target.X, target.Y) {
-		t.Fatal("mabe target blocked by line of sight")
-	}
-	w.rand = rand.New(&seqSource{vals: []int64{9 << 32, 9 << 32, 9 << 32, 9 << 32, 9 << 32, 9 << 32, 9 << 32, 9 << 32}})
-	if !w.characterMagicHitAllowedLocked(target) {
-		t.Fatal("mabe target rejected by magic hit roll")
-	}
-	w.rand = rand.New(&seqSource{vals: []int64{9 << 32, 9 << 32, 9 << 32, 9 << 32, 9 << 32, 9 << 32, 9 << 32, 9 << 32}})
-	w.mu.Unlock()
-	result, err := w.CastSkillWithPlayers(caster, "困魔咒", target.X, target.Y, CharacterActorID(target), []storage.Character{target})
-	if err != nil {
-		t.Fatalf("CastSkillWithPlayers() error = %v", err)
-	}
-	if !result.Character.PKFlag {
-		t.Fatalf("caster PK flag = false, want true after character Mabe success")
-	}
-	if len(result.NameColorCharacters) != 1 || result.NameColorCharacters[0].ID != caster.ID {
-		t.Fatalf("name color characters = %+v, want caster %q", result.NameColorCharacters, caster.ID)
-	}
-}
-
 func TestImmediateCharacterSpellMarksCasterOnKillingHit(t *testing.T) {
 	w, caster := newTestWorldCharacter(t)
 	caster.FreePKArea = true
@@ -5810,12 +7106,12 @@ func TestCastSkillRejectsTargetsOutOfRange(t *testing.T) {
 	if err == nil {
 		t.Fatal("CastSkillWithPlayers() expected range rejection")
 	}
-	if result.SpellStarted || result.ManaCost != cost || result.Character.ID == "" || result.Character.MP != caster.MP-cost || !result.ManaConsumed || len(result.Events) != 1 || result.Events[0].Kind != SpellEventCasterState {
-		t.Fatalf("range failure result = %+v, want consumed resource and caster state event", result)
+	if result.SpellStarted || result.ManaCost != cost || result.Character.ID == "" || result.Character.MP != caster.MP || result.ManaConsumed || len(result.Events) != 1 || result.Events[0].Kind != SpellEventCasterState {
+		t.Fatalf("range failure result = %+v, want preserved resource and caster state event", result)
 	}
 	persisted, ok := w.store.Character(caster.ID)
-	if !ok || persisted.MP != caster.MP-cost {
-		t.Fatalf("persisted caster MP = %d (found=%t), want %d", persisted.MP, ok, caster.MP-cost)
+	if !ok || persisted.MP != caster.MP {
+		t.Fatalf("persisted caster MP = %d (found=%t), want %d", persisted.MP, ok, caster.MP)
 	}
 }
 
@@ -6675,12 +7971,8 @@ func TestCharacterStruckDamageCarriesReferenceDurabilityChange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("attackCharacterDirectDamageLocked() error = %v", err)
 	}
-	if len(hit.Durability) != 1 {
-		t.Fatalf("durability changes = %+v, want one dress change", hit.Durability)
-	}
-	change := hit.Durability[0]
-	if change.Slot != SlotDress || change.Dura != 9995 || change.DuraMax != 10000 {
-		t.Fatalf("durability change = %+v, want dress 9995/10000", change)
+	if len(hit.Durability) != 0 {
+		t.Fatalf("durability changes = %+v, want no display update within the same rounded value", hit.Durability)
 	}
 	if hit.Character.EquippedItems[SlotDress].Dura != 9990 {
 		t.Fatalf("target dress durability = %d, want 9990", hit.Character.EquippedItems[SlotDress].Dura)
@@ -6800,8 +8092,8 @@ func TestMagicCharacterDamageCarriesReferenceDurabilityChange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("spellCharacterDamageWithPowerLocked() error = %v", err)
 	}
-	if len(hit.Durability) != 1 || hit.Durability[0].Dura != 9995 {
-		t.Fatalf("magic durability changes = %+v, want dress 9995", hit.Durability)
+	if len(hit.Durability) != 0 {
+		t.Fatalf("magic durability changes = %+v, want no display update within the same rounded value", hit.Durability)
 	}
 	if hit.Character.EquippedItems[SlotDress].Dura != 9990 {
 		t.Fatalf("magic target dress durability = %d, want 9990", hit.Character.EquippedItems[SlotDress].Dura)
@@ -7195,11 +8487,15 @@ func TestTurnRejectsCoordinateMismatch(t *testing.T) {
 	}
 }
 
-func TestTurnRejectsInvalidDirection(t *testing.T) {
+func TestTurnPreservesByteDirection(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
 	x, y := ch.X, ch.Y
-	if _, err := w.Turn(ch, x, y, 8); err == nil {
-		t.Fatalf("Turn() expected error for invalid direction")
+	updated, err := w.Turn(ch, x, y, 8)
+	if err != nil {
+		t.Fatalf("Turn() error = %v", err)
+	}
+	if updated.Dir != 8 {
+		t.Fatalf("Turn() direction = %d, want 8", updated.Dir)
 	}
 }
 
@@ -7647,7 +8943,6 @@ func TestPlaceDropsAvoidsBlockedTiles(t *testing.T) {
 			testHPItemID: {
 				ID:   testHPItemID,
 				Name: testHPItemID,
-				Kind: "misc",
 			},
 		},
 		Maps: map[string]data.StdMap{
@@ -7719,7 +9014,6 @@ func TestPlaceDropsUsesUpperLeftCandidateFirst(t *testing.T) {
 			testHPItemID: {
 				ID:   testHPItemID,
 				Name: testHPItemID,
-				Kind: "misc",
 			},
 		},
 		Maps: map[string]data.StdMap{
@@ -7754,7 +9048,6 @@ func TestPlaceDropsAbandonsWhenAllCandidatesAreAtLimit(t *testing.T) {
 			testHPItemID: {
 				ID:   testHPItemID,
 				Name: testHPItemID,
-				Kind: "misc",
 			},
 		},
 		Maps: map[string]data.StdMap{
@@ -7805,7 +9098,6 @@ func TestPlaceDropsUsesConfiguredLimitWhenStacking(t *testing.T) {
 			testHPItemID: {
 				ID:   testHPItemID,
 				Name: testHPItemID,
-				Kind: "misc",
 			},
 		},
 		Maps: map[string]data.StdMap{
@@ -7851,13 +9143,36 @@ func TestPlaceDropsUsesConfiguredLimitWhenStacking(t *testing.T) {
 	}
 }
 
+func TestPlaceDropsMergesGoldOnSameTile(t *testing.T) {
+	bundle := data.StdBundle{
+		Maps: map[string]data.StdMap{"tiny": {ID: "tiny", Width: 3, Height: 3}},
+	}
+	store, err := storage.Open(filepath.Join(t.TempDir(), "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := New(bundle, store)
+	w.mu.Lock()
+	for i, cell := range [][2]int{{0, 0}, {1, 0}, {2, 0}, {0, 1}, {2, 1}, {0, 2}, {1, 2}, {2, 2}} {
+		w.drops[fmt.Sprintf("drop-gold-%d", i)] = GroundDrop{ID: fmt.Sprintf("drop-gold-%d", i), MapID: "tiny", X: cell[0], Y: cell[1], ItemID: "金币", Count: 100}
+	}
+	placed := w.placeDropsLocked("tiny", 1, 1, 1, []GroundDrop{{ID: "drop-new", MapID: "tiny", ItemID: "金币", Count: 25}})
+	w.mu.Unlock()
+	if len(placed) != 1 || placed[0].ItemID != "金币" {
+		t.Fatalf("placed = %+v, want existing gold drop", placed)
+	}
+	merged := w.drops[placed[0].ID]
+	if merged.Count != 125 {
+		t.Fatalf("gold count = %d, want 125", merged.Count)
+	}
+}
+
 func TestPlaceDropsAbandonsWhenNoCandidateCellsExist(t *testing.T) {
 	bundle := data.StdBundle{
 		Items: map[string]data.StdItem{
 			testHPItemID: {
 				ID:   testHPItemID,
 				Name: testHPItemID,
-				Kind: "misc",
 			},
 		},
 		Maps: map[string]data.StdMap{
@@ -8048,7 +9363,6 @@ func TestUseItemShape3UsesPercentBasedRecovery(t *testing.T) {
 	w.data.Items["percent-drug"] = data.StdItem{
 		ID:      "percent-drug",
 		Name:    "percent-drug",
-		Kind:    "consumable",
 		StdMode: 0,
 		Shape:   3,
 		Stats: data.StdItemStats{
@@ -8078,7 +9392,6 @@ func TestUseItemShape12AppliesTemporaryBonuses(t *testing.T) {
 	w.data.Items["apple-like"] = data.StdItem{
 		ID:      "apple-like",
 		Name:    "apple-like",
-		Kind:    "consumable",
 		StdMode: 3,
 		Shape:   12,
 		Stats: data.StdItemStats{
@@ -8152,7 +9465,6 @@ func TestUseItemShape13AddsExperience(t *testing.T) {
 	w.data.Items["exp-drug"] = data.StdItem{
 		ID:      "exp-drug",
 		Name:    "exp-drug",
-		Kind:    "consumable",
 		StdMode: 3,
 		Shape:   13,
 		DuraMax: 75,
@@ -8177,7 +9489,6 @@ func TestUseItemShape13UsesReferenceExperienceMultipliers(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
 	w.gameplay.Progression.LevelExperience = []int{1000}
 	w.gameplay.Progression.ExperienceMultiple = 2
-	w.data.Items["exp-drug-multiplied"] = data.StdItem{ID: "exp-drug-multiplied", Kind: "consumable", StdMode: 3, Shape: 13, DuraMax: 75}
 	ch.ExperienceMultiple = 3
 	ch.ExperienceRate = 150
 	ch.BagItems = []storage.UserItem{{ItemID: "exp-drug-multiplied", MakeIndex: 404}}
@@ -8758,6 +10069,14 @@ func TestCharacterNameColorForPreservesReferenceRelationOverrides(t *testing.T) 
 	}
 	if got := w.CharacterNameColorFor(storage.Character{GuildID: "guild"}, storage.Character{GuildID: "guild", PKPoint: 200}); got != 0xF9 {
 		t.Fatalf("red PK color = %#x, want %#x", got, 0xF9)
+	}
+}
+
+func TestCharactersShareAnyAlliance(t *testing.T) {
+	a := storage.Character{GuildAllianceIDs: []string{"guild-b", "guild-c"}}
+	b := storage.Character{GuildAllianceID: "guild-c"}
+	if !charactersShareAlliance(a, b) {
+		t.Fatal("characters with a shared secondary alliance should be allied")
 	}
 }
 
@@ -9895,13 +11214,14 @@ func TestCastSkillIceStormHitsMultipleMonsters(t *testing.T) {
 	if targetX < 0 {
 		t.Fatal("could not find clear tile for ice storm test")
 	}
-	result, err := w.SpawnMonsterByNameAt(mapID, targetX, targetY, "鸡", 2)
+	result, err := w.SpawnMonsterByNameAt(mapID, targetX, targetY, "僵尸", 2)
 	if err != nil {
 		t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
 	}
 	if len(result.Monsters) != 2 {
 		t.Fatalf("SpawnMonsterByNameAt() monsters = %d, want 2", len(result.Monsters))
 	}
+	caster.X, caster.Y = targetX, targetY
 	caster.Skills = storage.SkillStates{{ID: "冰咆哮", Level: 0, Train: 0}}
 	caster.MP = 50
 	updated, err := w.CastSkillWithPlayers(caster, "冰咆哮", targetX, targetY, 0, nil)
@@ -10007,10 +11327,10 @@ func TestCastSkillIceStormHitsCharacterTarget(t *testing.T) {
 		t.Fatalf("CastSkillWithPlayers() error = %v", err)
 	}
 	if len(updated.CharacterHits) != 0 || len(updated.Impacts) != 1 || len(w.pendingSpells) != 0 {
-		t.Fatalf("cast result = hits:%d impacts:%d pending:%d, want 0, 1 and 0", len(updated.CharacterHits), len(updated.Impacts), len(w.pendingSpells))
+		t.Fatalf("cast result = hits:%d impacts:%d pending:%d, want one immediate live-target impact", len(updated.CharacterHits), len(updated.Impacts), len(w.pendingSpells))
 	}
-	if updated.Impacts[0].CharacterHit == nil || updated.Impacts[0].CharacterHit.Character.ID != target.ID || updated.Impacts[0].CharacterHit.Damage <= 0 {
-		t.Fatalf("impact = %+v, want one positive hit on %q", updated.Impacts[0], target.ID)
+	if updated.Impacts[0].CharacterHit == nil || updated.Impacts[0].CharacterHit.Damage <= 0 {
+		t.Fatalf("ice storm impact = %+v, want positive character damage", updated.Impacts[0])
 	}
 }
 
@@ -10254,7 +11574,7 @@ func TestCastSkillLightningUsesMonsterMagicDefense(t *testing.T) {
 		t.Fatalf("base lightning hits = %+v, want one positive hit", baseTick.MonsterHits)
 	}
 
-	highW, highCaster, highMonID := prepare(10)
+	highW, highCaster, highMonID := prepare(100)
 	highResult, err := highW.CastSkillWithPlayers(highCaster, "雷电术", highCaster.X+1, highCaster.Y, MonsterActorID(Monster{ID: highMonID}), nil)
 	if err != nil {
 		t.Fatalf("high CastSkillWithPlayers() error = %v", err)
@@ -10612,7 +11932,7 @@ func TestCastSkillHellfireHitsLineTargets(t *testing.T) {
 	}
 }
 
-func TestCastSkillHellfireTraversesBlockedCell(t *testing.T) {
+func TestCastSkillHellfireStopsAtBlockedCell(t *testing.T) {
 	w, caster := newTestWorldCharacter(t)
 	w.mu.Lock()
 	mapData := w.data.Maps[caster.MapID]
@@ -10622,7 +11942,7 @@ func TestCastSkillHellfireTraversesBlockedCell(t *testing.T) {
 	}
 	mapData.Blocked = append(mapData.Blocked, data.StdPoint{X: caster.X + 1, Y: caster.Y})
 	w.data.Maps[caster.MapID] = mapData
-	mon := &Monster{ID: "blocked-line-target", MapID: caster.MapID, X: caster.X + 1, Y: caster.Y, Alive: true, HP: 100, MaxHP: 100, ObjectOrder: 1}
+	mon := &Monster{ID: "blocked-line-target", MapID: caster.MapID, X: caster.X + 2, Y: caster.Y, Alive: true, HP: 100, MaxHP: 100, ObjectOrder: 1}
 	w.monsters = map[string]*Monster{mon.ID: mon}
 	w.occupied = map[monsterPosition]string{}
 	w.mu.Unlock()
@@ -10633,20 +11953,16 @@ func TestCastSkillHellfireTraversesBlockedCell(t *testing.T) {
 		t.Fatalf("CastSkillWithPlayers() error = %v", err)
 	}
 	w.mu.Lock()
-	if len(w.pendingSpells) != 1 || w.pendingSpells[0].TargetMonsterID != mon.ID {
-		t.Fatalf("pending line spells = %+v, want blocked-cell target %q", w.pendingSpells, mon.ID)
-	}
-	if w.pendingSpells[0].TargetRange != 1 {
-		t.Fatalf("pending line target range = %d, want 1", w.pendingSpells[0].TargetRange)
+	if len(w.pendingSpells) != 1 {
+		t.Fatalf("pending line spells = %+v, want target beyond blocked cell", w.pendingSpells)
 	}
 	w.mu.Unlock()
-	mon.X += 2
 	updated, err := w.Tick([]PlayerSnapshot{{Character: caster}}, time.Now().Add(2*time.Second))
 	if err != nil {
 		t.Fatalf("Tick() after line target move error = %v", err)
 	}
-	if len(updated.MonsterHits) != 1 || updated.MonsterHits[0].Damage <= 0 {
-		t.Fatalf("deferred hits after two-cell move = %+v, want one positive hit", updated.MonsterHits)
+	if len(updated.MonsterHits) != 1 {
+		t.Fatalf("deferred hits beyond blocked cell = %+v, want one hit", updated.MonsterHits)
 	}
 }
 
@@ -10824,8 +12140,8 @@ func TestCastSkillLightningLineHitsMonstersAndCharacter(t *testing.T) {
 		}
 	}
 	w.mu.Unlock()
-	if len(lineDamages) < 2 || lineDamages[1] <= lineDamages[0] {
-		t.Fatalf("line monster damages = %v, want cumulative undead amplification", lineDamages)
+	if len(lineDamages) < 2 || lineDamages[1] != referenceRound(float64(lineDamages[0])*1.5) {
+		t.Fatalf("line monster damages = %v, want reference cumulative undead scaling", lineDamages)
 	}
 	tick, err := w.Tick([]PlayerSnapshot{{Character: updated.Character}, {Character: target}}, time.Now().Add(2*time.Second))
 	if err != nil {
@@ -11178,7 +12494,7 @@ func TestDoSpellFireWallSafeZoneFailureEmitsMessageBeforeMagicFire(t *testing.T)
 	}
 }
 
-func TestCastFireWallDoesNotReplaceOtherGroundEvent(t *testing.T) {
+func TestCastFireWallAllowsDifferentGroundEventType(t *testing.T) {
 	w, caster := newTestWorldCharacter(t)
 	caster.Skills = storage.SkillStates{{ID: "火墙", Level: 0, Train: 0}}
 	now := time.Now()
@@ -11202,11 +12518,11 @@ func TestCastFireWallDoesNotReplaceOtherGroundEvent(t *testing.T) {
 		}
 	}
 	w.mu.Unlock()
-	if centerFire {
-		t.Fatal("fire wall replaced an occupied ground event")
+	if !centerFire {
+		t.Fatal("fire wall did not coexist with a different ground event type")
 	}
-	if created != 4 {
-		t.Fatalf("new fire wall events = %d, want 4 around occupied center", created)
+	if created != 5 {
+		t.Fatalf("new fire wall events = %d, want 5 including occupied center", created)
 	}
 }
 
@@ -12047,11 +13363,8 @@ func TestCastSkillChargeStopsAgainstHigherLevelTarget(t *testing.T) {
 	if failure == nil || failure.X != caster.X+1 || failure.Y != caster.Y || failure.Dir != updated.Character.Dir {
 		t.Fatalf("blocked charge failure = %+v, want next position (%d,%d) and direction %d", failure, caster.X+1, caster.Y, updated.Character.Dir)
 	}
-	if len(updated.CharacterHits) != 1 {
-		t.Fatalf("CharacterHits = %+v, want one self-hit when an occupied target blocks charge", updated.CharacterHits)
-	}
-	if updated.CharacterHits[0].Character.ID != caster.ID || updated.CharacterHits[0].Damage <= 0 {
-		t.Fatalf("blocked charge self-hit = %+v, want positive damage to caster", updated.CharacterHits[0])
+	if len(updated.CharacterHits) != 0 {
+		t.Fatalf("CharacterHits = %+v, want no hit when an occupied target blocks charge", updated.CharacterHits)
 	}
 }
 
@@ -12156,6 +13469,7 @@ func TestCastSkillMagicShieldReducesMonsterDamageAndConsumesShieldTime(t *testin
 func TestCastSkillMagicShieldRejectsRecastWhileActive(t *testing.T) {
 	w, caster := newTestWorldCharacter(t)
 	caster.Skills = storage.SkillStates{{ID: "魔法盾", Level: 0, Train: 0}}
+	caster.MP = 100
 	updated, err := w.CastSkillWithPlayers(caster, "魔法盾", caster.X, caster.Y, 0, nil)
 	if err != nil {
 		t.Fatalf("CastSkillWithPlayers() first cast error = %v", err)
@@ -12181,6 +13495,7 @@ func TestCastSkillMagicShieldRejectsRecastWhileActive(t *testing.T) {
 func TestCastSkillMagicShieldTreatsExpiredStateAsPresentUntilTick(t *testing.T) {
 	w, caster := newTestWorldCharacter(t)
 	caster.Skills = storage.SkillStates{{ID: "魔法盾", Level: 0, Train: 0}}
+	caster.MP = 100
 	caster.BubbleDefenceUntil = time.Now().Add(-time.Second).UnixNano()
 	caster.BubbleDefenceLevel = 1
 
@@ -12441,8 +13756,8 @@ func TestCastSkillSummonSkeletonCreatesOwnedMonsterAndExpires(t *testing.T) {
 	if summoned.MasterName != caster.Name {
 		t.Fatalf("summoned.MasterName = %q, want %q", summoned.MasterName, caster.Name)
 	}
-	if summoned.TemplateID != "骷髅" {
-		t.Fatalf("summoned.TemplateID = %q, want 骷髅", summoned.TemplateID)
+	if summoned.TemplateID != "变异骷髅" {
+		t.Fatalf("summoned.TemplateID = %q, want 变异骷髅", summoned.TemplateID)
 	}
 	if summoned.Alive != true {
 		t.Fatalf("summoned.Alive = false, want true")
@@ -12468,7 +13783,7 @@ func TestCastSkillSummonSkeletonCreatesOwnedMonsterAndExpires(t *testing.T) {
 	w.mu.Lock()
 	activeSkeletons := 0
 	for _, mon := range w.monsters {
-		if mon == nil || !mon.Alive || mon.MasterID != caster.ID || mon.TemplateID != "骷髅" {
+		if mon == nil || !mon.Alive || mon.MasterID != caster.ID || mon.TemplateID != "变异骷髅" {
 			continue
 		}
 		activeSkeletons++
@@ -12587,15 +13902,23 @@ func TestWorldTickDelaysSummonDeathAfterMasterDeath(t *testing.T) {
 		t.Fatal("summon died on first master-death observation")
 	}
 	w.mu.Unlock()
-	result, err := w.Tick([]PlayerSnapshot{{Character: dead}}, start.Add(time.Second))
+	marked, err := w.Tick([]PlayerSnapshot{{Character: dead}}, start.Add(time.Second))
 	if err != nil {
 		t.Fatalf("second Tick() error = %v", err)
 	}
 	w.mu.Lock()
 	stillAlive := w.monsters[monID].Alive
+	pending := w.monsters[monID].PendingDeath
 	w.mu.Unlock()
-	if stillAlive {
-		t.Fatal("summon remained alive after one second of master death")
+	if !stillAlive || !pending {
+		t.Fatalf("summon state after master death = alive:%t pending:%t, want pending death", stillAlive, pending)
+	}
+	result, err := w.Tick([]PlayerSnapshot{{Character: dead}}, start.Add(2*time.Second))
+	if err != nil {
+		t.Fatalf("third Tick() error = %v", err)
+	}
+	if len(marked.MonsterDeaths) != 0 {
+		t.Fatalf("marked monster deaths = %+v, want deferred settlement", marked.MonsterDeaths)
 	}
 	if len(result.MonsterDeaths) != 1 || result.MonsterDeaths[0].MonsterID != monID || result.MonsterDeaths[0].MonsterMapID != caster.MapID {
 		t.Fatalf("monster deaths = %+v, want death for %q on map %q", result.MonsterDeaths, monID, caster.MapID)
@@ -12699,15 +14022,218 @@ func TestSummonedMonsterKeepsGhostOwnerDuringDisconnectGrace(t *testing.T) {
 		w.mu.Unlock()
 		t.Fatalf("summon during disconnect grace = %+v, want live owned monster", mon)
 	}
-	if _, _, _, err := w.tickSummonedMonsterLocked(mon, map[string]storage.Character{}, now.Add(2*time.Second)); err != nil {
+	if _, _, _, err := w.tickSummonedMonsterLocked(mon, map[string]storage.Character{}, now.Add(4*time.Minute+time.Second)); err != nil {
 		w.mu.Unlock()
 		t.Fatalf("tickSummonedMonsterLocked() after disconnect grace error = %v", err)
 	}
+	if !mon.Alive {
+		w.mu.Unlock()
+		t.Fatal("summon expired before disconnect grace ended")
+	}
+	if _, _, _, err := w.tickSummonedMonsterLocked(mon, map[string]storage.Character{}, now.Add(5*time.Minute+time.Second)); err != nil {
+		w.mu.Unlock()
+		t.Fatalf("tickSummonedMonsterLocked() after reference grace error = %v", err)
+	}
 	if mon.Alive {
 		w.mu.Unlock()
-		t.Fatal("summon remained alive after disconnect grace")
+		t.Fatal("summon remained alive after reference grace")
 	}
 	w.mu.Unlock()
+}
+
+func TestHandleCharacterDisconnectMarksGhostSnapshot(t *testing.T) {
+	w, master := newTestWorldCharacter(t)
+	w.HandleCharacterDisconnect(master, time.Now())
+	w.mu.Lock()
+	snapshot, ok := w.disconnectedCharacters[master.ID]
+	w.mu.Unlock()
+	if !ok || !snapshot.Character.Ghost {
+		t.Fatalf("disconnect snapshot = %+v, want ghost character", snapshot)
+	}
+}
+
+func TestHandleCharacterDisconnectKeepsGhostSnapshotForReferenceGrace(t *testing.T) {
+	w, _ := newTestWorldCharacter(t)
+	now := time.Now()
+	master := storage.Character{ID: "ghost-grace", Name: "ghost-grace"}
+	w.HandleCharacterDisconnect(master, now)
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if _, ok, ghost := w.summonedMonsterOwnerLocked(&Monster{MasterID: master.ID}, map[string]storage.Character{}, now.Add(4*time.Minute+time.Second)); !ok || !ghost {
+		t.Fatalf("ghost owner during grace = ok:%t ghost:%t, want ok and ghost", ok, ghost)
+	}
+	if _, ok, ghost := w.summonedMonsterOwnerLocked(&Monster{MasterID: master.ID}, map[string]storage.Character{}, now.Add(5*time.Minute+time.Second)); ok || ghost {
+		t.Fatalf("ghost owner after grace = ok:%t ghost:%t, want absent", ok, ghost)
+	}
+}
+
+func TestCastleGoldAndDoorOperationsRequireMasterAndPersist(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	ch.GuildID = "castle-guild"
+	ch.GuildRank = 1
+	if err := w.store.SaveCastle(storage.Castle{ID: ch.MapID, OwnerGuildID: ch.GuildID, Gold: 1000, MainDoorHP: 100}); err != nil {
+		t.Fatalf("SaveCastle() error = %v", err)
+	}
+	updated, err := w.CastleWithdraw(ch, ch.MapID, 250)
+	if err != nil || updated.Gold != 250 {
+		t.Fatalf("CastleWithdraw() = %+v, %v", updated, err)
+	}
+	updated, err = w.CastleReceipt(updated, ch.MapID, 100)
+	if err != nil || updated.Gold != 150 {
+		t.Fatalf("CastleReceipt() = %+v, %v", updated, err)
+	}
+	if err := w.CastleSetMainDoor(updated, ch.MapID, true); err != nil {
+		t.Fatalf("CastleSetMainDoor() error = %v", err)
+	}
+	castle, ok := w.store.Castle(ch.MapID)
+	if !ok || !castle.MainDoorOpen || castle.Gold != 850 {
+		t.Fatalf("persisted castle = %+v, found=%t", castle, ok)
+	}
+}
+
+func TestCastleReceiptHonorsGoldCapacity(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	ch.GuildID = "castle-guild"
+	ch.GuildRank = 1
+	ch.Gold = 100
+	if err := w.store.SaveCastle(storage.Castle{ID: ch.MapID, OwnerGuildID: ch.GuildID, Gold: w.gameplay.Item.MaxGold - 50}); err != nil {
+		t.Fatalf("SaveCastle() error = %v", err)
+	}
+	if _, err := w.CastleReceipt(ch, ch.MapID, 100); err == nil {
+		t.Fatal("CastleReceipt() should reject castle gold capacity overflow")
+	}
+}
+
+func TestCastleRequestWarPersistsAttackerAndRejectsDuplicate(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	ch.GuildID = "attacker-guild"
+	ch.GuildRank = 1
+	if err := w.store.SaveCastle(storage.Castle{ID: ch.MapID, OwnerGuildID: "owner-guild"}); err != nil {
+		t.Fatalf("SaveCastle() error = %v", err)
+	}
+	if err := w.CastleRequestWar(ch, ch.MapID); err != nil {
+		t.Fatalf("CastleRequestWar() error = %v", err)
+	}
+	if err := w.CastleRequestWar(ch, ch.MapID); err == nil {
+		t.Fatal("duplicate castle war request should fail")
+	}
+	castle, _ := w.store.Castle(ch.MapID)
+	if castle.Attackers[ch.GuildID] <= time.Now().Unix() {
+		t.Fatalf("attacker schedule = %+v", castle.Attackers)
+	}
+}
+
+func TestCastleRepairRestoresDamagedDoorAndWall(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	ch.GuildID = "castle-guild"
+	ch.GuildRank = 1
+	if err := w.store.SaveCastle(storage.Castle{ID: ch.MapID, OwnerGuildID: ch.GuildID, Gold: 3000000, MainDoorHP: 100, WallHP: [3]int{100, 1000, 100}}); err != nil {
+		t.Fatalf("SaveCastle() error = %v", err)
+	}
+	if err := w.CastleRepairDoor(ch, ch.MapID); err != nil {
+		t.Fatalf("CastleRepairDoor() error = %v", err)
+	}
+	if err := w.CastleRepairWall(ch, ch.MapID, 0); err != nil {
+		t.Fatalf("CastleRepairWall() error = %v", err)
+	}
+	castle, _ := w.store.Castle(ch.MapID)
+	if castle.MainDoorHP != 2000 || castle.WallHP[0] != 2000 || castle.Gold != 500000 {
+		t.Fatalf("repaired castle = %+v", castle)
+	}
+}
+
+func TestCastleRepairRevivesClosedDeadDoor(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	ch.GuildID = "castle-guild"
+	ch.GuildRank = 1
+	if err := w.store.SaveCastle(storage.Castle{ID: ch.MapID, OwnerGuildID: ch.GuildID, Gold: 3000000, MainDoorHP: 0, MainDoorOpen: true, MainDoorHitAt: time.Now().Add(-2 * time.Minute).UnixMilli()}); err != nil {
+		t.Fatalf("SaveCastle() error = %v", err)
+	}
+	if err := w.CastleRepairDoor(ch, ch.MapID); err != nil {
+		t.Fatalf("CastleRepairDoor() error = %v", err)
+	}
+	c, _ := w.store.Castle(ch.MapID)
+	if c.MainDoorHP != 2000 || c.MainDoorOpen {
+		t.Fatalf("repaired dead door = %+v, want closed and full health", c)
+	}
+}
+
+func TestCastleRepairHonorsRecentHitCooldown(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	ch.GuildID = "castle-guild"
+	ch.GuildRank = 1
+	if err := w.store.SaveCastle(storage.Castle{ID: ch.MapID, OwnerGuildID: ch.GuildID, Gold: 3000000, MainDoorHP: 100, MainDoorHitAt: time.Now().UnixMilli(), WallHP: [3]int{1000, 100, 1000}, WallHitAt: [3]int64{0, time.Now().UnixMilli(), 0}}); err != nil {
+		t.Fatalf("SaveCastle() error = %v", err)
+	}
+	if err := w.CastleRepairDoor(ch, ch.MapID); err == nil {
+		t.Fatal("recently hit door should remain on repair cooldown")
+	}
+	if err := w.CastleRepairWall(ch, ch.MapID, 1); err == nil {
+		t.Fatal("recently hit wall should remain on repair cooldown")
+	}
+}
+
+func TestHireCastleArcherPersistsSlotAndSpawns(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	w.data.Castle.CastleMap = ch.MapID
+	w.data.Castle.Archers = []data.CastleDefenseSlot{{MonsterID: "弓箭护卫", X: ch.X + 1, Y: ch.Y}}
+	ch.GuildID = "castle-guild"
+	ch.GuildRank = 1
+	if err := w.store.SaveCastle(storage.Castle{ID: ch.MapID, OwnerGuildID: ch.GuildID, Gold: w.gameplay.Castle.HireArcherPrice}); err != nil {
+		t.Fatalf("SaveCastle() error = %v", err)
+	}
+	spawned, err := w.HireCastleDefense(ch, ch.MapID, true, 0)
+	if err != nil || len(spawned.Monsters) != 1 {
+		t.Fatalf("HireCastleDefense() = %+v, %v", spawned, err)
+	}
+	castle, _ := w.store.Castle(ch.MapID)
+	if castle.ArcherSlots[0] != spawned.Monsters[0].ID || castle.Gold != 0 {
+		t.Fatalf("persisted castle = %+v", castle)
+	}
+}
+
+func TestHireCastleGuardUsesStandardGuardTemplate(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	w.data.Castle.CastleMap = ch.MapID
+	w.data.Castle.Guards = []data.CastleDefenseSlot{{MonsterID: "守卫", X: ch.X + 1, Y: ch.Y}}
+	ch.GuildID = "castle-guild"
+	ch.GuildRank = 1
+	if err := w.store.SaveCastle(storage.Castle{ID: ch.MapID, OwnerGuildID: ch.GuildID, Gold: w.gameplay.Castle.HireGuardPrice}); err != nil {
+		t.Fatalf("SaveCastle() error = %v", err)
+	}
+	spawned, err := w.HireCastleDefense(ch, ch.MapID, false, 0)
+	if err != nil || len(spawned.Monsters) != 1 {
+		t.Fatalf("HireCastleDefense() = %+v, %v", spawned, err)
+	}
+	if spawned.Monsters[0].Race != 81 || spawned.Monsters[0].TemplateID != "守卫" || spawned.Monsters[0].Dir != 3 || spawned.Monsters[0].GuardDirection != 3 {
+		t.Fatalf("spawned guard = %+v", spawned.Monsters[0])
+	}
+}
+
+func TestWorldTickClearsGhostCastleDefenseSlot(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	w.data.Castle.CastleMap = ch.MapID
+	w.data.Castle.Guards = []data.CastleDefenseSlot{{MonsterID: "守卫", X: ch.X + 1, Y: ch.Y}}
+	ch.GuildID = "castle-guild"
+	ch.GuildRank = 1
+	if err := w.store.SaveCastle(storage.Castle{ID: ch.MapID, OwnerGuildID: ch.GuildID, Gold: w.gameplay.Castle.HireGuardPrice}); err != nil {
+		t.Fatalf("SaveCastle() error = %v", err)
+	}
+	spawned, err := w.HireCastleDefense(ch, ch.MapID, false, 0)
+	if err != nil || len(spawned.Monsters) != 1 {
+		t.Fatalf("HireCastleDefense() = %+v, %v", spawned, err)
+	}
+	w.mu.Lock()
+	w.monsters[spawned.Monsters[0].ID].Ghost = true
+	w.mu.Unlock()
+	if _, err := w.Tick(nil, time.Now()); err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	castle, _ := w.store.Castle(ch.MapID)
+	if castle.GuardSlots[0] != "" {
+		t.Fatalf("ghost guard slot = %q, want empty", castle.GuardSlots[0])
+	}
 }
 
 func TestReconnectedOwnerClearsGhostSnapshot(t *testing.T) {
@@ -14240,6 +15766,26 @@ func TestWorldTickAwardsSummonKillExperienceToMaster(t *testing.T) {
 	}
 }
 
+func TestWorldTickUsesTickTimeForSummonExperienceOwnership(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	tickNow := time.Unix(100, 0)
+	w.mu.Lock()
+	w.monsters = map[string]*Monster{
+		"summon": {ID: "summon", MasterID: caster.ID, MasterExpiresAt: tickNow.Add(time.Second), MapID: caster.MapID, X: caster.X, Y: caster.Y, HP: 100, MaxHP: 100, Alive: true},
+		"target": {ID: "target", MapID: caster.MapID, X: caster.X + 1, Y: caster.Y, HP: 0, MaxHP: 100, Alive: true, PendingDeath: true, Experience: 25, ExpHitterID: "summon", ExpHitterAt: tickNow},
+	}
+	w.occupied = map[monsterPosition]string{}
+	w.mu.Unlock()
+
+	tick, err := w.Tick([]PlayerSnapshot{{Character: caster}}, tickNow)
+	if err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	if len(tick.SpellExperience) != 1 || tick.SpellExperience[0].CharacterID != caster.ID {
+		t.Fatalf("spell experience = %+v, want active master ownership at tick time", tick.SpellExperience)
+	}
+}
+
 func TestCastSkillTamingMonsterRespectsMonsterHpGate(t *testing.T) {
 	prepare := func(maxHP int, seed int64) (*World, storage.Character, int, int, int32) {
 		w, caster := newTestWorldCharacter(t)
@@ -14320,125 +15866,6 @@ func TestCastSkillTamingMonsterRespectsMonsterHpGate(t *testing.T) {
 	}
 }
 
-func TestCastSkillParalysisQueuesDelayedMagic(t *testing.T) {
-	w, caster := newTestWorldCharacter(t)
-	w.mu.Lock()
-	w.monsters = map[string]*Monster{}
-	w.occupied = map[monsterPosition]string{}
-	w.mu.Unlock()
-	mapID := caster.MapID
-	mp := w.data.Maps[mapID]
-	targetX, targetY := -1, -1
-	for dx := 2; dx < 8 && targetX < 0; dx++ {
-		for dy := -2; dy <= 2; dy++ {
-			tx := caster.X + dx
-			ty := caster.Y + dy
-			if !mp.Walkable(tx, ty) {
-				continue
-			}
-			clear := true
-			w.mu.Lock()
-			for _, mon := range w.monsters {
-				if mon != nil && mon.Alive && mon.MapID == mapID && abs(mon.X-tx) <= 1 && abs(mon.Y-ty) <= 1 {
-					clear = false
-					break
-				}
-			}
-			w.mu.Unlock()
-			if clear {
-				targetX, targetY = tx, ty
-				break
-			}
-		}
-	}
-	if targetX < 0 {
-		t.Fatal("could not find clear tile for trap test")
-	}
-	result, err := w.SpawnMonsterByNameAt(mapID, targetX, targetY, "鸡", 2)
-	if err != nil {
-		t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
-	}
-	if len(result.Monsters) != 2 {
-		t.Fatalf("SpawnMonsterByNameAt() monsters = %d, want 2", len(result.Monsters))
-	}
-	w.mu.Lock()
-	for _, mon := range w.monsters {
-		mon.MagicDefense = 0
-		mon.MagicDefenseMax = 0
-	}
-	w.mu.Unlock()
-	caster.Level = 100
-	caster.MP = 100
-	caster.Skills = storage.SkillStates{{ID: "困魔咒", Level: 5, Train: 0}}
-	caster.EquippedItems = map[int]storage.UserItem{SlotBujuk: {ItemID: "护身符", Dura: 10000}}
-	mabe := w.data.Skills["困魔咒"]
-	mabe.Power = 100
-	mabe.MaxPower = 100
-	mabe.TrainLevel1 = 0
-	w.data.Skills["困魔咒"] = mabe
-	w.rand = rand.New(zeroSource{})
-	updated, err := w.CastSkillWithPlayers(caster, "困魔咒", targetX, targetY, MonsterActorID(result.Monsters[0]), nil)
-	if err != nil {
-		t.Fatalf("CastSkillWithPlayers() error = %v", err)
-	}
-	if len(updated.AffectedMonsters) != 0 || len(updated.GroundEvents) != 0 {
-		t.Fatalf("immediate effects = monsters %d ground %d, want none", len(updated.AffectedMonsters), len(updated.GroundEvents))
-	}
-	if len(w.pendingSpells) != 3 {
-		t.Fatalf("pending spells = %d, want first damage, second damage, and control", len(w.pendingSpells))
-	}
-	if w.monsters[result.Monsters[0].ID].LastHitterID != caster.ID {
-		t.Fatalf("monster last hitter = %+v, want immediate caster marker", w.monsters[result.Monsters[0].ID])
-	}
-	if got := w.pendingSpells[1].DueAt.Sub(w.pendingSpells[0].DueAt); got != 0 {
-		t.Fatalf("second damage delay = %s, want same delivery time", got)
-	}
-	if got := w.pendingSpells[2].DueAt.Sub(w.pendingSpells[0].DueAt); got != 50*time.Millisecond {
-		t.Fatalf("control delay = %s, want 50ms after damage", got)
-	}
-	wantParalysisPoint := w.pendingSpells[1].Damage / 20
-	if got := w.pendingSpells[2].PoisonPoint; got != 5 {
-		t.Fatalf("control poison point = %d, want skill level = 5", got)
-	}
-	if got := w.pendingSpells[2].ParalysisDuration; got != time.Duration(wantParalysisPoint)*time.Second {
-		t.Fatalf("control paralysis duration = %s, want %ds", got, wantParalysisPoint)
-	}
-	damageAt := w.pendingSpells[0].DueAt
-	if _, err := w.Tick([]PlayerSnapshot{{Character: updated.Character}}, damageAt); err != nil {
-		t.Fatalf("Tick(damage) error = %v", err)
-	}
-	controlAt := damageAt.Add(50 * time.Millisecond)
-	delivered, err := w.Tick([]PlayerSnapshot{{Character: updated.Character}}, controlAt)
-	if err != nil {
-		t.Fatalf("Tick(control) error = %v", err)
-	}
-	if len(delivered.StatusRefreshMonsters) != 1 || delivered.StatusRefreshMonsters[0].ID == "" {
-		t.Fatalf("paralysis status refreshes = %+v, want one monster status refresh", delivered.StatusRefreshMonsters)
-	}
-	if len(delivered.AffectedMonsters) != 0 {
-		t.Fatalf("paralysis affected monsters = %d, want no ordinary monster refresh", len(delivered.AffectedMonsters))
-	}
-	w.mu.Lock()
-	paralyzed := false
-	for _, mon := range w.monsters {
-		if mon.ParalyzedUntil.After(controlAt) {
-			paralyzed = true
-			break
-		}
-	}
-	w.mu.Unlock()
-	if !paralyzed {
-		t.Fatal("no monster paralysis after delayed control delivery")
-	}
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	for _, mon := range w.monsters {
-		if mon.ParalyzedUntil.After(controlAt) && mon.LastHitterID != caster.ID {
-			t.Fatalf("monster last hitter = %q, want %q", mon.LastHitterID, caster.ID)
-		}
-	}
-}
-
 func TestUseBundleItemUnpacksSixItems(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
 	ch.BagItems = []storage.UserItem{{ItemID: "回城卷包", MakeIndex: 300}}
@@ -14459,6 +15886,9 @@ func TestUseBundleItemUnpacksSixItems(t *testing.T) {
 		}
 		if entry.MakeIndex == 0 {
 			t.Fatalf("entry = %+v, want non-zero MakeIndex", entry)
+		}
+		if entry.MakeIndex < itemMakeIndexStart {
+			t.Fatalf("entry MakeIndex = %d, want positive item identity", entry.MakeIndex)
 		}
 		if _, ok := seen[entry.MakeIndex]; ok {
 			t.Fatalf("duplicate MakeIndex = %d in %+v", entry.MakeIndex, updated.BagItems)
@@ -14709,6 +16139,101 @@ func TestSetGroupModeWithResultReturnsResponseParam(t *testing.T) {
 	}
 }
 
+func TestSetGroupModeWithResultKeepsGroupOwnerOpen(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	ch.GroupOwnerID = ch.ID
+	ch.GroupMembers = []string{ch.ID, "member"}
+	ch.AllowGroup = true
+
+	updated, result, err := w.SetGroupModeWithResult(ch, false)
+	if err != nil {
+		t.Fatalf("SetGroupModeWithResult() error = %v", err)
+	}
+	if result.ResponseParam != 1 || !updated.AllowGroup {
+		t.Fatalf("group owner result = %+v, want response 1 and allow group", result)
+	}
+	if len(result.Sync.Updated) != 0 {
+		t.Fatalf("group owner sync = %+v, want no state update", result.Sync)
+	}
+}
+
+func TestHasRecallSuiteRequiresReferenceFourPieceShapes(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	w.data.Items = map[string]data.StdItem{
+		"memory-necklace": {ID: "memory-necklace", Shape: 123},
+		"memory-ring":     {ID: "memory-ring", Shape: 122},
+		"memory-bracelet": {ID: "memory-bracelet", Shape: 124},
+		"memory-helmet":   {ID: "memory-helmet", Shape: 125},
+	}
+	ch.EquippedItems = map[int]storage.UserItem{
+		SlotNecklace: {ItemID: "memory-necklace"},
+		SlotRingL:    {ItemID: "memory-ring"},
+		SlotArmRingR: {ItemID: "memory-bracelet"},
+		SlotHelmet:   {ItemID: "memory-helmet"},
+	}
+	if !w.HasRecallSuite(ch) {
+		t.Fatal("complete memory set should enable group recall")
+	}
+	delete(ch.EquippedItems, SlotHelmet)
+	if w.HasRecallSuite(ch) {
+		t.Fatal("incomplete memory set should not enable group recall")
+	}
+}
+
+func TestGroupRecallRequiresSuiteAndMemberPermission(t *testing.T) {
+	w, owner := newTestWorldCharacter(t)
+	member, err := w.CreateCharacterWithAppearance("recall-member", "recall-member", "warrior", 0, 0, owner.MapID, owner.X+8, owner.Y)
+	if err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	w.data.Items = map[string]data.StdItem{
+		"memory-necklace": {ID: "memory-necklace", Shape: 123},
+		"memory-ring":     {ID: "memory-ring", Shape: 122},
+		"memory-bracelet": {ID: "memory-bracelet", Shape: 124},
+		"memory-helmet":   {ID: "memory-helmet", Shape: 125},
+	}
+	owner.GroupOwnerID = owner.ID
+	owner.GroupMembers = []string{owner.ID, member.ID}
+	owner.EquippedItems = map[int]storage.UserItem{
+		SlotNecklace: {ItemID: "memory-necklace"},
+		SlotRingL:    {ItemID: "memory-ring"},
+		SlotArmRingL: {ItemID: "memory-bracelet"},
+		SlotHelmet:   {ItemID: "memory-helmet"},
+	}
+	member.GroupOwnerID = owner.ID
+	member.AllowGroupRecall = true
+	result, ok := w.HandleUserCommandWithPlayers(owner, "@GroupRecall", []storage.Character{owner, member})
+	if !ok || len(result.Teleports) != 1 {
+		t.Fatalf("group recall result = %+v, handled=%t, want one teleport", result, ok)
+	}
+	if result.Teleports[0].To.MapID != owner.MapID || result.Teleports[0].To.X == member.X && result.Teleports[0].To.Y == member.Y {
+		t.Fatalf("recalled member = %+v, want owner map and new position", result.Teleports[0].To)
+	}
+	if result.Character.GroupRecallUntil <= time.Now().UnixNano() {
+		t.Fatalf("owner cooldown = %d, want future deadline", result.Character.GroupRecallUntil)
+	}
+	member.AllowGroupRecall = false
+	result.Character.GroupRecallUntil = 0
+	result, ok = w.HandleUserCommandWithPlayers(result.Character, "@GroupRecall", []storage.Character{result.Character, member})
+	if !ok || len(result.Teleports) != 0 || len(result.Notices) != 1 {
+		t.Fatalf("rejected group recall result = %+v, handled=%t, want notice only", result, ok)
+	}
+}
+
+func TestGroupRecallAdminBypassesCooldown(t *testing.T) {
+	w, owner := newTestWorldCharacter(t)
+	owner.AdminMode = true
+	owner.GroupOwnerID = owner.ID
+	owner.GroupRecallUntil = time.Now().Add(time.Minute).UnixNano()
+	result := w.handleGroupRecallCommand(owner, []storage.Character{owner})
+	if result.Message != "" {
+		t.Fatalf("admin recall message = %q, want success path", result.Message)
+	}
+	if result.Character.GroupRecallUntil <= time.Now().UnixNano() {
+		t.Fatalf("admin recall cooldown = %d, want refreshed deadline", result.Character.GroupRecallUntil)
+	}
+}
+
 func TestSetSkillHotkeyPersistsChange(t *testing.T) {
 	bundle := loadTestBundle(t)
 	storePath := filepath.Join(t.TempDir(), "state.json")
@@ -14858,61 +16383,6 @@ func TestTickExpiresMonsterDefenceStates(t *testing.T) {
 	}
 }
 
-func TestCastSkillParalysisUsesCasterLevelInSuccessChance(t *testing.T) {
-	w, caster := newTestWorldCharacter(t)
-	w.mu.Lock()
-	w.monsters = map[string]*Monster{}
-	w.occupied = map[monsterPosition]string{}
-	w.mu.Unlock()
-	spawned, err := w.SpawnMonsterByNameAt(caster.MapID, caster.X+2, caster.Y, "鸡", 2)
-	if err != nil {
-		t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
-	}
-	caster.Level = 100
-	caster.MP = 100
-	caster.Skills = storage.SkillStates{{ID: "困魔咒", Level: 5, Train: 0}}
-	caster.EquippedItems = map[int]storage.UserItem{SlotBujuk: {ItemID: "护身符", Dura: 10000}}
-	mabe := w.data.Skills["困魔咒"]
-	mabe.Power = 100
-	mabe.MaxPower = 100
-	mabe.DefPower = 0
-	mabe.DefMaxPower = 0
-	mabe.TrainLevel1 = 0
-	w.data.Skills["困魔咒"] = mabe
-	w.rand = rand.New(&seqSource{vals: []int64{0, 0, 60, 0}})
-	result, err := w.CastSkillWithPlayers(caster, "困魔咒", spawned.Monsters[0].X, spawned.Monsters[0].Y, MonsterActorID(spawned.Monsters[0]), nil)
-	if err != nil {
-		t.Fatalf("CastSkillWithPlayers() error = %v", err)
-	}
-	if len(w.pendingSpells) != 3 {
-		t.Fatalf("pending spells = %d, want first damage, second damage, and control; result=%+v", len(w.pendingSpells), result)
-	}
-}
-
-func TestMabePowerRollPrecedesInvalidTargetChecks(t *testing.T) {
-	w, caster := newTestWorldCharacter(t)
-	target := &Monster{ID: "invalid-mabe-target", MapID: caster.MapID, X: caster.X + 1, Y: caster.Y, HP: 100, MaxHP: 100, Alive: true, AdminMode: true}
-	w.data.Items["mabe-random-item"] = data.StdItem{
-		ID:    "mabe-random-item",
-		Stats: data.StdItemStats{McMin: 2 << 8},
-	}
-	caster.MP = 100
-	caster.Skills = storage.SkillStates{{ID: "困魔咒", Level: 1, Train: 0}}
-	caster.EquippedItems = map[int]storage.UserItem{SlotWeapon: {ItemID: "mabe-random-item"}}
-	source := &seqSource{vals: []int64{1}}
-	w.rand = rand.New(source)
-	w.mu.Lock()
-	w.monsters = map[string]*Monster{target.ID: target}
-	w.occupied = map[monsterPosition]string{{MapID: target.MapID, X: target.X, Y: target.Y}: target.ID}
-	w.mu.Unlock()
-	if _, err := w.DoSpell(caster, "困魔咒", target.X, target.Y, MonsterActorID(*target), nil); err != nil {
-		t.Fatalf("DoSpell() error = %v", err)
-	}
-	if source.idx != 1 {
-		t.Fatalf("power random draws = %d, want one before invalid-target rejection", source.idx)
-	}
-}
-
 func TestCharacterParalysisImmunityComesFromEquipment(t *testing.T) {
 	w, caster := newTestWorldCharacter(t)
 	target, err := w.CreateCharacterWithAppearance("test2", "target", "warrior", 0, 0, caster.MapID, caster.X+1, caster.Y)
@@ -14927,43 +16397,6 @@ func TestCharacterParalysisImmunityComesFromEquipment(t *testing.T) {
 		t.Fatal("characterCannotParalyzeLocked() = false, want true")
 	}
 	w.mu.Unlock()
-}
-
-func TestCastSkillParalysisSkipsControlForImmuneCharacter(t *testing.T) {
-	w, caster := newTestWorldCharacter(t)
-	x, y := startCoordsForMap(t, w.data, testMapID)
-	caster.MapID = testMapID
-	caster.X = x
-	caster.Y = y
-	target, err := w.CreateCharacterWithAppearance("test2", "target", "warrior", 0, 0, caster.MapID, caster.X+1, caster.Y)
-	if err != nil {
-		t.Fatalf("CreateCharacter() target error = %v", err)
-	}
-	caster.Level = 100
-	caster.FreePKArea = true
-	caster.MP = 100
-	caster.Skills = storage.SkillStates{{ID: "困魔咒", Level: 5, Train: 0}}
-	target.Level = 1
-	target.FreePKArea = true
-	target.EquippedItems = map[int]storage.UserItem{SlotArmRingL: {ItemID: "paralysis-immunity"}}
-	w.data.Items["paralysis-immunity"] = data.StdItem{ID: "paralysis-immunity", Shape: 139}
-	if err := w.store.SaveCharacter(target); err != nil {
-		t.Fatalf("SaveCharacter() target error = %v", err)
-	}
-	w.rand = rand.New(&seqSource{vals: []int64{9 << 32, 9 << 32, 9 << 32, 9 << 32, 9 << 32, 9 << 32}})
-	updated, err := w.CastSkillWithPlayers(caster, "困魔咒", target.X, target.Y, CharacterActorID(target), []storage.Character{target})
-	if err != nil {
-		t.Fatalf("CastSkillWithPlayers() error = %v", err)
-	}
-	if len(w.pendingSpells) != 2 {
-		t.Fatalf("pending spells = %d, want two damage deliveries without control", len(w.pendingSpells))
-	}
-	if w.pendingSpells[0].ParalysisDuration != 0 || w.pendingSpells[1].ParalysisDuration != 0 {
-		t.Fatalf("damage pending spells = %+v, want no paralysis duration", w.pendingSpells)
-	}
-	if updated.Character.PKFlag == false {
-		t.Fatalf("caster PK flag = false, want target-side spell success marker")
-	}
 }
 
 func TestTickParalysisStatusRefreshesOnlyAtExpiry(t *testing.T) {
@@ -15542,7 +16975,7 @@ func TestHandleChatFormatsLocalMessage(t *testing.T) {
 	if result.Global {
 		t.Fatal("HandleChat() marked local message as global")
 	}
-	if got, want := result.Message, ch.Name+":hello world"; got != want {
+	if got, want := result.Message, ch.Name+": hello world "; got != want {
 		t.Fatalf("message = %q, want %q", got, want)
 	}
 }
@@ -15556,8 +16989,32 @@ func TestHandleChatFormatsGlobalMessage(t *testing.T) {
 	if !result.Global {
 		t.Fatal("HandleChat() did not mark global message")
 	}
-	if got, want := result.Message, "(!)"+ch.Name+":  hello world"; got != want {
+	if got, want := result.Message, "(!)"+ch.Name+":  hello world "; got != want {
 		t.Fatalf("message = %q, want %q", got, want)
+	}
+}
+
+func TestHandleChatFormatsPrivateGroupAndGuildMessages(t *testing.T) {
+	w, ch := newRealDataWorldCharacter(t)
+	private, ok := w.HandleChat(ch, "/target hello")
+	if !ok || !private.Private || private.TargetName != "target" || private.Message != ch.Name+"=> hello" {
+		t.Fatalf("private chat = %+v, ok=%v", private, ok)
+	}
+	group, ok := w.HandleChat(ch, "!! hello")
+	if !ok || !group.Group || group.Message != ch.Name+": hello" {
+		t.Fatalf("group chat = %+v, ok=%v", group, ok)
+	}
+	ch.GuildID = "guild"
+	guild, ok := w.HandleChat(ch, "!~ hello")
+	if !ok || !guild.Guild || guild.Message != ch.Name+": hello" {
+		t.Fatalf("guild chat = %+v, ok=%v", guild, ok)
+	}
+}
+
+func TestHandleChatRejectsGuildMessageWithoutGuild(t *testing.T) {
+	w, ch := newRealDataWorldCharacter(t)
+	if _, ok := w.HandleChat(ch, "!~ hello"); ok {
+		t.Fatal("HandleChat() accepted guild chat without a guild")
 	}
 }
 
@@ -15681,7 +17138,7 @@ func TestMagicMonsterDamageConsumesMeatQuality(t *testing.T) {
 	}
 }
 
-func TestMonsterMeatQualitySetsMeatDropDurability(t *testing.T) {
+func TestAnimalDeathDoesNotCreateGroundMeatDrop(t *testing.T) {
 	w, caster := prepareHitDamageTestWorld(t, nil)
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -15691,15 +17148,182 @@ func TestMonsterMeatQualitySetsMeatDropDurability(t *testing.T) {
 		break
 	}
 	mon.MeatQuality = 1234
-	w.rand = rand.New(zeroSource{})
-	drops := w.rollDropsLocked(mon, caster.ID)
-	for _, drop := range drops {
-		if drop.ItemID == "鸡肉" {
-			if drop.Dura != 1234 || drop.DuraMax != 10000 {
-				t.Fatalf("meat drop durability = %d/%d, want 1234/10000", drop.Dura, drop.DuraMax)
-			}
-			return
+	mon.Animal = true
+	if drops := w.rollDropsLocked(mon, caster.ID, caster.GroupOwnerID); len(drops) != 0 {
+		t.Fatalf("animal ground drops = %+v, want none", drops)
+	}
+}
+
+func TestButcherDeerProducesMeatAfterCorpseProcessing(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	mon := &Monster{ID: "mon-52", TemplateID: "鹿", Race: 52, Animal: true, MapID: ch.MapID, X: ch.X, Y: ch.Y, BodyLeathery: 150, MeatQuality: 1234}
+	w.mu.Lock()
+	w.monsters[mon.ID] = mon
+	w.mu.Unlock()
+	var result ButcherResult
+	var err error
+	for i := 0; i < 30; i++ {
+		result, err = w.ButcherAnimal(ch, MonsterActorID(*mon), mon.X, mon.Y, ch.Dir)
+		if err == nil && result.FoundItem {
+			break
 		}
 	}
-	t.Fatal("rollDropsLocked() did not produce chicken meat")
+	if err != nil || !result.FoundItem || result.AddedItem.ItemID != "肉" || !result.Skeleton {
+		t.Fatalf("ButcherAnimal() = %+v, err=%v, want deer meat and skeleton", result, err)
+	}
+}
+
+func TestTATMonsterUsesReferenceNoTargetSearchIntervalWhenUnconfigured(t *testing.T) {
+	w := &World{}
+	for _, race := range []int{53, 83, 84, 86, 88, 89, 97, 101, 102} {
+		mon := &Monster{Race: race}
+		if got := w.monsterSearchNoTargetMSLocked(mon); got != 1000 {
+			t.Fatalf("race %d no-target search interval = %d, want 1000", race, got)
+		}
+	}
+	mon := &Monster{Race: 83, SearchNoTargetMS: 2200}
+	if got := w.monsterSearchNoTargetMSLocked(mon); got != 2200 {
+		t.Fatalf("configured no-target search interval = %d, want 2200", got)
+	}
+}
+
+func TestTATMonsterDoesNotSearchAtExactOneSecondBoundary(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	mon := &Monster{ID: "tat-boundary", Race: 81, MapID: ch.MapID, X: ch.X, Y: ch.Y, Alive: true, ViewRange: 10, NextSearchAt: time.Unix(10, 0)}
+	actions, _, _, err := w.tickNormalMonsterLocked(mon, map[string]storage.Character{ch.ID: ch}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickNormalMonsterLocked() error = %v", err)
+	}
+	if mon.TargetCharacterID != "" || len(actions) != 0 {
+		t.Fatalf("exact boundary target=%q actions=%+v, want no search", mon.TargetCharacterID, actions)
+	}
+}
+
+func TestCowMonsterUsesTATPeriodicSearch(t *testing.T) {
+	w := &World{}
+	if !w.monsterUsesReferencePeriodicSearchLocked(&Monster{Race: 97}) {
+		t.Fatal("cow monster does not use TAT periodic search")
+	}
+}
+
+func TestTATMonsterPeriodicallyRetargetsAnExistingTarget(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	oldTarget := ch
+	oldTarget.ID = "tat-old-target"
+	oldTarget.X += 4
+	newTarget := ch
+	newTarget.ID = "tat-new-target"
+	newTarget.X++
+	mon := &Monster{ID: "tat-retarget", Race: 81, MapID: ch.MapID, X: ch.X, Y: ch.Y, Alive: true, ViewRange: 10, TargetCharacterID: oldTarget.ID, LastTargetSearchAt: time.Unix(10, 0), NextSearchAt: time.Unix(100, 0)}
+	_, _, _, err := w.tickNormalMonsterLocked(mon, map[string]storage.Character{oldTarget.ID: oldTarget, newTarget.ID: newTarget}, time.Unix(19, 0))
+	if err != nil {
+		t.Fatalf("tickNormalMonsterLocked() error = %v", err)
+	}
+	if mon.TargetCharacterID != newTarget.ID {
+		t.Fatalf("retargeted target = %q, want %q", mon.TargetCharacterID, newTarget.ID)
+	}
+}
+
+func TestMagicCowMagicAttackSkipsPhysicalHitChance(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "magic-cow-no-hit-roll"
+	target.X++
+	target.HP = 100
+	target.MaxHP = 100
+	mon := &Monster{ID: "magic-cow-no-hit-roll", Race: 91, MapID: ch.MapID, X: ch.X, Y: ch.Y, HP: 40, MaxHP: 40, MinAttack: 10, MaxAttack: 10, MagicAttack: 10, MagicAttackMax: 10, Hit: 0, Speed: 100, Alive: true, TargetCharacterID: target.ID, AttackIntervalMS: 1}
+	actions, hits, _, err := w.tickMagicCowMonsterLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickMagicCowMonsterLocked() error = %v", err)
+	}
+	if len(actions) != 1 || len(hits) != 1 || hits[0].Damage <= 0 {
+		t.Fatalf("magic cow result = actions:%+v hits:%+v, want magic damage without physical hit roll", actions, hits)
+	}
+}
+
+func TestStoneKingZeroMagicDamageOmitsCharacterImpact(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "stone-king-zero"
+	target.X++
+	target.BonusAbil.MAC = 0xFFFF
+	mon := &Monster{ID: "stone-king-zero", Race: 102, MapID: ch.MapID, X: ch.X, Y: ch.Y, Alive: true, StoneMode: false, TargetCharacterID: target.ID, MinAttack: 0, MaxAttack: 0, MagicAttack: 0, MagicAttackMax: 0, AttackIntervalMS: 1}
+	actions, hits, _, err := w.tickStoneMonsterLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickStoneMonsterLocked() error = %v", err)
+	}
+	if len(actions) != 1 || len(hits) != 0 {
+		t.Fatalf("stone king zero damage = actions:%+v hits:%+v, want action without impact", actions, hits)
+	}
+}
+
+func TestCentipedeAttackResetsRevealHideTimer(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	target := ch
+	target.ID = "centipede-timer-target"
+	target.X++
+	mon := &Monster{ID: "centipede-timer", Behavior: "centipede_king", Race: 107, MapID: ch.MapID, X: ch.X, Y: ch.Y, HP: 100, MaxHP: 100, MinAttack: 10, MaxAttack: 10, ViewRange: 6, Alive: true, TargetCharacterID: target.ID, TargetFocusAt: time.Unix(10, 0), LastAttackAt: time.Unix(1, 0), AttackIntervalMS: 1}
+	_, _, _, err := w.tickCentipedeMonsterLocked(mon, map[string]storage.Character{target.ID: target}, time.Unix(20, 0))
+	if err != nil {
+		t.Fatalf("attack tick error = %v", err)
+	}
+	if !mon.TargetFocusAt.Equal(time.Unix(20, 0)) {
+		t.Fatalf("target focus = %v, want attack timer %v", mon.TargetFocusAt, time.Unix(20, 0))
+	}
+	actions, _, _, err := w.tickCentipedeMonsterLocked(mon, map[string]storage.Character{}, time.Unix(31, 0))
+	if err != nil {
+		t.Fatalf("hide tick error = %v", err)
+	}
+	if len(actions) != 1 || actions[0].Kind != MonsterActionHide || !mon.Hidden {
+		t.Fatalf("hide result = actions:%+v hidden:%t, want hide after ten seconds from attack", actions, mon.Hidden)
+	}
+}
+
+func TestStickMonsterDoesNotUseStoneModeForHideState(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	mon := &Monster{ID: "stick-state", Race: 85, MapID: ch.MapID, X: ch.X, Y: ch.Y, Alive: true, StoneMode: false, Hidden: false, FixedHideMode: false, NextSearchAt: time.Unix(10, 0)}
+	actions, _, _, err := w.tickStickMonsterLocked(mon, map[string]storage.Character{}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickStickMonsterLocked() error = %v", err)
+	}
+	if len(actions) != 1 || actions[0].Kind != MonsterActionHide || mon.StoneMode {
+		t.Fatalf("stick hide state = actions:%+v stone:%t, want hide without stone mode", actions, mon.StoneMode)
+	}
+}
+
+func TestStickMonsterSearchesAgainAfterAttackCooldown(t *testing.T) {
+	w, ch := newTestWorldCharacter(t)
+	oldTarget := ch
+	oldTarget.ID = "stick-old-target"
+	oldTarget.X += 4
+	newTarget := ch
+	newTarget.ID = "stick-new-target"
+	newTarget.X++
+	mon := &Monster{ID: "stick-research", Race: 85, MapID: ch.MapID, X: ch.X, Y: ch.Y, Alive: true, ViewRange: 10, TargetCharacterID: oldTarget.ID, LastAttackAt: time.Unix(0, 0), AttackIntervalMS: 1, NextSearchAt: time.Unix(100, 0)}
+	_, _, _, err := w.tickStickMonsterLocked(mon, map[string]storage.Character{oldTarget.ID: oldTarget, newTarget.ID: newTarget}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatalf("tickStickMonsterLocked() error = %v", err)
+	}
+	if mon.TargetCharacterID != newTarget.ID {
+		t.Fatalf("retargeted target = %q, want closest target %q", mon.TargetCharacterID, newTarget.ID)
+	}
+}
+
+func TestAddMerchantStockUsesGlobalMakeIndexes(t *testing.T) {
+	w := &World{
+		data:           data.StdBundle{Items: map[string]data.StdItem{"potion": {ID: "potion", DuraMax: 10}}},
+		merchantStocks: map[string][]storage.UserItem{},
+		nextItemID:     1,
+	}
+	w.AddMerchantStock("merchant-a", storage.UserItem{ItemID: "potion"})
+	w.AddMerchantStock("merchant-b", storage.UserItem{ItemID: "potion"})
+	w.AddMerchantStock("merchant-a", storage.UserItem{ItemID: "potion"})
+	a := w.MerchantStock("merchant-a")
+	b := w.MerchantStock("merchant-b")
+	if len(a) != 2 || len(b) != 1 {
+		t.Fatalf("stock counts = %d/%d, want 2/1", len(a), len(b))
+	}
+	if a[0].MakeIndex == b[0].MakeIndex || a[1].MakeIndex == b[0].MakeIndex || a[0].MakeIndex == a[1].MakeIndex {
+		t.Fatalf("merchant make indexes collided: a=%+v b=%+v", a, b)
+	}
 }

@@ -21,14 +21,17 @@ type World struct {
 	occupied                 map[monsterPosition]string
 	drops                    map[string]GroundDrop
 	mineCounts               map[monsterPosition]int
+	mineAddCounts            map[monsterPosition]int
+	mineDepletedAt           map[monsterPosition]time.Time
 	fireFields               map[fireFieldKey]fireField
 	groundEvents             map[int32]SpellGroundEvent
+	closedGroundEvents       map[int32]SpellGroundEvent
+	doorStates               map[doorStateKey]doorState
 	spawns                   map[string]*spawnState
 	npcActors                map[string]int32
 	npcTraining              map[string]NPCTrainingState
 	pendingNPCTraining       []NPCTrainingHit
 	merchantStocks           map[string][]storage.UserItem
-	merchantNextID           map[string]int32
 	disconnectedCharacters   map[string]disconnectedCharacter
 	pendingSpells            []pendingSpell
 	pendingMonsterSpawns     []pendingMonsterSpawn
@@ -37,6 +40,7 @@ type World struct {
 	finalizedCharacterDeaths map[string]struct{}
 	lastCharacterRevivalAt   map[string]int64
 	nextID                   int
+	nextItemID               int32
 	nextObjectOrder          uint64
 	nextNPCID                int32
 	nextEventID              int32
@@ -47,6 +51,8 @@ type World struct {
 	monsterTraceTick         int64
 	monsterTraceCurrent      *MonsterTickTrace
 	actionNow                time.Time
+	monsterRegenAt           time.Time
+	monsterRegenCursor       int
 }
 
 type pendingMonsterSpawn struct {
@@ -56,11 +62,22 @@ type pendingMonsterSpawn struct {
 }
 
 type pendingMonsterAttack struct {
-	DueAt       time.Time
-	MonsterID   string
-	TargetIDs   []string
-	Damage      int
-	ImpactDelay time.Duration
+	DueAt          time.Time
+	MonsterID      string
+	Targets        []pendingMonsterTarget
+	TargetIDs      []string
+	MonsterTargets []pendingMonsterTarget
+	Damage         int
+	ImpactDelay    time.Duration
+}
+
+type pendingMonsterTarget struct {
+	ID             string
+	Damage         int
+	PhysicalDamage int
+	MagicDamage    int
+	Monster        bool
+	Order          uint64
 }
 
 func (w *World) CanSpellWhileParalyzed() bool {
@@ -78,11 +95,23 @@ func (w *World) CanHitWhileParalyzed() bool {
 type spawnState struct {
 	spawn       data.StdSpawn
 	activeCount int
+	lastRegenAt time.Time
 }
 
 type disconnectedCharacter struct {
 	Character storage.Character
 	Until     time.Time
+}
+
+const disconnectedCharacterGrace = 5 * time.Minute
+
+type doorStateKey struct {
+	MapID string
+	Group int
+}
+
+type doorState struct {
+	OpenedAt time.Time
 }
 
 type NPCTrainingState struct {
@@ -151,6 +180,9 @@ type Monster struct {
 	DropTable           string
 	Alive               bool
 	RespawnAt           time.Time
+	DeathAt             time.Time
+	GhostAt             time.Time
+	Ghost               bool
 	ZilkinKillCount     int
 	ZilkinRebirth       bool
 	Spawn               data.StdSpawn
@@ -160,6 +192,8 @@ type Monster struct {
 	StoneMode           bool
 	Animal              bool
 	MeatQuality         int
+	BodyLeathery        int
+	Skeleton            bool
 	NoTame              bool
 	FleeOnSight         bool
 	RunAwayMode         bool
@@ -181,6 +215,11 @@ type Monster struct {
 	ExpHitterAt         time.Time
 	ObjectOrder         uint64
 	TargetFocusAt       time.Time
+	ThinkAt             time.Time
+	DupMode             bool
+	LastTargetSearchAt  time.Time
+	CentipedeAttackAt   time.Time
+	CentipedeHideAt     time.Time
 	TransparentUntil    time.Time
 	ShowHPOpenAt        int64
 	ShowHPUntil         int64
@@ -198,6 +237,7 @@ type Monster struct {
 	CowKingStoredAttack int
 	CowKingStoredWalk   int
 	CowKingMoveAt       time.Time
+	StoneDangerLevel    int
 	PoisonHealthLevel   byte
 	PoisonHealthStartAt time.Time
 	PoisonHealthUntil   time.Time
@@ -220,23 +260,32 @@ type Monster struct {
 }
 
 type GroundDrop struct {
-	ID        string
-	MapID     string
-	X         int
-	Y         int
-	ItemID    string
-	Count     int
-	MakeIndex int32
-	Dura      uint16
-	DuraMax   uint16
-	OwnerID   string
-	PickupAt  time.Time
-	Desc      [14]byte
+	ID           string
+	MapID        string
+	X            int
+	Y            int
+	ItemID       string
+	Count        int
+	MakeIndex    int32
+	Dura         uint16
+	DuraMax      uint16
+	OwnerID      string
+	OwnerGroupID string
+	CreatedAt    time.Time
+	PickupAt     time.Time
+	Desc         [14]byte
 }
 
 func (w *World) nextGroundEventIDLocked() int32 {
 	w.nextEventID++
 	return w.nextEventID
+}
+
+func (w *World) addGroundEventLocked(event SpellGroundEvent) {
+	if event.RunTick <= 0 {
+		event.RunTick = 500 * time.Millisecond
+	}
+	w.groundEvents[event.ID] = event
 }
 
 func (w *World) GroundEventsAround(mapID string, x, y, radius int, now time.Time) []SpellGroundEvent {
@@ -263,17 +312,27 @@ func (w *World) GroundEventsAround(mapID string, x, y, radius int, now time.Time
 }
 
 type ItemUseResult struct {
-	Character      storage.Character
-	Consumed       bool
-	Teleport       *TeleportEvent
-	AbilityChanged bool
-	SkillChanged   bool
-	HealthChanged  bool
-	RemovedItems   []storage.UserItem
-	AddedItems     []storage.UserItem
-	Experience     int
-	CurrentExp     int
-	LevelUp        bool
+	Character           storage.Character
+	Consumed            bool
+	Teleport            *TeleportEvent
+	AbilityChanged      bool
+	SkillChanged        bool
+	HealthChanged       bool
+	RemovedItems        []storage.UserItem
+	SuppressRemovedSync bool
+	AddedItems          []storage.UserItem
+	AddedSkills         []storage.SkillState
+	Experience          int
+	CurrentExp          int
+	LevelUp             bool
+}
+
+type ButcherResult struct {
+	Character storage.Character
+	Monster   Monster
+	AddedItem storage.UserItem
+	Skeleton  bool
+	FoundItem bool
 }
 
 type EquipResult struct {
@@ -332,8 +391,12 @@ type AttackResult struct {
 	Durability           []SpellDurability
 	DeletedItems         []storage.UserItem
 	FeatureChanged       bool
+	WeaponBroken         bool
 	GroupExperiences     []SpellExperience
 	AddedItems           []storage.UserItem
+	GroundEvents         []SpellGroundEvent
+	HeavyHitFragment     bool
+	HeavyHitMining       bool
 }
 
 type AttackSkillExperience struct {
@@ -383,6 +446,7 @@ type TickResult struct {
 	GroundEventHideDetails   []SpellGroundEvent
 	Characters               []storage.Character
 	SpellExperience          []SpellExperience
+	GroupSyncEvents          []GroupSyncEvent
 	PoisonNotifications      []PoisonNotification
 	OrderedSpellEvents       []OrderedSpellEvent
 }
@@ -409,6 +473,8 @@ type MonsterTraceState struct {
 	WalkWaitLocked    bool   `json:"walk_wait_locked"`
 	WalkWaitTickMS    int64  `json:"walk_wait_tick_ms"`
 	WalkCount         int    `json:"walk_count"`
+	ThinkAtMS         int64  `json:"think_at_ms"`
+	DupMode           bool   `json:"dup_mode"`
 }
 
 type MonsterRandomTrace struct {
@@ -494,6 +560,9 @@ type MonsterAction struct {
 	PreviousMapID string
 	PreviousX     int
 	PreviousY     int
+	TargetActor   int32
+	TargetX       int
+	TargetY       int
 }
 
 type MonsterActionKind int
@@ -501,6 +570,8 @@ type MonsterActionKind int
 const (
 	MonsterActionWalk MonsterActionKind = iota + 1
 	MonsterActionHit
+	MonsterActionFlyAxe
+	MonsterActionLighting
 	MonsterActionTurn
 	MonsterActionReveal
 	MonsterActionHide
@@ -513,6 +584,7 @@ type CharacterHit struct {
 	Connected                bool
 	Magic                    bool
 	Damage                   int
+	StruckDamage             int
 	Durability               []SpellDurability
 	DeletedItems             []storage.UserItem
 	FeatureChanged           bool
@@ -548,22 +620,26 @@ func New(bundle data.StdBundle, store *storage.Store, gameplayConfig ...config.G
 		occupied:                 map[monsterPosition]string{},
 		drops:                    map[string]GroundDrop{},
 		mineCounts:               map[monsterPosition]int{},
+		mineAddCounts:            map[monsterPosition]int{},
+		mineDepletedAt:           map[monsterPosition]time.Time{},
 		fireFields:               map[fireFieldKey]fireField{},
 		groundEvents:             map[int32]SpellGroundEvent{},
+		closedGroundEvents:       map[int32]SpellGroundEvent{},
+		doorStates:               map[doorStateKey]doorState{},
 		spawns:                   map[string]*spawnState{},
 		npcActors:                map[string]int32{},
 		npcTraining:              map[string]NPCTrainingState{},
 		merchantStocks:           map[string][]storage.UserItem{},
-		merchantNextID:           map[string]int32{},
 		disconnectedCharacters:   map[string]disconnectedCharacter{},
 		pendingCharacterDeaths:   map[string]struct{}{},
 		finalizedCharacterDeaths: map[string]struct{}{},
 		lastCharacterRevivalAt:   map[string]int64{},
 		nextID:                   1,
+		nextItemID:               itemMakeIndexStart,
 		nextObjectOrder:          1,
 		nextNPCID:                300000,
 		nextEventID:              400000,
-		rand:                     rand.New(rand.NewSource(1)),
+		rand:                     rand.New(rand.NewSource(time.Now().UnixNano())),
 		gameplay:                 gameplay,
 	}
 	w.initNPCActors()
@@ -600,8 +676,9 @@ func (w *World) HandleCharacterDisconnect(ch storage.Character, now time.Time) {
 	if ch.ID == "" {
 		return
 	}
+	ch.Ghost = true
 	w.mu.Lock()
-	w.disconnectedCharacters[ch.ID] = disconnectedCharacter{Character: ch, Until: now.Add(time.Second)}
+	w.disconnectedCharacters[ch.ID] = disconnectedCharacter{Character: ch, Until: now.Add(disconnectedCharacterGrace)}
 	w.mu.Unlock()
 }
 
@@ -710,6 +787,15 @@ func (w *World) Gameplay() config.Gameplay {
 	return w.gameplay
 }
 
+func (w *World) RandomIntn(n int) int {
+	if n <= 0 {
+		return 0
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.rand.Intn(n)
+}
+
 func normalizeStdBundle(bundle data.StdBundle) data.StdBundle {
 	if len(bundle.ItemOrder) == 0 && len(bundle.Items) > 0 {
 		ids := make([]string, 0, len(bundle.Items))
@@ -728,7 +814,7 @@ func normalizeStdBundle(bundle data.StdBundle) data.StdBundle {
 	for id, mon := range bundle.Monsters {
 		if mon.ViewRange <= 0 {
 			mon.ViewRange = 5
-			if mon.Behavior == "centipede_king" {
+			if mon.Race == 107 || mon.Behavior == "centipede_king" {
 				mon.ViewRange = 6
 			}
 		}
@@ -750,7 +836,7 @@ func normalizeStdBundle(bundle data.StdBundle) data.StdBundle {
 		case 103, 116:
 			mon.ViewRange = 9
 		case 104:
-			mon.ViewRange = 12
+			mon.ViewRange = 5
 		case 115:
 			mon.ViewRange = 16
 		case 112:
@@ -798,11 +884,9 @@ func (w *World) initMerchantStockLocked(npcID string) []storage.UserItem {
 	entity, ok := w.data.NPCs.Entities[npcID]
 	if !ok || len(entity.Merchant.Stock) == 0 {
 		w.merchantStocks[npcID] = nil
-		w.merchantNextID[npcID] = 1
 		return nil
 	}
 	stocks = make([]storage.UserItem, 0, len(entity.Merchant.Stock))
-	nextID := int32(1)
 	for _, stock := range entity.Merchant.Stock {
 		if stock.Count <= 0 {
 			continue
@@ -813,26 +897,12 @@ func (w *World) initMerchantStockLocked(npcID string) []storage.UserItem {
 		}
 		duraMax := itemDuraMax(item)
 		for i := 0; i < stock.Count; i++ {
-			entry := storage.UserItem{ItemID: stock.ItemID, MakeIndex: nextID, DuraMax: duraMax, Dura: duraMax}
+			entry := storage.UserItem{ItemID: stock.ItemID, MakeIndex: w.nextItemMakeIndexLocked(), DuraMax: duraMax, Dura: duraMax}
 			stocks = append(stocks, entry)
-			nextID++
 		}
 	}
 	w.merchantStocks[npcID] = stocks
-	w.merchantNextID[npcID] = nextID
 	return stocks
-}
-
-func (w *World) nextMerchantStockIndexLocked(npcID string) int32 {
-	nextID, ok := w.merchantNextID[npcID]
-	if !ok || nextID <= 0 {
-		nextID = int32(len(w.merchantStocks[npcID])) + 1
-		if nextID <= 0 {
-			nextID = 1
-		}
-	}
-	w.merchantNextID[npcID] = nextID + 1
-	return nextID
 }
 
 func (w *World) MerchantStock(npcID string) []storage.UserItem {
@@ -877,7 +947,7 @@ func (w *World) AddMerchantStock(npcID string, item storage.UserItem) {
 	if item.Dura == 0 && item.DuraMax > 0 {
 		item.Dura = item.DuraMax
 	}
-	item.MakeIndex = w.nextMerchantStockIndexLocked(npcID)
+	item.MakeIndex = w.nextItemMakeIndexLocked()
 	stocks = append(stocks, item)
 	w.merchantStocks[npcID] = stocks
 }

@@ -19,6 +19,36 @@ func TestOpenSeedsDefaultTestAccount(t *testing.T) {
 	}
 }
 
+func TestRemoveGuildMemberUpdatesOfflineCharacter(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	store, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	member, err := store.InsertCharacter(Character{Name: "Offline", Account: "test", GuildID: "g1", GuildRank: 0, GuildAllianceID: "g2", GuildAllianceIDs: []string{"g2"}})
+	if err != nil {
+		t.Fatalf("InsertCharacter() error = %v", err)
+	}
+	if err := store.SaveGuild(Guild{ID: "g1", Ranks: []GuildRank{{Number: 0, Members: []string{"Offline"}}}}); err != nil {
+		t.Fatalf("SaveGuild() error = %v", err)
+	}
+	updated, removed, err := store.RemoveGuildMember("g1", "Offline")
+	if err != nil || !removed {
+		t.Fatalf("RemoveGuildMember() = (%+v, %t, %v), want removed", updated, removed, err)
+	}
+	if updated.ID != member.ID || updated.GuildID != "" || updated.GuildRank != 0 || updated.GuildAllianceID != "" || len(updated.GuildAllianceIDs) != 0 {
+		t.Fatalf("updated member = %+v, want guild cleared", updated)
+	}
+	loaded, ok := store.Character(member.ID)
+	if !ok || loaded.GuildID != "" || loaded.GuildAllianceID != "" || len(loaded.GuildAllianceIDs) != 0 {
+		t.Fatalf("stored member = %+v (found=%t), want guild cleared", loaded, ok)
+	}
+	guild, ok := store.Guild("g1")
+	if !ok || len(guild.Ranks[0].Members) != 0 {
+		t.Fatalf("stored guild = %+v (found=%t), want member removed", guild, ok)
+	}
+}
+
 func TestOpenAddsDefaultTestAccountToExistingState(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
 	if err := os.WriteFile(path, []byte(`{"accounts":{},"characters":{},"next_id":1}`), 0o600); err != nil {
@@ -80,6 +110,101 @@ func TestInsertCharacterPersistsCharacterFields(t *testing.T) {
 	}
 	if ch.MP != 15 || ch.MaxMP != 15 {
 		t.Fatalf("MP/MaxMP = %d/%d, want 15/15", ch.MP, ch.MaxMP)
+	}
+}
+
+func TestUpdateGuildAlliancePersistsOfflineMembers(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	store, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	first, err := store.InsertCharacter(Character{Account: "test", Name: "alliance-first", GuildID: "guild-a", GuildAllianceID: ""})
+	if err != nil {
+		t.Fatalf("InsertCharacter(first) error = %v", err)
+	}
+	second, err := store.InsertCharacter(Character{Account: "test", Name: "alliance-second", GuildID: "guild-a", GuildAllianceID: ""})
+	if err != nil {
+		t.Fatalf("InsertCharacter(second) error = %v", err)
+	}
+	if err := store.UpdateGuildAlliance("guild-a", "guild-b"); err != nil {
+		t.Fatalf("UpdateGuildAlliance() error = %v", err)
+	}
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatalf("reopen error = %v", err)
+	}
+	for _, id := range []string{first.ID, second.ID} {
+		ch, ok := reopened.Character(id)
+		if !ok || ch.GuildAllianceID != "guild-b" {
+			t.Fatalf("character %s alliance = %q (found=%t), want guild-b", id, ch.GuildAllianceID, ok)
+		}
+	}
+}
+
+func TestDisbandGuildClearsAllianceSnapshots(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	store, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	if err := store.SaveGuild(Guild{ID: "guild-a"}); err != nil {
+		t.Fatalf("SaveGuild() error = %v", err)
+	}
+	member, err := store.InsertCharacter(Character{Account: "test", Name: "disband-alliance", GuildID: "guild-a", GuildAllianceID: "guild-b", GuildAllianceIDs: []string{"guild-b", "guild-c"}})
+	if err != nil {
+		t.Fatalf("InsertCharacter() error = %v", err)
+	}
+	if _, err := store.DisbandGuild("guild-a"); err != nil {
+		t.Fatalf("DisbandGuild() error = %v", err)
+	}
+	updated, ok := store.Character(member.ID)
+	if !ok || updated.GuildID != "" || updated.GuildAllianceID != "" || len(updated.GuildAllianceIDs) != 0 {
+		t.Fatalf("disbanded member = %+v, want no guild or alliance", updated)
+	}
+}
+
+func TestAddGuildWarPersistsSymmetricRelation(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "state.json"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	if err := store.SaveGuild(Guild{ID: "guild-a"}); err != nil {
+		t.Fatalf("SaveGuild(a) error = %v", err)
+	}
+	if err := store.SaveGuild(Guild{ID: "guild-b"}); err != nil {
+		t.Fatalf("SaveGuild(b) error = %v", err)
+	}
+	if err := store.AddGuildWar("guild-a", "guild-b"); err != nil {
+		t.Fatalf("AddGuildWar() error = %v", err)
+	}
+	if !store.GuildAtWar("guild-a", "guild-b") || !store.GuildAtWar("guild-b", "guild-a") {
+		t.Fatal("guild war relation is not symmetric")
+	}
+	if err := store.AddGuildWar("guild-a", "guild-b"); err == nil {
+		t.Fatal("duplicate guild war should fail")
+	}
+}
+
+func TestExpireWeaponUpgradesClearsOldState(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "state.json"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	ch, err := store.InsertCharacter(Character{
+		Account: "test", Name: "expired-upgrade", Class: "warrior",
+		WeaponUpgrade: &WeaponUpgradeState{StartedAt: time.Now().Add(-9 * 24 * time.Hour).UnixMilli()},
+	})
+	if err != nil {
+		t.Fatalf("InsertCharacter() error = %v", err)
+	}
+	expired, err := store.ExpireWeaponUpgrades(time.Now().Add(-8 * 24 * time.Hour))
+	if err != nil || len(expired) != 1 || expired[0] != ch.ID {
+		t.Fatalf("ExpireWeaponUpgrades() = ids:%v err:%v, want %s", expired, err, ch.ID)
+	}
+	updated, ok := store.Character(ch.ID)
+	if !ok || updated.WeaponUpgrade != nil {
+		t.Fatalf("expired upgrade = %+v (found=%t), want nil", updated.WeaponUpgrade, ok)
 	}
 }
 

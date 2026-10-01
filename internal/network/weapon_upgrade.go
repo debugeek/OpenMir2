@@ -2,7 +2,6 @@ package network
 
 import (
 	"math"
-	"math/rand"
 	"net"
 	"strings"
 	"time"
@@ -22,6 +21,9 @@ func (s *Server) sendNPCConversationLabel(conn net.Conn, ch storage.Character, e
 }
 
 func (s *Server) handleWeaponUpgradeStart(conn net.Conn, activeChar *storage.Character, entity npc.Entity) bool {
+	if !entity.Merchant.Capabilities.UpgradeWeapon {
+		return false
+	}
 	if activeChar.WeaponUpgrade != nil {
 		s.sendNPCConversationLabel(conn, *activeChar, entity, "~@upgradenow_ing")
 		return true
@@ -40,12 +42,13 @@ func (s *Server) handleWeaponUpgradeStart(conn net.Conn, activeChar *storage.Cha
 		s.sendNPCConversationLabel(conn, *activeChar, entity, "~@upgradenow_fail")
 		return true
 	}
-	updated, removed, state, ok := s.startWeaponUpgrade(*activeChar)
+	updated, removed, state, ok := s.startWeaponUpgrade(*activeChar, entity.ID)
 	if !ok {
 		s.sendNPCConversationLabel(conn, *activeChar, entity, "~@upgradenow_fail")
 		return true
 	}
 	*activeChar = updated
+	_ = s.store.SaveCharacter(updated)
 	s.sendDelItemList(conn, removed)
 	s.sendEquippedItems(conn, updated)
 	s.sendAbilityOnly(conn, updated)
@@ -56,7 +59,14 @@ func (s *Server) handleWeaponUpgradeStart(conn net.Conn, activeChar *storage.Cha
 }
 
 func (s *Server) handleWeaponUpgradeGetBack(conn net.Conn, activeChar *storage.Character, entity npc.Entity) bool {
+	if !entity.Merchant.Capabilities.GetBackWeapon {
+		return false
+	}
 	if activeChar.WeaponUpgrade == nil {
+		s.sendNPCConversationLabel(conn, *activeChar, entity, "~@getbackupgnow_fail")
+		return true
+	}
+	if activeChar.WeaponUpgrade.NPCID != "" && activeChar.WeaponUpgrade.NPCID != entity.ID {
 		s.sendNPCConversationLabel(conn, *activeChar, entity, "~@getbackupgnow_fail")
 		return true
 	}
@@ -74,6 +84,7 @@ func (s *Server) handleWeaponUpgradeGetBack(conn net.Conn, activeChar *storage.C
 		return true
 	}
 	*activeChar = updated
+	_ = s.store.SaveCharacter(updated)
 	s.sendBagAddItem(conn, updated, item.ItemID, item.MakeIndex)
 	s.sendAbilityOnly(conn, updated)
 	s.sendWeightChanged(conn, s.world.AbilityStats(updated))
@@ -81,7 +92,7 @@ func (s *Server) handleWeaponUpgradeGetBack(conn net.Conn, activeChar *storage.C
 	return true
 }
 
-func (s *Server) startWeaponUpgrade(ch storage.Character) (storage.Character, []storage.UserItem, *storage.WeaponUpgradeState, bool) {
+func (s *Server) startWeaponUpgrade(ch storage.Character, npcID string) (storage.Character, []storage.UserItem, *storage.WeaponUpgradeState, bool) {
 	price := s.world.Gameplay().Item.UpgradeWeaponPrice
 	weapon, ok := ch.EquippedItems[SlotWeapon]
 	if !ok || weapon.ItemID == "" || ch.Gold < price {
@@ -96,6 +107,7 @@ func (s *Server) startWeaponUpgrade(ch storage.Character) (storage.Character, []
 	delete(updated.EquippedItems, SlotWeapon)
 	updated.WeaponUpgrade = &storage.WeaponUpgradeState{
 		Item:      weapon,
+		NPCID:     npcID,
 		StartedAt: time.Now().UnixMilli(),
 		BonusDC:   bonusDC,
 		BonusMC:   bonusMC,
@@ -118,7 +130,7 @@ func (s *Server) finishWeaponUpgrade(ch storage.Character) (storage.Character, s
 	if item.ItemID == "" {
 		return ch, storage.UserItem{}, false
 	}
-	item = s.applyWeaponUpgradeResult(item, *state)
+	item = s.applyWeaponUpgradeResult(item, *state, ch)
 	updated := ch
 	updated.WeaponUpgrade = nil
 	updated.BagItems = append(updated.BagItems, item)
@@ -155,7 +167,6 @@ func (s *Server) weaponUpgradeMaterialStats(ch storage.Character) (byte, byte, b
 		duraList        []int
 		removed         []storage.UserItem
 		hasStone        bool
-		hasAccessory    bool
 	)
 	for _, entry := range ch.BagItems {
 		if entry.ItemID == "" {
@@ -171,7 +182,6 @@ func (s *Server) weaponUpgradeMaterialStats(ch storage.Character) (byte, byte, b
 		if !ok || !world.IsAccessoryStdMode(item.StdMode) {
 			continue
 		}
-		hasAccessory = true
 		removed = append(removed, entry)
 		display := world.UpgradeClientItemForDisplay(item, entry, false)
 		dc, mc, sc := weaponUpgradeContribution(display)
@@ -179,7 +189,7 @@ func (s *Server) weaponUpgradeMaterialStats(ch storage.Character) (byte, byte, b
 		topMC, secondMC = topTwo(topMC, secondMC, int(mc))
 		topSC, secondSC = topTwo(topSC, secondSC, int(sc))
 	}
-	if !hasStone || !hasAccessory {
+	if !hasStone {
 		return 0, 0, 0, 0, nil, false
 	}
 	sortIntsDesc(duraList)
@@ -196,31 +206,64 @@ func (s *Server) weaponUpgradeMaterialStats(ch storage.Character) (byte, byte, b
 	return byte(topDC/5 + secondDC/3), byte(topMC/5 + secondMC/3), byte(topSC/5 + secondSC/3), dura, removed, true
 }
 
-func (s *Server) applyWeaponUpgradeResult(item storage.UserItem, state storage.WeaponUpgradeState) storage.UserItem {
-	best := 0
-	switch {
-	case state.BonusDC == state.BonusMC && state.BonusMC == state.BonusSC:
-		best = rand.Intn(3)
-	case state.BonusDC >= state.BonusMC && state.BonusDC >= state.BonusSC:
-		best = 0
-	case state.BonusMC >= state.BonusDC && state.BonusMC >= state.BonusSC:
-		best = 1
-	default:
-		best = 2
+func (s *Server) applyWeaponUpgradeResult(item storage.UserItem, state storage.WeaponUpgradeState, ch storage.Character) storage.UserItem {
+	if state.BonusDura <= 8 {
+		if item.DuraMax > 3000 {
+			item.DuraMax -= 3000
+		} else {
+			item.DuraMax /= 2
+		}
+		if item.Dura > item.DuraMax {
+			item.Dura = item.DuraMax
+		}
+	} else if state.BonusDura <= 15 {
+		if s.world.RandomIntn(int(state.BonusDura)) < 6 && item.DuraMax > 1000 {
+			item.DuraMax -= 1000
+			if item.Dura > item.DuraMax {
+				item.Dura = item.DuraMax
+			}
+		}
+	} else if state.BonusDura > 18 {
+		switch s.world.RandomIntn(int(state.BonusDura - 18)) {
+		case 1, 2, 3, 4:
+			item.DuraMax += 1000
+		case 5, 6, 7:
+			item.DuraMax += 2000
+		default:
+			item.DuraMax += 4000
+		}
 	}
-	inc := weaponUpgradeIncrement([]byte{state.BonusDC, state.BonusMC, state.BonusSC}[best])
-	if inc == 0 {
-		inc = 1
+	tie := -1
+	if state.BonusDC == state.BonusMC && state.BonusMC == state.BonusSC {
+		tie = s.world.RandomIntn(3)
 	}
-	switch best {
-	case 0:
-		item.Desc[0] = clampAddByte(item.Desc[0], inc)
-	case 1:
-		item.Desc[1] = clampAddByte(item.Desc[1], inc)
-	case 2:
-		item.Desc[2] = clampAddByte(item.Desc[2], inc)
+	apply := func(index int, bonus byte, rate, twoRate, threeRate int) {
+		chance := minInt(85, minInt(11, int(bonus))*7+10+int(item.Desc[3])-int(item.Desc[4])+ch.BodyLuckLevel)
+		if chance < 0 {
+			chance = 0
+		}
+		if s.world.RandomIntn(rate) >= chance {
+			item.Desc[10] = 1
+			return
+		}
+		marker := byte((index + 1) * 10)
+		if chance > 63 && s.world.RandomIntn(twoRate) == 0 {
+			marker++
+		}
+		if chance > 79 && s.world.RandomIntn(threeRate) == 0 {
+			marker++
+		}
+		item.Desc[10] = marker
 	}
-	item.Desc[10] = 0
+	if (state.BonusDC >= state.BonusMC && state.BonusDC >= state.BonusSC) || tie == 0 {
+		apply(0, state.BonusDC, s.world.Gameplay().Item.UpgradeWeaponDCRate, s.world.Gameplay().Item.UpgradeWeaponDCTwoPointRate, s.world.Gameplay().Item.UpgradeWeaponDCThreePointRate)
+	}
+	if (state.BonusMC >= state.BonusDC && state.BonusMC >= state.BonusSC) || tie == 1 {
+		apply(1, state.BonusMC, s.world.Gameplay().Item.UpgradeWeaponMCRate, s.world.Gameplay().Item.UpgradeWeaponMCTwoPointRate, s.world.Gameplay().Item.UpgradeWeaponMCThreePointRate)
+	}
+	if (state.BonusSC >= state.BonusMC && state.BonusSC >= state.BonusDC) || tie == 2 {
+		apply(2, state.BonusMC, s.world.Gameplay().Item.UpgradeWeaponSCRate, s.world.Gameplay().Item.UpgradeWeaponSCTwoPointRate, s.world.Gameplay().Item.UpgradeWeaponSCThreePointRate)
+	}
 	return item
 }
 

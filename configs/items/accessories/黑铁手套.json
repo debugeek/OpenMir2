@@ -1,7 +1,6 @@
 {
   "id": "黑铁手套",
   "name": "黑铁手套",
-  "kind": "misc",
   "weight": 10,
   "stats": {
     "min_attack": 0,
@@ -20,6 +19,7 @@
   "dura_max": 10000,
   "need_level": 38,
   "price": 15000,
-  "stock": 5,
-  "color": 251
+  "shape": 0,
+  "need": 0,
+  "ani_count": 0
 }

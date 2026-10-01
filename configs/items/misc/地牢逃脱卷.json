@@ -1,7 +1,6 @@
 {
   "id": "地牢逃脱卷",
   "name": "地牢逃脱卷",
-  "kind": "consumable",
   "weight": 1,
   "stats": {
     "min_attack": 0,
@@ -21,6 +20,6 @@
   "dura_max": 1,
   "need_level": 1,
   "price": 100,
-  "stock": 5,
-  "color": 251
+  "need": 0,
+  "ani_count": 106
 }

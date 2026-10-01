@@ -104,7 +104,7 @@ func (w *World) attackMonsterWithPoisonDamageLocked(ch storage.Character, mon *M
 }
 
 func (w *World) attackMonsterDirectDamageLocked(ch storage.Character, mon *Monster, damage int, blockers ...storage.Character) (AttackResult, error) {
-	if mon != nil && w.monsterSpeedPointLocked(mon) > 0 && w.characterHitPointLocked(ch) < w.rand.Intn(w.monsterSpeedPointLocked(mon)) {
+	if mon != nil && w.monsterSpeedPointLocked(mon) > 0 && w.rand.Intn(w.monsterSpeedPointLocked(mon)) >= w.characterHitPointLocked(ch) {
 		return AttackResult{
 			MonsterID: mon.ID, MonsterMapID: mon.MapID, Damage: 0, MonsterHP: mon.HP, MonsterMaxHP: mon.MaxHP,
 			MonsterRaceImg: mon.RaceImg, MonsterWeapon: mon.MonsterWeapon, MonsterAppr: mon.Appr,
@@ -140,14 +140,14 @@ func (w *World) attackMonsterDirectDamageLocked(ch storage.Character, mon *Monst
 		MonsterX: mon.X, MonsterY: mon.Y, MonsterDir: mon.Dir, MonsterStatus: MonsterStatus(*mon, now),
 		MonsterHealthChanged: mon.ShowHPUntil > 0, Character: ch, ImpactDelay: 500 * time.Millisecond,
 	}
-	if mon.Race >= 50 {
+	if damage > 0 && mon.Race >= 50 {
 		w.monsterStruckByCharacterLocked(mon, ch, blockers, now)
 	}
 	return result, nil
 }
 
 func (w *World) attackMonsterWithBaseDamageLocked(ch storage.Character, mon *Monster, damage int, blockers ...storage.Character) (AttackResult, error) {
-	if mon != nil && w.monsterSpeedPointLocked(mon) > 0 && w.characterHitPointLocked(ch) < w.rand.Intn(w.monsterSpeedPointLocked(mon)) {
+	if mon != nil && w.monsterSpeedPointLocked(mon) > 0 && w.rand.Intn(w.monsterSpeedPointLocked(mon)) >= w.characterHitPointLocked(ch) {
 		return AttackResult{
 			MonsterID: mon.ID, MonsterMapID: mon.MapID, Damage: 0, MonsterHP: mon.HP, MonsterMaxHP: mon.MaxHP,
 			MonsterRaceImg: mon.RaceImg, MonsterWeapon: mon.MonsterWeapon, MonsterAppr: mon.Appr,
@@ -242,7 +242,11 @@ func (w *World) attackMonsterWithDamageModeAndMeatLocked(ch storage.Character, m
 			return result, w.store.SaveCharacter(ch)
 		}
 		summoned := mon.MasterID != ""
-		w.removeMonsterLocked(mon, !summoned)
+		if mon.Animal && !summoned {
+			w.killAnimalLocked(mon)
+		} else {
+			w.removeMonsterLocked(mon, !summoned)
+		}
 		if !summoned {
 			w.scheduleMonsterRespawnLocked(mon, now)
 		}
@@ -266,8 +270,8 @@ func (w *World) attackMonsterWithDamageModeAndMeatLocked(ch storage.Character, m
 			mon.TargetX, mon.TargetY = fleePointForMonster(mon, ch)
 			mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchHasTargetMSLocked(mon)) * time.Millisecond)
 		}
-		if !summoned {
-			result.Drops = w.rollDropsLocked(mon, ch.ID, blockers...)
+		if !summoned && !mon.Animal {
+			result.Drops = w.rollDropsLocked(mon, ch.ID, ch.GroupOwnerID, blockers...)
 		}
 	}
 	result.Character = ch
@@ -370,10 +374,10 @@ func (w *World) applyMonsterMagicDamageLocked(ch storage.Character, mon *Monster
 		}, nil
 	}
 	w.monsterMagicDamageRecoveryResetLocked(mon)
-	w.decayMonsterMeatQualityLocked(mon, damage)
 	w.setMonsterLastHitterAtLocked(mon, ch.ID, now)
 	hp := core.ApplyHPDelta(mon.HP, mon.MaxHP, -damage)
 	mon.HP = hp.HP
+	w.decayMonsterMeatQualityLocked(mon, damage)
 	if setTarget {
 		mon.TargetCharacterID = ch.ID
 		mon.TargetFocusAt = now
@@ -402,6 +406,9 @@ func (w *World) applyMonsterMagicDamageLocked(ch storage.Character, mon *Monster
 		mon.DeathHitterID = ch.ID
 	}
 	result.Character = ch
+	if _, isMonster := w.monsters[ch.ID]; isMonster {
+		return result, nil
+	}
 	return result, w.store.SaveCharacter(ch)
 }
 
@@ -452,7 +459,11 @@ func (w *World) killMonsterWithDamageLocked(ch storage.Character, mon *Monster, 
 		MonsterStatus:  MonsterStatus(*mon, now),
 	}
 	summoned := mon.MasterID != ""
-	w.removeMonsterLocked(mon, !summoned)
+	if mon.Animal && !summoned {
+		w.killAnimalLocked(mon)
+	} else {
+		w.removeMonsterLocked(mon, !summoned)
+	}
 	if !summoned {
 		w.scheduleMonsterRespawnLocked(mon, now)
 	}
@@ -500,8 +511,8 @@ func (w *World) killMonsterWithDamageLocked(ch storage.Character, mon *Monster, 
 		mon.TargetX, mon.TargetY = fleePointForMonster(mon, ch)
 		mon.NextSearchAt = now.Add(time.Duration(w.monsterSearchHasTargetMSLocked(mon)) * time.Millisecond)
 	}
-	if !summoned && !noKiller {
-		result.Drops = w.rollDropsLocked(mon, ch.ID, blockers...)
+	if !summoned && !noKiller && !mon.Animal {
+		result.Drops = w.rollDropsLocked(mon, ch.ID, ch.GroupOwnerID, blockers...)
 	}
 	result.Character = ch
 	if noKiller {
@@ -514,7 +525,7 @@ func (w *World) characterAttackDamageLocked(ch storage.Character, mon *Monster, 
 	if mon != nil {
 		hit := w.characterHitPointLocked(ch)
 		speed := w.monsterSpeedPointLocked(mon)
-		if speed > 0 && hit < w.rand.Intn(speed) {
+		if speed > 0 && w.rand.Intn(speed) >= hit {
 			return 0
 		}
 	}
@@ -727,7 +738,7 @@ func (w *World) attackCharacterWithDamageModeLocked(caster storage.Character, ta
 	hitPoint := w.characterHitPointLocked(caster)
 	speed := w.characterSpeedPointLocked(target)
 	connected := true
-	if speed > 0 && hitPoint < w.rand.Intn(speed) {
+	if caster.Account != "" && speed > 0 && hitPoint < w.rand.Intn(speed) {
 		damage = 0
 		connected = false
 	}
@@ -746,14 +757,14 @@ func (w *World) attackCharacterWithDamageModeLocked(caster storage.Character, ta
 		}
 		if damage > 0 {
 			damage = applyCharacterMagicBubbleLocked(&target, damage, now)
-			damage = w.applyCharacterMagicShieldLocked(&target, damage)
 		}
 	}
 	if damage < 0 {
 		damage = 0
 	}
 	target, damage, durability, deletedItems, featureChanged := w.applyCharacterStruckLocked(target, damage)
-	change := core.ApplyVitalDelta(target, -damage, 0)
+	hpDamage := w.applyCharacterMagicShieldLocked(&target, damage)
+	change := core.ApplyVitalDelta(target, -hpDamage, 0)
 	target = change.Character
 	if change.Dead {
 		w.deferCharacterDeathLocked(target)
@@ -761,13 +772,13 @@ func (w *World) attackCharacterWithDamageModeLocked(caster storage.Character, ta
 	if damage > 0 {
 		w.tryApplyParalysisRingToCharacterLocked(caster, &target)
 	}
-	if damage > 0 && canMarkCasterPK {
+	if hpDamage > 0 && canMarkCasterPK {
 		target.HealthTick = 0
 		target.SpellTick = 0
 		target.LastHitterID = caster.ID
 		target.LastHitterAt = now.UnixNano()
 	}
-	if damage > 0 && canMarkCasterPK {
+	if hpDamage > 0 && canMarkCasterPK {
 		attackerNameColorChanged = !caster.PKFlag
 		caster.PKFlag = true
 		caster.PKFlagUntil = now.Add(60 * time.Second).UnixNano()
@@ -822,7 +833,7 @@ func (w *World) applyCharacterStruckLocked(target storage.Character, damage int)
 		if !ok || item.ItemID == "" {
 			return
 		}
-		oldDisplay := int(item.Dura / 1000)
+		oldDisplay := referenceRound(float64(item.Dura) / 1000)
 		if int(item.Dura) <= nDam {
 			deletedItems = append(deletedItems, item)
 			item.Dura = 0
@@ -832,7 +843,7 @@ func (w *World) applyCharacterStruckLocked(target storage.Character, damage int)
 			item.Dura -= uint16(nDam)
 		}
 		target.EquippedItems[slot] = item
-		if oldDisplay != int(item.Dura/1000) {
+		if oldDisplay != referenceRound(float64(item.Dura)/1000) {
 			durability = append(durability, SpellDurability{Slot: slot, Dura: item.Dura, DuraMax: item.DuraMax})
 		}
 	}
@@ -851,11 +862,17 @@ func (w *World) applyWeaponDamageLocked(ch *storage.Character) ([]SpellDurabilit
 		return nil, nil, false
 	}
 	weapon, ok := ch.EquippedItems[SlotWeapon]
-	if !ok || weapon.ItemID == "" || weapon.Dura == 0 {
+	if !ok || weapon.ItemID == "" {
 		return nil, nil, false
 	}
 	loss := w.rand.Intn(5) + 2
-	oldDisplay := int(weapon.Dura / 1000)
+	if item, ok := w.data.Items[weapon.ItemID]; ok {
+		loss -= item.Strong
+	}
+	if loss <= 0 {
+		return nil, nil, false
+	}
+	oldDisplay := referenceRound(float64(weapon.Dura) / 1000)
 	deleted := make([]storage.UserItem, 0, 1)
 	featureChanged := false
 	if int(weapon.Dura) <= loss {
@@ -867,7 +884,10 @@ func (w *World) applyWeaponDamageLocked(ch *storage.Character) ([]SpellDurabilit
 		weapon.Dura -= uint16(loss)
 	}
 	ch.EquippedItems[SlotWeapon] = weapon
-	if oldDisplay == int(weapon.Dura/1000) {
+	if len(deleted) > 0 {
+		return []SpellDurability{{Slot: SlotWeapon, Dura: weapon.Dura, DuraMax: weapon.DuraMax}}, deleted, featureChanged
+	}
+	if oldDisplay == referenceRound(float64(weapon.Dura)/1000) {
 		return nil, deleted, featureChanged
 	}
 	return []SpellDurability{{Slot: SlotWeapon, Dura: weapon.Dura, DuraMax: weapon.DuraMax}}, deleted, featureChanged
@@ -905,6 +925,10 @@ func (w *World) monsterMixedAttackCharacterLocked(mon *Monster, ch storage.Chara
 	if mon.MaxAttack > power {
 		power += w.rand.Intn(mon.MaxAttack - power + 1)
 	}
+	return w.monsterMixedAttackCharacterWithPowerLocked(mon, ch, power)
+}
+
+func (w *World) monsterMixedAttackCharacterWithPowerLocked(mon *Monster, ch storage.Character, power int) (storage.Character, CharacterHit, error) {
 	physical := w.characterPhysicalDamageAfterDefenseLocked(&ch, power/2)
 	magical := w.characterMagicDamageAfterDefenseLocked(ch, power/2, time.Now())
 	if physical+magical <= 0 {
@@ -957,24 +981,18 @@ func (w *World) monsterAttackCharacterWithDamageLocked(mon *Monster, ch storage.
 		}
 		ch.BubbleDefenceUntil = now.Add(remaining).UnixNano()
 	}
-	if damage > 0 {
-		damage = w.applyCharacterMagicShieldLocked(&ch, damage)
-	}
-	if characterPoisonArmorActive(ch, now) {
-		damage = referenceRound(float64(damage) * poisonDamageMultiplier(true))
-		if damage < 0 {
-			damage = 0
-		}
-	}
-	if damage > 0 {
-		ch.PerHealth--
-		ch.PerSpell--
+	var durability []SpellDurability
+	var deletedItems []storage.UserItem
+	var featureChanged bool
+	ch, damage, durability, deletedItems, featureChanged = w.applyCharacterStruckLocked(ch, damage)
+	hpDamage := w.applyCharacterMagicShieldLocked(&ch, damage)
+	if hpDamage > 0 {
 		ch.SpellTick = 0
 		ch.HealthTick = 0
 		ch.LastHitterID = mon.ID
 		ch.LastHitterAt = now.UnixNano()
 	}
-	change := core.ApplyVitalDelta(ch, -damage, 0)
+	change := core.ApplyVitalDelta(ch, -hpDamage, 0)
 	ch = change.Character
 	if change.Dead {
 		w.deferCharacterDeathLocked(ch)
@@ -993,7 +1011,11 @@ func (w *World) monsterAttackCharacterWithDamageLocked(mon *Monster, ch storage.
 	hit := CharacterHit{
 		Character:       ch,
 		Damage:          damage,
+		Durability:      durability,
+		DeletedItems:    deletedItems,
+		FeatureChanged:  featureChanged,
 		AttackerID:      mon.ID,
+		AttackerActor:   MonsterActorID(*mon),
 		AttackerRaceImg: mon.RaceImg,
 		AttackerAppr:    mon.Appr,
 		AttackerX:       mon.X,

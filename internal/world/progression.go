@@ -70,6 +70,7 @@ func gainExperienceLocked(w *World, ch storage.Character, exp int) (storage.Char
 		exp = 1
 	}
 	ch.Experience += exp
+	addBodyLuck(&ch, float64(exp)*0.002)
 	gained := exp
 	leveled := false
 	for {
@@ -82,6 +83,7 @@ func gainExperienceLocked(w *World, ch storage.Character, exp int) (storage.Char
 		}
 		ch.Experience -= required
 		ch.Level++
+		addBodyLuck(&ch, 100)
 		leveled = true
 	}
 	if leveled {
@@ -91,4 +93,27 @@ func gainExperienceLocked(w *World, ch storage.Character, exp int) (storage.Char
 		ch = core.SetVitals(ch, base.MaxHP, base.MaxMP).Character
 	}
 	return ch, "", gained, leveled, nil
+}
+
+func addBodyLuck(ch *storage.Character, delta float64) {
+	if ch == nil {
+		return
+	}
+	if delta > 0 && ch.BodyLuck >= 25000 || delta < 0 && ch.BodyLuck <= -50000 {
+		return
+	}
+	ch.BodyLuck += delta
+	if ch.BodyLuck > 25000 {
+		ch.BodyLuck = 25000
+	}
+	if ch.BodyLuck < -50000 {
+		ch.BodyLuck = -50000
+	}
+	ch.BodyLuckLevel = int(math.Trunc(ch.BodyLuck / 5000))
+	if ch.BodyLuckLevel > 5 {
+		ch.BodyLuckLevel = 5
+	}
+	if ch.BodyLuckLevel < -10 {
+		ch.BodyLuckLevel = -10
+	}
 }

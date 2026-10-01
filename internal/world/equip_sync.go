@@ -5,6 +5,7 @@ import "openmir2/internal/storage"
 type EquipSyncer interface {
 	UpdateClient(storage.Character)
 	SendBagAddItem(storage.Character, storage.UserItem)
+	SendWeightChanged(storage.Character)
 	SendSkillAdded(storage.Character, storage.SkillState)
 	SendSkillRemoved(storage.Character, string)
 	SendAbilityRefresh(storage.Character, uint16)
@@ -13,6 +14,7 @@ type EquipSyncer interface {
 func ApplyEquipSync(syncer EquipSyncer, result EquipResult, okIdent uint16) {
 	syncer.UpdateClient(result.Character)
 	if result.HasSwappedOut {
+		syncer.SendWeightChanged(result.Character)
 		syncer.SendBagAddItem(result.Character, result.SwappedOut)
 	}
 	for _, skill := range result.AddedSkills {
@@ -27,6 +29,7 @@ func ApplyEquipSync(syncer EquipSyncer, result EquipResult, okIdent uint16) {
 func ApplyUnequipSync(syncer EquipSyncer, result UnequipResult, okIdent uint16) {
 	syncer.UpdateClient(result.Character)
 	if result.HasRemovedItem {
+		syncer.SendWeightChanged(result.Character)
 		syncer.SendBagAddItem(result.Character, result.RemovedItem)
 	}
 	for _, skill := range result.AddedSkills {

@@ -26,6 +26,9 @@
       "to_y": 636
     }
   ],
+  "doors": [
+    {"x": 17, "y": 13, "group": 44057613}
+  ],
   "monster_spawns": [],
   "blocked_bits": "////////////////////////+P8//v8H/38O/8/B/wPw/wH+x8D/YODfAfxzoP9I/H+Y/z/z/3/+/8//////////"
 }

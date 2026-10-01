@@ -1,6 +1,25 @@
 {
   "id": "金条",
   "name": "金条",
-  "kind": "misc",
-  "weight": 1
+  "weight": 1,
+  "std_mode": 31,
+  "shape": 0,
+  "looks": 117,
+  "dura_max": 100,
+  "need": 0,
+  "need_level": 0,
+  "price": 3000,
+  "stats": {
+    "min_attack": 0,
+    "max_attack": 0,
+    "defense": 0,
+    "defense_max": 0,
+    "magic_defense": 0,
+    "magic_defense_max": 0,
+    "magic_attack": 0,
+    "magic_attack_max": 0,
+    "tao_attack": 0,
+    "tao_attack_max": 0
+  },
+  "ani_count": 36
 }

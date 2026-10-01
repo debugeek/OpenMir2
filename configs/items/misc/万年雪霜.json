@@ -1,7 +1,6 @@
 {
   "id": "万年雪霜",
   "name": "万年雪霜",
-  "kind": "consumable",
   "weight": 2,
   "stats": {
     "min_attack": 0,
@@ -18,6 +17,9 @@
   "shape": 1,
   "looks": 260,
   "price": 4000,
-  "stock": 5,
-  "color": 251
+  "std_mode": 0,
+  "dura_max": 0,
+  "need": 0,
+  "need_level": 0,
+  "ani_count": 118
 }

@@ -208,8 +208,38 @@ func TestSourceLessMonsterPoisonDeathDefersSettlement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("monster poison death tick error = %v", err)
 	}
-	if dead || len(hits) != 1 || !monster.PendingDeath || monster.Alive == false {
-		t.Fatalf("source-less poison death = dead:%t hits:%d pending:%t alive:%t, want deferred pending death", dead, len(hits), monster.PendingDeath, monster.Alive)
+	if !dead || len(hits) != 1 || !monster.PendingDeath || monster.Alive == false {
+		t.Fatalf("source-less poison death = dead:%t hits:%d pending:%t alive:%t, want deferred pending death state", dead, len(hits), monster.PendingDeath, monster.Alive)
+	}
+}
+
+func TestSourceLessMonsterPoisonDeathUsesLastHitterOnNextTick(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	now := time.Unix(40, 0)
+	monster := &Monster{
+		ID: "poison-last-hitter", MapID: caster.MapID, X: caster.X, Y: caster.Y, Alive: true, HP: 1, MaxHP: 100,
+		Experience: 25, LastHitterID: caster.ID, LastHitterAt: now,
+		PoisonHealthLevel: 1, PoisonHealthStartAt: now.Add(-time.Second), PoisonHealthUntil: now.Add(time.Minute),
+		PoisonHealthTickAt: now.Add(-poisonHealthTickInterval - time.Nanosecond),
+	}
+	w.mu.Lock()
+	w.monsters = map[string]*Monster{monster.ID: monster}
+	w.occupied = map[monsterPosition]string{}
+	w.mu.Unlock()
+
+	first, err := w.Tick([]PlayerSnapshot{{Character: caster}}, now)
+	if err != nil {
+		t.Fatalf("first Tick() error = %v", err)
+	}
+	if len(first.MonsterDeaths) != 0 || !monster.PendingDeath {
+		t.Fatalf("first tick = deaths:%d pending:%t, want deferred death", len(first.MonsterDeaths), monster.PendingDeath)
+	}
+	second, err := w.Tick([]PlayerSnapshot{{Character: caster}}, now.Add(time.Second))
+	if err != nil {
+		t.Fatalf("second Tick() error = %v", err)
+	}
+	if len(second.MonsterDeaths) != 1 || second.MonsterDeaths[0].Experience != 25 {
+		t.Fatalf("second tick deaths = %+v, want last-hitter experience", second.MonsterDeaths)
 	}
 }
 
@@ -235,6 +265,36 @@ func TestMonsterPoisonDamageTickBypassesDefenseAndArmorMultiplier(t *testing.T) 
 	}
 	if got, want := mon.HP, 90; got != want {
 		t.Fatalf("monster HP = %d, want %d direct poison damage without defense or armor multiplier", got, want)
+	}
+}
+
+func TestMonsterPoisonDeathRetainsOfflineSource(t *testing.T) {
+	w, _ := newTestWorldCharacter(t)
+	now := time.Unix(100, 0)
+	mon := &Monster{ID: "poison-dead", HP: 1, MaxHP: 10, Alive: true, PoisonHealthLevel: 0, PoisonHealthStartAt: now.Add(-time.Second), PoisonHealthUntil: now.Add(time.Minute), PoisonHealthTickAt: now.Add(-4 * time.Second), PoisonSourceID: "offline-caster"}
+	hits, dead, err := w.applyMonsterPoisonTickLocked(mon, nil, now)
+	if err != nil {
+		t.Fatalf("applyMonsterPoisonTickLocked() error = %v", err)
+	}
+	if !dead || len(hits) != 1 || mon.DeathHitterID != "offline-caster" {
+		t.Fatalf("poison death = dead:%v hits:%d hitter:%q, want offline source", dead, len(hits), mon.DeathHitterID)
+	}
+}
+
+func TestWorldTickUsesPoisonDeathHitterFallback(t *testing.T) {
+	w, caster := newTestWorldCharacter(t)
+	now := time.Unix(100, 0)
+	mon := &Monster{ID: "poison-fallback", MapID: caster.MapID, X: caster.X, Y: caster.Y, Alive: true, HP: 0, MaxHP: 10, PendingDeath: true, DeathHitterID: caster.ID, PoisonSourceID: caster.ID, Experience: 25}
+	w.mu.Lock()
+	w.monsters[mon.ID] = mon
+	w.occupied[monsterPosition{MapID: mon.MapID, X: mon.X, Y: mon.Y}] = mon.ID
+	w.mu.Unlock()
+	result, err := w.Tick([]PlayerSnapshot{{Character: caster}}, now)
+	if err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	if len(result.MonsterDeaths) != 1 || result.MonsterDeaths[0].Experience != 25 {
+		t.Fatalf("poison death fallback = %+v, want experience 25", result.MonsterDeaths)
 	}
 }
 
@@ -295,6 +355,30 @@ func TestCharacterNaturalSpellTickRecoversHealth(t *testing.T) {
 	}
 	if ch.HP != 3 || ch.HealthTick != 0 || ch.HealthTickAt != 1400 {
 		t.Fatalf("character natural recovery = %+v, want hp=3 tick=0 at=1400", ch)
+	}
+}
+
+func TestCharacterNaturalSpellTickSettlesNegativeHealthTick(t *testing.T) {
+	w := &World{}
+	now := time.UnixMilli(1400)
+	ch := storage.Character{HP: 10, MaxHP: 100, HealthTick: -321, HealthTickAt: 1000}
+	if !w.applyCharacterNaturalSpellTickLocked(&ch, now) {
+		t.Fatal("negative health tick did not settle")
+	}
+	if ch.HP != 9 || ch.HealthTick != -1 || ch.HealthTickAt != 1400 {
+		t.Fatalf("negative health tick = %+v, want hp=9 tick=-1 at=1400", ch)
+	}
+}
+
+func TestCharacterNaturalSpellTickDoesNotKillFromNegativeHealthTick(t *testing.T) {
+	w := &World{}
+	now := time.UnixMilli(1400)
+	ch := storage.Character{HP: 1, MaxHP: 100, HealthTick: -321, HealthTickAt: 1000}
+	if w.applyCharacterNaturalSpellTickLocked(&ch, now) {
+		t.Fatal("negative health tick changed one-health character")
+	}
+	if ch.HP != 1 || ch.HealthTick != -301 {
+		t.Fatalf("negative health tick = %+v, want hp=1 tick=-301", ch)
 	}
 }
 

@@ -17,3 +17,12 @@ func (w *World) MapLight(mapID string) int {
 	}
 	return 0
 }
+
+func (w *World) MapRunHuman(mapID string) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if mp, ok := w.data.Maps[mapID]; ok {
+		return mp.RunHuman
+	}
+	return false
+}

@@ -1,7 +1,6 @@
 {
   "id": "霸者之刃",
   "name": "霸者之刃",
-  "kind": "weapon",
   "weight": 35,
   "stats": {
     "min_attack": 6,
@@ -21,6 +20,6 @@
   "dura_max": 20000,
   "need_level": 46,
   "price": 230000,
-  "stock": 5,
-  "color": 251
+  "need": 0,
+  "ani_count": 0
 }

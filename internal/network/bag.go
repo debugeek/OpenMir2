@@ -75,8 +75,7 @@ func EquippedItemsBody(w *world.World, ch storage.Character) []byte {
 			continue
 		}
 		item = world.UpgradeClientItemForDisplay(item, equipped, false)
-		dura, duraMax := bagItemDurability(item, equipped)
-		client := itemBodyForEquipped(ch, item, equipped.Desc, equipped.MakeIndex, dura, duraMax)
+		client := itemBodyForEquipped(ch, item, equipped.Desc, equipped.MakeIndex, equipped.Dura, equipped.DuraMax)
 		encoded := EncodeBuffer(client)
 		if len(encoded) == 0 {
 			continue
@@ -91,7 +90,6 @@ func EquippedItemsBody(w *world.World, ch storage.Character) []byte {
 
 func BagItemsBodyAndCount(w *world.World, ch storage.Character) ([]byte, int) {
 	itemEntries := []byte{}
-	count := 0
 	for _, entry := range ch.BagItems {
 		item, ok := w.Item(entry.ItemID)
 		if !ok {
@@ -99,17 +97,15 @@ func BagItemsBodyAndCount(w *world.World, ch storage.Character) ([]byte, int) {
 		}
 		item = world.UpgradeClientItemForDisplay(item, entry, false)
 		makeIndex := entry.MakeIndex
-		dura, duraMax := bagItemDurability(item, entry)
-		client := itemBodyForBag(ch, item, entry.Desc, makeIndex, dura, duraMax)
+		client := itemBodyForBag(ch, item, entry.Desc, makeIndex, entry.Dura, entry.DuraMax)
 		encoded := EncodeBuffer(client)
 		if len(encoded) == 0 {
 			continue
 		}
 		itemEntries = append(itemEntries, encoded...)
 		itemEntries = append(itemEntries, '/')
-		count++
 	}
-	return itemEntries, count
+	return itemEntries, len(ch.BagItems)
 }
 
 func equippedItem(ch storage.Character, slot int) (storage.UserItem, bool) {

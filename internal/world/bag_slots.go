@@ -27,12 +27,6 @@ func (w *World) canWearInSlotLocked(item data.StdItem, slot int) bool {
 		return item.StdMode == 28 || item.StdMode == 29 || item.StdMode == 30
 	case SlotBujuk:
 		return item.StdMode == 25 || item.StdMode == 51
-	case SlotBoots:
-		return item.StdMode == 52 || item.StdMode == 62
-	case SlotCharm:
-		return item.StdMode == 53 || item.StdMode == 63
-	case SlotBelt:
-		return item.StdMode == 54 || item.StdMode == 64
 	default:
 		return false
 	}
@@ -82,6 +76,10 @@ func (w *World) canEquipItemLocked(ch storage.Character, item data.StdItem, slot
 		}
 	case 3:
 		if int(byte(combinedSC>>8)) < item.NeedLevel {
+			return fmt.Errorf("item %s cannot be used", item.ID)
+		}
+	case 5:
+		if ch.CreditPoint < item.NeedLevel {
 			return fmt.Errorf("item %s cannot be used", item.ID)
 		}
 	case 10:

@@ -19,6 +19,9 @@
       "to_y": 226
     }
   ],
+  "doors": [
+    {"x": 365, "y": 229, "group": 102085861}
+  ],
   "monster_spawns": [
     {
       "monster_id": "红野猪",

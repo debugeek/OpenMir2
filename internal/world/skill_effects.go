@@ -33,7 +33,6 @@ func (w *World) magCanHitTargetLocked(mapID string, x, y, targetX, targetY int) 
 		if abs(x-targetX)+abs(y-targetY) > distance {
 			return true
 		}
-		distance = abs(x-targetX) + abs(y-targetY)
 	}
 	return false
 }
@@ -279,7 +278,7 @@ func (w *World) isAttackCharacterTargetLocked(caster, target storage.Character) 
 		if !w.gameplay.Combat.NonPKServer && caster.GuildID != "" && caster.GuildID == target.GuildID {
 			return false
 		}
-		if !w.gameplay.Combat.NonPKServer && caster.GuildWarArea && target.GuildWarArea && caster.GuildAllianceID != "" && caster.GuildAllianceID == target.GuildAllianceID {
+		if !w.gameplay.Combat.NonPKServer && caster.GuildWarArea && target.GuildWarArea && charactersShareAlliance(caster, target) {
 			return false
 		}
 	case 4:
@@ -452,20 +451,21 @@ func (w *World) spellCharacterDamageWithPowerLocked(caster storage.Character, ta
 func (w *World) prepareCharacterMagicDamageLocked(target storage.Character, damage int, now time.Time) (storage.Character, int) {
 	damage = w.characterMagicDamageAfterDefenseLocked(target, damage, now)
 	damage = applyCharacterMagicBubbleLocked(&target, damage, now)
-	damage = w.applyCharacterMagicShieldLocked(&target, damage)
 	return target, damage
 }
 
 func (w *World) applyPreparedCharacterMagicDamageLocked(caster storage.Character, target storage.Character, damage int) (storage.Character, CharacterHit, error) {
 	now := time.Now()
 	canMarkCasterPK := w.isProperCharacterTargetLocked(caster, target)
+	magicShield := w.characterHasMagicShieldLocked(target)
 	target, damage, durability, deletedItems, featureChanged := w.applyCharacterStruckLocked(target, damage)
-	change := core.ApplyVitalDelta(target, -damage, 0)
+	hpDamage := w.applyCharacterMagicShieldStateLocked(&target, damage, magicShield)
+	change := core.ApplyVitalDelta(target, -hpDamage, 0)
 	target = change.Character
 	if change.Dead {
 		w.deferCharacterDeathLocked(target)
 	}
-	if damage > 0 {
+	if hpDamage > 0 {
 		target.HealthTick = 0
 		target.SpellTick = 0
 		if canMarkCasterPK {
@@ -483,7 +483,8 @@ func (w *World) applyPreparedCharacterMagicDamageLocked(caster storage.Character
 	hit := CharacterHit{
 		Character:      target,
 		Magic:          true,
-		Damage:         damage,
+		Damage:         hpDamage,
+		StruckDamage:   damage,
 		Durability:     durability,
 		DeletedItems:   deletedItems,
 		FeatureChanged: featureChanged,
@@ -520,11 +521,29 @@ func applyCharacterMagicBubbleLocked(target *storage.Character, damage int, now 
 }
 
 func (w *World) applyCharacterMagicShieldLocked(target *storage.Character, damage int) int {
-	if target == nil || damage <= 0 || target.MP <= 0 {
+	if target == nil {
 		return maxInt(damage, 0)
 	}
+	return w.applyCharacterMagicShieldStateLocked(target, damage, w.characterHasMagicShieldLocked(*target))
+}
+
+func (w *World) applyCharacterMagicShieldStateLocked(target *storage.Character, damage int, active bool) int {
+	if target == nil || !active || damage <= 0 || target.MP <= 0 {
+		return maxInt(damage, 0)
+	}
+	shieldCost := referenceRound(float64(damage) * 1.5)
+	if int(target.MP) >= shieldCost {
+		target.MP -= shieldCost
+		return 0
+	}
+	remaining := shieldCost - int(target.MP)
+	target.MP = 0
+	return referenceRound(float64(remaining) / 1.5)
+}
+
+func (w *World) characterHasMagicShieldLocked(target storage.Character) bool {
 	for slot := 0; slot < useSlotCount; slot++ {
-		entry, ok := w.equippedItemLocked(*target, slot)
+		entry, ok := w.equippedItemLocked(target, slot)
 		if !ok {
 			continue
 		}
@@ -532,16 +551,9 @@ func (w *World) applyCharacterMagicShieldLocked(target *storage.Character, damag
 		if !ok || (item.Shape != 118 && item.AniCount != 118) {
 			continue
 		}
-		shieldCost := referenceRound(float64(damage) * 1.5)
-		if int(target.MP) >= shieldCost {
-			target.MP -= shieldCost
-			return 0
-		}
-		remaining := shieldCost - int(target.MP)
-		target.MP = 0
-		return referenceRound(float64(remaining) / 1.5)
+		return true
 	}
-	return damage
+	return false
 }
 
 func (w *World) characterMagicDamageAfterDefenseLocked(target storage.Character, damage int, now time.Time) int {
@@ -598,17 +610,19 @@ func (w *World) castLightningLineSkillLocked(result *SkillCastResult, ch storage
 	hitCharacters := map[string]struct{}{}
 	for i := 0; i < 13; i++ {
 		if entity, ok := w.trainerAtExactPointLocked(ch.MapID, sx, sy); ok {
-			w.pendingSpells = append(w.pendingSpells, pendingSpell{DueAt: now.Add(spellDelayMagic), CasterID: ch.ID, TargetNPCID: entity.ID, TargetX: sx, TargetY: sy, TargetRange: 1, Damage: lineDamage})
+			w.pendingSpells = append(w.pendingSpells, pendingSpell{DueAt: now.Add(spellDelayMagic), CasterID: ch.ID, TargetNPCID: entity.ID, TargetX: sx, TargetY: sy, TargetRange: 1, Damage: damage})
 			hitCount++
 		}
 		areaTarget := w.movingObjectAtPointLocked(players, ch.MapID, sx, sy)
 		if areaTarget.Monster != nil {
 			mon := areaTarget.Monster
 			if _, seen := hitMonsters[mon.ID]; !seen && w.isProperMonsterTargetLocked(ch, players, mon) && w.monsterMagicHitAllowedLocked(mon) {
+				appliedDamage := lineDamage
 				if undeadAttack {
 					lineDamage = referenceRound(float64(lineDamage) * 1.5)
+					appliedDamage = lineDamage
 				}
-				w.pendingSpells = append(w.pendingSpells, pendingSpell{DueAt: now.Add(spellDelayMagic), CasterID: ch.ID, TargetMonsterID: mon.ID, SingleMagicStrike: true, TargetX: sx, TargetY: sy, TargetRange: 1, Damage: lineDamage})
+				w.pendingSpells = append(w.pendingSpells, pendingSpell{DueAt: now.Add(spellDelayMagic), CasterID: ch.ID, TargetMonsterID: mon.ID, SingleMagicStrike: true, TargetX: sx, TargetY: sy, TargetRange: 1, Damage: appliedDamage})
 				hitCount++
 				hitMonsters[mon.ID] = struct{}{}
 			}
@@ -616,10 +630,12 @@ func (w *World) castLightningLineSkillLocked(result *SkillCastResult, ch storage
 			target := *areaTarget.Character
 			if w.isProperCharacterTargetLocked(ch, target) && w.characterMagicHitAllowedLocked(target) {
 				if _, seen := hitCharacters[target.ID]; !seen {
+					appliedDamage := lineDamage
 					if undeadAttack {
 						lineDamage = referenceRound(float64(lineDamage) * 1.5)
+						appliedDamage = lineDamage
 					}
-					w.pendingSpells = append(w.pendingSpells, pendingSpell{DueAt: now.Add(spellDelayMagic), CasterID: ch.ID, TargetCharacterID: target.ID, CharacterDamage: true, SingleMagicStrike: true, TargetX: sx, TargetY: sy, TargetRange: 1, Damage: lineDamage})
+					w.pendingSpells = append(w.pendingSpells, pendingSpell{DueAt: now.Add(spellDelayMagic), CasterID: ch.ID, TargetCharacterID: target.ID, CharacterDamage: true, SingleMagicStrike: true, TargetX: sx, TargetY: sy, TargetRange: 1, Damage: appliedDamage})
 					hitCount++
 					hitCharacters[target.ID] = struct{}{}
 				}

@@ -59,20 +59,25 @@ func (w *World) respawnLocked(now time.Time) {
 				mon.RespawnAt = now.Add(time.Second)
 				continue
 			}
-			if mon.ZilkinRebirth {
+			zilkinRebirth := mon.ZilkinRebirth
+			if zilkinRebirth {
 				mon.MaxHP /= 2
 				if mon.MaxHP < 1 {
 					mon.MaxHP = 1
 				}
+				mon.Experience /= 2
 				mon.HP = mon.MaxHP
 				mon.ZilkinRebirth = false
 			} else {
 				mon.HP = mon.MaxHP
 			}
 			mon.Alive = true
+			mon.DeathAt = time.Time{}
+			mon.GhostAt = time.Time{}
+			mon.Ghost = false
 			mon.X, mon.Y = x, y
 			mon.Dir = 4
-			if mon.Behavior == "centipede_king" {
+			if w.monsterIsCentipedeLocked(mon) {
 				mon.Dir = 5
 			}
 			w.spawnStateForLocked(mon.Spawn).activeCount++
@@ -86,7 +91,13 @@ func (w *World) respawnLocked(now time.Time) {
 			mon.ExpHitterID = ""
 			mon.ExpHitterAt = time.Time{}
 			mon.TargetFocusAt = time.Time{}
-			if mon.Behavior == "centipede_king" {
+			mon.ThinkAt = now
+			mon.DupMode = false
+			if mon.Race == 200 {
+				mon.TargetFocusAt = now
+			}
+			mon.LastTargetSearchAt = now
+			if w.monsterIsCentipedeLocked(mon) {
 				mon.TargetFocusAt = now
 			}
 			mon.NextSearchAt = time.Time{}
@@ -97,12 +108,29 @@ func (w *World) respawnLocked(now time.Time) {
 			mon.CowKingStoredAttack = 0
 			mon.CowKingStoredWalk = 0
 			mon.CowKingMoveAt = time.Time{}
+			mon.CentipedeHideAt = time.Time{}
+			if mon.Race == 92 {
+				mon.CowKingMoveAt = now
+				mon.CowKingStoredAttack = mon.AttackIntervalMS
+				mon.CowKingStoredWalk = mon.WalkSpeedMS
+			}
+			if w.monsterIsCentipedeLocked(mon) {
+				mon.CentipedeHideAt = now
+			}
 			mon.LastAttackAt = time.Time{}
 			mon.LastWalkAt = time.Time{}
+			if mon.Race == 96 && zilkinRebirth {
+				mon.LastWalkAt = now.Add(time.Second)
+			}
+			if mon.Race == 100 {
+				applyWhiteSkeletonTiming(mon)
+				mon.LastWalkAt = now.Add(2 * time.Second)
+			}
 			mon.WalkCount = 0
 			mon.WalkWaitTick = time.Time{}
 			mon.WalkWaitLocked = false
 			mon.Hidden = false
+			w.resetAnimalCorpseLocked(mon)
 			mon.FixedHideMode = false
 			mon.StoneMode = false
 			mon.Animal = false
@@ -127,6 +155,83 @@ func (w *World) respawnLocked(now time.Time) {
 			mon.TargetX = -1
 			mon.TargetY = -1
 		}
+	}
+}
+
+func (w *World) cleanupDeadMonstersLocked(now time.Time) {
+	for id, mon := range w.monsters {
+		if mon == nil || mon.Alive || mon.RespawnAt != (time.Time{}) || mon.DeathAt.IsZero() {
+			continue
+		}
+		if !mon.Ghost && !now.Before(mon.DeathAt.Add(3*time.Minute)) {
+			mon.Ghost = true
+			mon.GhostAt = now
+		}
+		if mon.Ghost && !now.Before(mon.GhostAt.Add(5*time.Minute)) {
+			delete(w.monsters, id)
+		}
+	}
+}
+
+func (w *World) replenishMonsterSpawnLocked(now time.Time, result *TickResult) {
+	if len(w.data.Spawns) == 0 {
+		return
+	}
+	if !w.monsterRegenAt.IsZero() && now.Before(w.monsterRegenAt) {
+		return
+	}
+	w.monsterRegenAt = now.Add(200 * time.Millisecond)
+	if w.monsterRegenCursor >= len(w.data.Spawns) {
+		w.monsterRegenCursor = 0
+	}
+	sp := w.data.Spawns[w.monsterRegenCursor]
+	w.monsterRegenCursor = (w.monsterRegenCursor + 1) % len(w.data.Spawns)
+	state := w.spawnStateForLocked(sp)
+	interval := time.Duration(sp.RespawnSeconds) * time.Minute
+	if interval <= 0 {
+		interval = time.Minute
+	}
+	if !state.lastRegenAt.IsZero() && now.Before(state.lastRegenAt.Add(interval)) {
+		return
+	}
+	state.lastRegenAt = now
+	desired := w.desiredSpawnCountLocked(sp)
+	if state.activeCount >= desired {
+		return
+	}
+	tpl, ok := w.data.Monsters[sp.MonsterID]
+	if !ok {
+		return
+	}
+	cluster := sp.MissionGenRate > 0 && w.rand.Intn(100) < sp.MissionGenRate
+	centerX, centerY := sp.X, sp.Y
+	if cluster {
+		if x, y, ok := w.findRandomSpawnPositionLocked(sp.MapID, sp.X, sp.Y, sp.Range, ""); ok {
+			centerX, centerY = x, y
+		} else {
+			cluster = false
+		}
+	}
+	for state.activeCount < desired {
+		var x, y int
+		var ok bool
+		if cluster {
+			x, y, ok = w.findRandomSpawnPositionLocked(sp.MapID, centerX-10+w.rand.Intn(21), centerY-10+w.rand.Intn(21), 0, "")
+			if !ok {
+				x, y, ok = w.findRandomSpawnPositionAvoidLocked(sp.MapID, centerX, centerY, 10, "", -1, -1)
+			}
+		} else {
+			x, y, ok = w.findRandomSpawnPositionLocked(sp.MapID, sp.X, sp.Y, sp.Range, "")
+		}
+		if !ok {
+			break
+		}
+		mon := w.createSpawnMonsterLocked(sp, tpl, x, y)
+		if mon == nil {
+			break
+		}
+		w.occupyMonsterLocked(mon)
+		result.SpawnedMonsters = append(result.SpawnedMonsters, *mon)
 	}
 }
 
@@ -178,7 +283,7 @@ func (w *World) createSpawnMonsterLocked(spawn data.StdSpawn, tpl data.StdMonste
 	return mon
 }
 
-func (w *World) rollDropsLocked(mon *Monster, ownerID string, blockers ...storage.Character) []GroundDrop {
+func (w *World) rollDropsLocked(mon *Monster, ownerID, ownerGroupID string, blockers ...storage.Character) []GroundDrop {
 	table, ok := w.data.Drops[mon.DropTable]
 	if !ok {
 		return nil
@@ -199,7 +304,7 @@ func (w *World) rollDropsLocked(mon *Monster, ownerID string, blockers ...storag
 		}
 		instance := w.createUserItemFromStd(item, 0, [14]byte{})
 		if item.StdMode == 40 && mon.MeatQuality >= 0 {
-			instance.Dura = uint16(minInt(mon.MeatQuality, int(^uint16(0))))
+			instance.Dura = uint16(minInt(maxInt(mon.MeatQuality-2000, 0), int(^uint16(0))))
 		}
 		out = append(out, GroundDrop{
 			ID:        id,
@@ -212,6 +317,9 @@ func (w *World) rollDropsLocked(mon *Monster, ownerID string, blockers ...storag
 			Dura:      instance.Dura,
 			DuraMax:   instance.DuraMax,
 		})
+		if ownerGroupID != "" {
+			out[len(out)-1].OwnerGroupID = ownerGroupID
+		}
 	}
 	return w.placeDropsLocked(mon.MapID, mon.X, mon.Y, 3, out, blockers...)
 }

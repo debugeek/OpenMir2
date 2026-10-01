@@ -1,7 +1,6 @@
 {
   "id": "八荒",
   "name": "八荒",
-  "kind": "weapon",
   "weight": 25,
   "stats": {
     "min_attack": 4,
@@ -21,6 +20,6 @@
   "dura_max": 18000,
   "need_level": 15,
   "price": 5000,
-  "stock": 50,
-  "color": 251
+  "need": 0,
+  "ani_count": 27
 }

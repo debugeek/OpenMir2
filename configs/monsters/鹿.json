@@ -8,7 +8,6 @@
   "undead": 0,
   "cool_eye": 0,
   "animal": true,
-  "flee_on_sight": true,
   "experience": 15,
   "hp": 25,
   "mp": 0,
@@ -23,37 +22,5 @@
   "walk_speed_ms": 1400,
   "walk_step": 1,
   "walk_wait": 0,
-  "attack_interval_ms": 3000,
-  "drops": [
-    {
-      "item_id": "肉",
-      "chance": "1/1",
-      "min_count": 1,
-      "max_count": 1
-    },
-    {
-      "item_id": "肉",
-      "chance": "1/4",
-      "min_count": 1,
-      "max_count": 1
-    },
-    {
-      "item_id": "肉",
-      "chance": "1/9",
-      "min_count": 1,
-      "max_count": 1
-    },
-    {
-      "item_id": "鹿血",
-      "chance": "1/4",
-      "min_count": 1,
-      "max_count": 1
-    },
-    {
-      "item_id": "鹿血",
-      "chance": "1/8",
-      "min_count": 1,
-      "max_count": 1
-    }
-  ]
+  "attack_interval_ms": 3000
 }

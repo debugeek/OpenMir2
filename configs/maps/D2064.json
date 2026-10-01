@@ -33,6 +33,10 @@
       "to_y": 85
     }
   ],
+  "doors": [
+    {"x": 9, "y": 183, "group": 35655867},
+    {"x": 13, "y": 31, "group": 36700181}
+  ],
   "monster_spawns": [
     {
       "monster_id": "宝箱",

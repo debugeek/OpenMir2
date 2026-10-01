@@ -24,6 +24,12 @@ func (w *World) CanCarryBagItems(ch storage.Character, addItems int) bool {
 	return w.canCarryBagItemsLocked(ch, addItems)
 }
 
+func (w *World) CanCarryWeight(ch storage.Character, addWeight int) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.canCarryWeightLocked(ch, addWeight)
+}
+
 func (w *World) bagItemsWeightLocked(ch storage.Character) int {
 	total := 0
 	for _, entry := range ch.BagItems {

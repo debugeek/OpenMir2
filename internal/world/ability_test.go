@@ -157,6 +157,25 @@ func TestAbilitiesDoubleWeightLimitsForReferenceMuscleRing(t *testing.T) {
 	}
 }
 
+func TestAbilitiesRefreshesAllEquippedWeightBuckets(t *testing.T) {
+	w := &World{data: data.StdBundle{Items: map[string]data.StdItem{
+		"armor":    {ID: "armor", Weight: 4},
+		"weapon":   {ID: "weapon", Weight: 6},
+		"shield":   {ID: "shield", Weight: 3},
+		"necklace": {ID: "necklace", Weight: 2},
+	}}}
+	ch := storage.Character{Class: "warrior", Level: 1, EquippedItems: map[int]storage.UserItem{
+		SlotDress:     {ItemID: "armor"},
+		SlotWeapon:    {ItemID: "weapon"},
+		SlotRightHand: {ItemID: "shield"},
+		SlotNecklace:  {ItemID: "necklace"},
+	}}
+	got := w.Abilities(ch)
+	if got.WearWeight != 6 || got.HandWeight != 9 {
+		t.Fatalf("weight buckets = wear:%d hand:%d, want wear:6 hand:9", got.WearWeight, got.HandWeight)
+	}
+}
+
 func highByte(word int) int {
 	return (word >> 8) & 0xFF
 }

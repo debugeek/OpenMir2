@@ -1,7 +1,6 @@
 {
   "id": "放大镜",
   "name": "放大镜",
-  "kind": "misc",
   "weight": 1,
   "stats": {
     "min_attack": 0,
@@ -20,6 +19,7 @@
   "dura_max": 6000,
   "need_level": 24,
   "price": 6000,
-  "stock": 5,
-  "color": 251
+  "shape": 0,
+  "need": 0,
+  "ani_count": 0
 }

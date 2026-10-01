@@ -110,7 +110,8 @@ func (w *World) tickSummonedMonsterLocked(mon *Monster, players map[string]stora
 		}
 		if now.Sub(mon.MasterDeadSince) >= time.Second {
 			mon.HP = 0
-			w.removeMonsterLocked(mon, false)
+			mon.PendingDeath = true
+			mon.DeathHitterID = ""
 		}
 		return nil, nil, nil, nil
 	}

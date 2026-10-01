@@ -1,6 +1,7 @@
 {
   "id": "R001",
   "name": "桃源之门",
+  "need_hole": true,
   "width": 200,
   "height": 200,
   "connections": [

@@ -25,7 +25,7 @@ func newMonster(w *World, id string, tpl data.StdMonster, mapID string, x, y int
 	now := time.Now()
 	mon := &Monster{
 		ID: id, TemplateID: tpl.ID, Name: tpl.Name, Behavior: tpl.Behavior, Race: tpl.Race, RaceImg: tpl.RaceImg, MonsterWeapon: tpl.MP & 0xFF, Appr: tpl.Appr,
-		Level: tpl.Level, Undead: tpl.Undead, MapID: mapID, X: x, Y: y, Dir: 4, TargetX: -1, TargetY: -1, CoolEye: tpl.CoolEye,
+		Level: tpl.Level, Undead: tpl.Undead, MapID: mapID, X: x, Y: y, Dir: w.rand.Intn(8), TargetX: -1, TargetY: -1, CoolEye: tpl.CoolEye,
 		NoTame:           tpl.NoTame,
 		ViewRange:        tpl.ViewRange,
 		LeashRange:       tpl.LeashRange,
@@ -37,8 +37,18 @@ func newMonster(w *World, id string, tpl data.StdMonster, mapID string, x, y int
 		RunIntervalMS:    250,
 		AttackIntervalMS: tpl.AttackIntervalMS, Experience: tpl.Experience,
 		Alive: true, Spawn: spawn, PerHealing: 5, PerHealth: 5, PerSpell: 5, IncHealthSpellAt: now.UnixMilli(),
+		ThinkAt: now,
 	}
 	mon.MeatQuality = initialMonsterMeatQuality(w, tpl, id)
+	if tpl.Race == 51 {
+		mon.BodyLeathery = 50
+	} else if tpl.Race == 52 {
+		mon.BodyLeathery = 150
+	}
+	if tpl.Race == 52 && w.rand.Intn(30) == 0 {
+		mon.FleeOnSight = true
+		mon.MeatQuality = 10000 + w.rand.Intn(20000)
+	}
 	if tpl.Race == 96 && w.rand.Intn(3) == 0 {
 		mon.ZilkinKillCount = w.rand.Intn(3) + 1
 	}
@@ -54,10 +64,32 @@ func newMonster(w *World, id string, tpl data.StdMonster, mapID string, x, y int
 		mon.AttackCount = 0
 	}
 	mon.LastWalkAt = now.Add(-time.Duration(w.rand.Intn(3000)) * time.Millisecond)
-	if tpl.Behavior == "centipede_king" {
+	mon.LastTargetSearchAt = now
+	if tpl.Race == 92 {
+		mon.CowKingMoveAt = now
+		mon.CowKingStoredAttack = mon.AttackIntervalMS
+		mon.CowKingStoredWalk = mon.WalkSpeedMS
+	}
+	if tpl.Race == 200 {
 		mon.TargetFocusAt = now
 	}
+	if tpl.Race == 100 {
+		applyWhiteSkeletonTiming(mon)
+		mon.LastWalkAt = now.Add(2 * time.Second)
+	}
+	if tpl.Race == 102 {
+		mon.StoneDangerLevel = 5
+	}
+	if tpl.Race == 107 || tpl.Behavior == "centipede_king" {
+		mon.TargetFocusAt = now
+		mon.CentipedeHideAt = now
+	}
 	return mon
+}
+
+func applyWhiteSkeletonTiming(mon *Monster) {
+	mon.AttackIntervalMS = 3000 - int(mon.SlaveMakeLevel)*600
+	mon.WalkSpeedMS = 1200 - int(mon.SlaveMakeLevel)*250
 }
 
 func initialMonsterMeatQuality(w *World, tpl data.StdMonster, id string) int {
@@ -65,9 +97,6 @@ func initialMonsterMeatQuality(w *World, tpl data.StdMonster, id string) int {
 	case 51:
 		return 3000 + w.rand.Intn(3500)
 	case 52:
-		if w.rand.Intn(30) == 0 {
-			return 10000 + w.rand.Intn(20000)
-		}
 		return 8000 + w.rand.Intn(8000)
 	case 53:
 		return 8000 + w.rand.Intn(8000)
@@ -102,6 +131,11 @@ func applyMonsterTemplateState(mon *Monster, tpl data.StdMonster) {
 		mon.Hidden = true
 		mon.FixedHideMode = true
 	}
+	if tpl.Race == 100 {
+		mon.Hidden = true
+		mon.FixedHideMode = true
+		mon.FirstRevealPending = true
+	}
 	if tpl.StoneMode {
 		mon.StoneMode = true
 	}
@@ -111,8 +145,8 @@ func applyMonsterTemplateState(mon *Monster, tpl data.StdMonster) {
 	if tpl.AttackMax > 0 {
 		mon.AttackMax = tpl.AttackMax
 	}
-	switch tpl.Behavior {
-	case "centipede_king":
+	switch {
+	case tpl.Race == 107 || tpl.Behavior == "centipede_king":
 		mon.Dir = 5
 	}
 	switch tpl.Race {
@@ -254,7 +288,7 @@ func (w *World) summonMonsterNearCharacterLocked(master storage.Character, playe
 	}
 	off := dirOffsets[dir]
 	x, y := master.X+off[0], master.Y+off[1]
-	if !mp.Walkable(x, y) || w.monsterAtLocked(master.MapID, x, y, "") || w.playerAtLocked(playerMap, master.MapID, x, y) {
+	if !mp.Walkable(x, y) || w.movingObjectAtLocked(playerMap, master.MapID, x, y, "") {
 		return nil, fmt.Errorf("no available spawn position for monster %s", name)
 	}
 	id := fmt.Sprintf("mon-%d", w.nextID)
@@ -268,9 +302,14 @@ func (w *World) summonMonsterNearCharacterLocked(master storage.Character, playe
 		RespawnSeconds: 0,
 	}
 	mon := newMonster(w, id, tpl, master.MapID, x, y, spawn)
+	mon.Hidden = false
+	mon.FixedHideMode = false
 	mon.MasterID = master.ID
 	mon.MasterName = master.Name
 	mon.SlaveMakeLevel = slaveLevel
+	if mon.Race == 100 {
+		applyWhiteSkeletonTiming(mon)
+	}
 	if duration > 0 {
 		mon.MasterExpiresAt = now.Add(duration)
 	}

@@ -1,7 +1,6 @@
 {
   "id": "法神头盔",
   "name": "法神头盔",
-  "kind": "misc",
   "weight": 2,
   "stats": {
     "min_attack": 0,
@@ -21,6 +20,6 @@
   "need": 2,
   "need_level": 28,
   "price": 20000,
-  "stock": 5,
-  "color": 251
+  "shape": 0,
+  "ani_count": 0
 }

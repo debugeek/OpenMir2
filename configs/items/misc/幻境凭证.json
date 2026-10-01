@@ -1,7 +1,6 @@
 {
   "id": "幻境凭证",
   "name": "幻境凭证",
-  "kind": "misc",
   "weight": 1,
   "stats": {
     "min_attack": 0,
@@ -19,6 +18,8 @@
   "shape": 1,
   "looks": 266,
   "price": 10000,
-  "stock": 5,
-  "color": 251
+  "dura_max": 0,
+  "need": 0,
+  "need_level": 0,
+  "ani_count": 0
 }

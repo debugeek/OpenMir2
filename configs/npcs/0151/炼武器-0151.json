@@ -7,6 +7,12 @@
   "y": 10,
   "dir": 0,
   "appr": 5,
+  "merchant": {
+    "capabilities": {
+      "upgrade_weapon": true,
+      "get_back_weapon": true
+    }
+  },
   "labels": {
     "@main": {
       "name": "@main",

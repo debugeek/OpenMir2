@@ -19,6 +19,10 @@
       "to_y": 43
     }
   ],
+  "doors": [
+    {"x": 25, "y": 17, "group": 34617369},
+    {"x": 85, "y": 17, "group": 45175825}
+  ],
   "monster_spawns": [
     {
       "monster_id": "跳跳蜂",
