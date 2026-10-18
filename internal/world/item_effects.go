@@ -2,7 +2,6 @@ package world
 
 import (
 	"fmt"
-	"math"
 	"time"
 
 	"openmir2/internal/data"
@@ -15,11 +14,7 @@ func applyStdMode0Use(ch storage.Character, entry storage.UserItem, item data.St
 	case 1:
 		ch = core.ApplyVitalDelta(ch, item.Stats.AcMin, item.Stats.MacMin).Character
 	case 2:
-		return ch, nil
-	case 3:
-		hp := int(math.Round(float64(ch.MaxHP) * float64(item.Stats.AcMin) / 100.0))
-		mp := int(math.Round(float64(ch.MaxMP) * float64(item.Stats.MacMin) / 100.0))
-		ch = core.ApplyVitalDelta(ch, hp, mp).Character
+		ch.DrugUnlocked = true
 	default:
 		ch = core.QueueRecovery(ch, item.Stats.AcMin, item.Stats.MacMin)
 	}
@@ -27,64 +22,88 @@ func applyStdMode0Use(ch storage.Character, entry storage.UserItem, item data.St
 	return ch, nil
 }
 
-func applyStdMode3Use(w *World, ch storage.Character, entry storage.UserItem, item data.StdItem) (storage.Character, string, int, bool, error) {
+func applyStdMode3Use(w *World, ch storage.Character, entry storage.UserItem, item data.StdItem) (storage.Character, []ItemUseSystemMessage, bool, bool, error) {
 	_ = entry
 	switch item.Shape {
 	case 1:
-		next, err := w.homeTeleportRandomCharacterLocked(ch)
-		return next, "", 0, false, err
+		next, err := w.homeTeleportRandomHomeMapLocked(ch)
+		return next, nil, false, true, err
 	case 3:
 		next, err := w.homeTeleportCharacterLocked(ch)
-		return next, "", 0, false, err
+		return next, nil, false, true, err
 	case 5:
-		next, err := w.homeTeleportCharacterLocked(ch)
-		return next, "", 0, false, err
+		return ch, nil, false, false, nil
 	case 2:
-		next, err := w.teleportRandomInMapLocked(ch, ch.MapID)
-		return next, "", 0, false, err
+		if mp, ok := w.data.Maps[ch.MapID]; ok && mp.NoRandomMove {
+			return ch, nil, false, false, fmt.Errorf("random teleport is not allowed on this map")
+		}
+		next, err := w.prepareRandomTeleportInMapLocked(ch, ch.MapID)
+		return next, nil, false, true, err
 	case 12:
 		now := time.Now()
-		duration := time.Duration(byte(item.Stats.DcMax))*time.Minute + time.Duration(byte(item.Stats.MacMax))*time.Second
-		if duration < 0 {
-			duration = 0
-		}
+		duration := time.Duration(item.Stats.MacMax) * time.Second
 		abilityChanged := applyTemporaryAbilityLocked(&ch, tempAbility{
-			DC:       byte(item.Stats.DcMin),
-			MC:       byte(item.Stats.McMin),
-			SC:       byte(item.Stats.ScMin),
-			HitSpeed: byte(item.Stats.AcMax),
-			HP:       byte(item.Stats.AcMin),
-			MP:       byte(item.Stats.MacMin),
+			DC:       uint16(item.Stats.DcMin),
+			MC:       uint16(item.Stats.McMin),
+			SC:       uint16(item.Stats.ScMin),
+			HitSpeed: uint16(item.Stats.AcMax),
+			HP:       uint16(item.Stats.AcMin),
+			MP:       uint16(item.Stats.MacMin),
 			Duration: duration,
 			Now:      now,
 		})
-		return ch, "", 0, abilityChanged, nil
+		messages := make([]ItemUseSystemMessage, 0, 6)
+		seconds := item.Stats.MacMax
+		if item.Stats.DcMin > 0 {
+			messages = append(messages, ItemUseSystemMessage{Text: fmt.Sprintf("Temporarily destructive power increased during %dsec.", seconds), Foreground: 0xDB, Background: 0xFF})
+		}
+		if item.Stats.McMin > 0 {
+			messages = append(messages, ItemUseSystemMessage{Text: fmt.Sprintf("Temporarily magic power increased during %dsec.", seconds), Foreground: 0xDB, Background: 0xFF})
+		}
+		if item.Stats.ScMin > 0 {
+			messages = append(messages, ItemUseSystemMessage{Text: fmt.Sprintf("Temporarily zen power increased during %dsec.", seconds), Foreground: 0xDB, Background: 0xFF})
+		}
+		if item.Stats.AcMax > 0 {
+			messages = append(messages, ItemUseSystemMessage{Text: fmt.Sprintf("Temporarily hitting speed increased during %dsec.", seconds), Foreground: 0xDB, Background: 0xFF})
+		}
+		if item.Stats.AcMin > 0 {
+			messages = append(messages, ItemUseSystemMessage{Text: fmt.Sprintf("Temporarily HP increased during %dsec.", seconds), Foreground: 0xDB, Background: 0xFF})
+		}
+		if item.Stats.MacMin > 0 {
+			messages = append(messages, ItemUseSystemMessage{Text: fmt.Sprintf("Temporarily MP increased during %dsec.", seconds), Foreground: 0xDB, Background: 0xFF})
+		}
+		return ch, messages, abilityChanged, abilityChanged, nil
 	case 4, 9, 10:
-		return ch, "", 0, false, fmt.Errorf("item %s cannot be used", item.ID)
-	case 13:
-		return gainExperienceLocked(w, ch, item.DuraMax)
+		return ch, nil, false, false, fmt.Errorf("item %s cannot be used", item.ID)
 	default:
-		return ch, "", 0, false, fmt.Errorf("item %s cannot be used", item.ID)
+		return ch, nil, false, false, fmt.Errorf("item %s cannot be used", item.ID)
 	}
 }
 
-func (w *World) useBlessingOilLocked(ch *storage.Character) (bool, error) {
+func (w *World) useBlessingOilLocked(ch *storage.Character) (bool, string, []ItemUseSystemMessage, error) {
 	weapon, ok := w.equippedItemLocked(*ch, SlotWeapon)
 	if !ok {
-		return false, fmt.Errorf("item 祝福油 cannot be used")
+		return false, "", nil, fmt.Errorf("item 祝福油 cannot be used")
 	}
 	desc := weapon.Desc
 	item, ok := w.data.Items[weapon.ItemID]
 	if !ok {
-		return false, fmt.Errorf("item 祝福油 cannot be used")
+		return false, "", nil, fmt.Errorf("item 祝福油 cannot be used")
 	}
 	nRand := abs(int(item.Stats.DcMax)-int(item.Stats.DcMin)) / 5
 	if w.rand.Intn(20) == 1 {
 		if desc[3] > 0 {
 			desc[3]--
+			weapon.Desc = desc
+			w.setEquippedItemLocked(ch, SlotWeapon, weapon)
+			return true, "", []ItemUseSystemMessage{{Text: "你的武器被诅咒了.", Foreground: 0xFF, Background: 0x38}}, nil
 		} else if desc[4] < 10 {
 			desc[4]++
+			weapon.Desc = desc
+			w.setEquippedItemLocked(ch, SlotWeapon, weapon)
+			return true, "", []ItemUseSystemMessage{{Text: "你的武器被诅咒了.", Foreground: 0xFF, Background: 0x38}}, nil
 		}
+		return true, "", nil, nil
 	} else if desc[4] > 0 {
 		desc[4]--
 	} else if desc[3] < 1 {
@@ -94,24 +113,17 @@ func (w *World) useBlessingOilLocked(ch *storage.Character) (bool, error) {
 	} else if desc[3] < 7 && w.rand.Intn(nRand*10+30) == 1 {
 		desc[3]++
 	} else {
-		return true, nil
+		return true, "无效.", nil, nil
 	}
 	weapon.Desc = desc
 	w.setEquippedItemLocked(ch, SlotWeapon, weapon)
-	return true, nil
+	return true, "武器被加幸运了...", nil, nil
 }
 
 func (w *World) repairWeaponLocked(ch *storage.Character, super bool) error {
 	weapon, ok := w.equippedItemLocked(*ch, SlotWeapon)
 	if !ok {
 		return fmt.Errorf("item %s cannot be used", map[bool]string{true: "战神油", false: "修复油"}[super])
-	}
-	if weapon.DuraMax == 0 {
-		item, ok := w.data.Items[weapon.ItemID]
-		if !ok {
-			return fmt.Errorf("item %s cannot be used", map[bool]string{true: "战神油", false: "修复油"}[super])
-		}
-		weapon.DuraMax = itemDuraMax(item)
 	}
 	if super {
 		weapon.Dura = weapon.DuraMax
@@ -128,6 +140,14 @@ func (w *World) repairWeaponLocked(ch *storage.Character, super bool) error {
 	}
 	w.setEquippedItemLocked(ch, SlotWeapon, weapon)
 	return nil
+}
+
+func (w *World) equippedItemDurabilityLocked(ch storage.Character, slot int) *SpellDurability {
+	item, ok := w.equippedItemLocked(ch, slot)
+	if !ok {
+		return nil
+	}
+	return &SpellDurability{Slot: slot, Dura: item.Dura, DuraMax: item.DuraMax}
 }
 
 func itemDuraMax(item data.StdItem) uint16 {

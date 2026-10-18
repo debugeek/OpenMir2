@@ -39,7 +39,7 @@ func TestLoadGameplayReadsTunableSettings(t *testing.T) {
   "progression": {"required_experience_per_level": 30},
 	"monster": {"tick_ms": 900},
 	"movement": {"user_move_can_dup_obj": true, "user_move_can_on_item": false, "user_move_cooldown_ms": 12500},
-	"item": {"floor_drop_max_stack_per_tile": 7, "max_bag_item": 46}
+	"item": {"floor_drop_max_stack_per_tile": 7, "max_bag_item": 46, "monster_random_add_value": 7}
 }`), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
@@ -50,6 +50,9 @@ func TestLoadGameplayReadsTunableSettings(t *testing.T) {
 	}
 	if cfg.Combat.HitImpactDelayMS != 175 {
 		t.Fatalf("HitImpactDelayMS = %d, want 175", cfg.Combat.HitImpactDelayMS)
+	}
+	if cfg.Item.MonsterRandomAddValue != 7 {
+		t.Fatalf("MonsterRandomAddValue = %d, want 7", cfg.Item.MonsterRandomAddValue)
 	}
 	if cfg.Combat.MineHitRate != 4 || cfg.Combat.MineRate != 12 {
 		t.Fatalf("mine rates = %d/%d, want 4/12", cfg.Combat.MineHitRate, cfg.Combat.MineRate)
@@ -110,6 +113,63 @@ func TestLoadGameplayReadsTunableSettings(t *testing.T) {
 	}
 	if cfg.Item.MaxBagItem != 46 {
 		t.Fatalf("MaxBagItem = %d, want 46", cfg.Item.MaxBagItem)
+	}
+	if !cfg.Deal.CanNotGetBackDeal || cfg.Deal.DisableDeal {
+		t.Fatalf("deal settings = %+v, want can_not_get_back_deal=true and disable_deal=false", cfg.Deal)
+	}
+	if cfg.Combat.ControlDropItem || cfg.Combat.InSafeDisableDrop || cfg.Combat.CanDropGold != 1000 || cfg.Combat.CanDropPrice != 500 {
+		t.Fatalf("drop controls = %+v, want reference defaults", cfg.Combat)
+	}
+}
+
+func TestLoadGameplayReadsDealReturnOverride(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "common.json"), []byte(`{
+  "deal": {"can_not_get_back_deal": false}
+}`), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	cfg, err := LoadGameplay(dir)
+	if err != nil {
+		t.Fatalf("LoadGameplay() error = %v", err)
+	}
+	if cfg.Deal.CanNotGetBackDeal {
+		t.Fatal("CanNotGetBackDeal = true, want configured false")
+	}
+}
+
+func TestLoadGameplayReadsDealDisableOverride(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "common.json"), []byte(`{
+  "deal": {"disable_deal": true}
+}`), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	cfg, err := LoadGameplay(dir)
+	if err != nil {
+		t.Fatalf("LoadGameplay() error = %v", err)
+	}
+	if !cfg.Deal.DisableDeal {
+		t.Fatal("DisableDeal = false, want configured true")
+	}
+}
+
+func TestLoadGameplayReadsDropControlOverrides(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "common.json"), []byte(`{
+  "combat": {"control_drop_item": true, "in_safe_disable_drop": true, "can_drop_gold": 123, "can_drop_price": 456}
+}`), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	cfg, err := LoadGameplay(dir)
+	if err != nil {
+		t.Fatalf("LoadGameplay() error = %v", err)
+	}
+	if !cfg.Combat.ControlDropItem || !cfg.Combat.InSafeDisableDrop || cfg.Combat.CanDropGold != 123 || cfg.Combat.CanDropPrice != 456 {
+		t.Fatalf("drop controls = %+v, want configured values", cfg.Combat)
 	}
 }
 

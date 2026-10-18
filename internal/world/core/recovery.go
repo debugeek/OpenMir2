@@ -30,10 +30,8 @@ func QueueHealing(ch storage.Character, hp int) storage.Character {
 }
 
 func ApplyQueuedRecovery(ch storage.Character, now time.Time) (storage.Character, bool) {
-	if ch.HP <= 0 {
-		return ch, false
-	}
 	if ch.IncHealth <= 0 && ch.IncSpell <= 0 && ch.IncHealing <= 0 {
+		ch.IncHealthSpellAt = now.UnixMilli()
 		return ch, false
 	}
 	interval := RecoveryInterval(ch.Level)
@@ -50,11 +48,11 @@ func ApplyQueuedRecovery(ch storage.Character, now time.Time) (storage.Character
 	}
 	perTickHP := ch.PerHealth
 	if perTickHP <= 0 {
-		perTickHP = 5
+		perTickHP = 1
 	}
 	perTickMP := ch.PerSpell
 	if perTickMP <= 0 {
-		perTickMP = 5
+		perTickMP = 1
 	}
 	perTickHealing := ch.PerHealing
 	if perTickHealing <= 0 {

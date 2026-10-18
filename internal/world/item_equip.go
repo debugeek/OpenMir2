@@ -31,7 +31,10 @@ const (
 // EquipItem moves an item from the character's bag into the given equip slot,
 // returning whatever was previously equipped there to the bag.
 func (w *World) EquipItem(ch storage.Character, slot int, itemID string) (storage.Character, error) {
-	updated, _, err := w.EquipItemByBagIndexWithResult(ch, slot, 0, itemID)
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	ch = cloneCharacterForMutation(ch)
+	updated, _, err := w.equipItemLocked(ch, slot, 0, itemID, false)
 	return updated, err
 }
 
@@ -45,25 +48,17 @@ func (w *World) EquipItemByBagIndex(ch storage.Character, slot int, bagIndex int
 func (w *World) EquipItemByBagIndexWithResult(ch storage.Character, slot int, bagIndex int, itemID string) (storage.Character, EquipResult, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.normalizeBagItemMakeIndexesLocked(&ch) {
-		if err := w.store.SaveCharacter(ch); err != nil {
-			return ch, EquipResult{}, err
-		}
-	}
-	w.normalizeEquippedItemsLocked(&ch)
-	updated, result, err := w.equipItemLocked(ch, slot, bagIndex, itemID)
+	ch = cloneCharacterForMutation(ch)
+	updated, result, err := w.equipItemLocked(ch, slot, bagIndex, itemID, true)
 	if err != nil {
 		return ch, EquipResult{}, err
 	}
-	return updated, result, w.store.SaveCharacter(updated)
+	return updated, result, nil
 }
 
 func (w *World) resolveItemIDLocked(itemName string) (string, bool) {
-	if _, ok := w.data.Items[itemName]; ok {
-		return itemName, true
-	}
 	for id, item := range w.data.Items {
-		if strings.EqualFold(id, itemName) || strings.EqualFold(item.Name, itemName) {
+		if strings.EqualFold(item.Name, itemName) {
 			return id, true
 		}
 	}
@@ -75,40 +70,51 @@ func (w *World) itemNameMatchesLocked(itemID, itemName string) bool {
 	if !ok {
 		return false
 	}
-	return strings.EqualFold(itemID, itemName) || strings.EqualFold(item.Name, itemName)
+	return strings.EqualFold(item.Name, itemName)
 }
 
-func (w *World) equipItemLocked(ch storage.Character, slot int, bagIndex int, itemID string) (storage.Character, EquipResult, error) {
+func (w *World) equipItemLocked(ch storage.Character, slot int, bagIndex int, itemID string, matchMakeIndex bool) (storage.Character, EquipResult, error) {
 	before := ch
 	if slot < 0 || slot >= useSlotCount {
 		return ch, EquipResult{}, fmt.Errorf("unsupported equip slot %d", slot)
 	}
-	resolvedItemID, ok := w.resolveItemIDLocked(itemID)
-	if !ok {
-		return ch, EquipResult{}, fmt.Errorf("item %s not found", itemID)
+	requestedItemName := itemID
+	idx := -1
+	if matchMakeIndex {
+		idx = w.findBagItemByMakeIndexLocked(ch, int32(bagIndex))
+	} else {
+		resolvedItemID, ok := w.resolveItemIDLocked(itemID)
+		if ok {
+			idx = w.findBagItemSlotLocked(ch, resolvedItemID, 0)
+		}
 	}
-	itemID = resolvedItemID
-	item, ok := w.data.Items[itemID]
-	if !ok {
-		return ch, EquipResult{}, fmt.Errorf("item %s not found", itemID)
-	}
-	if !w.canWearInSlotLocked(item, slot) {
-		return ch, EquipResult{}, fmt.Errorf("item %s is not wearable", itemID)
-	}
-	if err := w.canEquipItemLocked(ch, item, slot); err != nil {
-		return ch, EquipResult{}, err
-	}
-	idx := w.findBagItemSlotLocked(ch, itemID, int32(bagIndex))
 	if idx < 0 {
 		return ch, EquipResult{}, fmt.Errorf("item %s not in bag", itemID)
 	}
+	if !w.itemNameMatchesLocked(ch.BagItems[idx].ItemID, requestedItemName) {
+		return ch, EquipResult{}, fmt.Errorf("item %s not in bag", itemID)
+	}
+	itemID = ch.BagItems[idx].ItemID
+	item, ok := w.data.Items[itemID]
+	if !ok {
+		return ch, EquipResult{}, fmt.Errorf("item %s not in bag", itemID)
+	}
+	effectiveItem := UpgradeClientItemForDisplay(item, ch.BagItems[idx], false)
+	if !w.canWearInSlotLocked(effectiveItem, slot) {
+		return ch, EquipResult{}, fmt.Errorf("item %s is not wearable", itemID)
+	}
+	if err := w.canEquipItemLocked(ch, effectiveItem, slot); err != nil {
+		return ch, EquipResult{}, err
+	}
 	previous, hasPrevious := w.equippedItemLocked(ch, slot)
+	if hasPrevious {
+		previousItem, ok := w.data.Items[previous.ItemID]
+		if ok && mysteryEquipStdMode(previousItem.StdMode) && previous.Desc[7] != 0 && !ch.DrugUnlocked {
+			return ch, EquipResult{}, fmt.Errorf("item %s cannot be taken off", previous.ItemID)
+		}
+	}
 	entry := ch.BagItems[idx]
 	entryDesc := entry.Desc
-	currentDuraMax := entry.DuraMax
-	if currentDuraMax == 0 {
-		currentDuraMax = itemDuraMax(item)
-	}
 	currentDura := entry.Dura
 	if item.StdMode == 15 || item.StdMode == 19 || item.StdMode == 20 || item.StdMode == 21 || item.StdMode == 22 || item.StdMode == 23 || item.StdMode == 24 || item.StdMode == 26 {
 		if entryDesc[8] != 0 {
@@ -120,7 +126,7 @@ func (w *World) equipItemLocked(ch storage.Character, slot int, bagIndex int, it
 		MakeIndex: entry.MakeIndex,
 		Desc:      entryDesc,
 		Dura:      currentDura,
-		DuraMax:   currentDuraMax,
+		DuraMax:   entry.DuraMax,
 	}
 	w.setEquippedItemLocked(&ch, slot, updated)
 	w.applyStealthRingStateLocked(&ch, time.Now())
@@ -129,6 +135,9 @@ func (w *World) equipItemLocked(ch storage.Character, slot int, bagIndex int, it
 		ch.BagItems = append(ch.BagItems, previous)
 	}
 	addedSkills, removedSkills := w.itemSkillChangesLocked(before, ch)
+	for _, skillID := range removedSkills {
+		delete(ch.ItemSkillHotkeys, skillID)
+	}
 	result := EquipResult{Character: ch, AddedSkills: addedSkills, RemovedSkills: removedSkills}
 	if hasPrevious {
 		result.SwappedOut = previous
@@ -152,25 +161,25 @@ func (w *World) UnequipItemByItemID(ch storage.Character, slot int, itemID strin
 }
 
 func (w *World) UnequipItemByItemIDWithResult(ch storage.Character, slot int, itemID string) (storage.Character, UnequipResult, error) {
-	return w.unequipByIdentityWithResult(ch, slot, 0, itemID)
+	return w.unequipByIdentityWithResult(ch, slot, 0, itemID, false)
 }
 
 func (w *World) UnequipItemByMakeIndexWithResult(ch storage.Character, slot, makeIndex int, itemID string) (storage.Character, UnequipResult, error) {
-	return w.unequipByIdentityWithResult(ch, slot, makeIndex, itemID)
+	return w.unequipByIdentityWithResult(ch, slot, makeIndex, itemID, true)
 }
 
-func (w *World) unequipByIdentityWithResult(ch storage.Character, slot, makeIndex int, itemID string) (storage.Character, UnequipResult, error) {
+func (w *World) unequipByIdentityWithResult(ch storage.Character, slot, makeIndex int, itemID string, matchMakeIndex bool) (storage.Character, UnequipResult, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.normalizeEquippedItemsLocked(&ch)
-	updated, result, err := w.unequipItemLocked(ch, slot, makeIndex, itemID)
+	ch = cloneCharacterForMutation(ch)
+	updated, result, err := w.unequipItemLocked(ch, slot, makeIndex, itemID, matchMakeIndex)
 	if err != nil {
 		return ch, UnequipResult{}, err
 	}
-	return updated, result, w.store.SaveCharacter(updated)
+	return updated, result, nil
 }
 
-func (w *World) unequipItemLocked(ch storage.Character, slot, requestedIndex int, itemID string) (storage.Character, UnequipResult, error) {
+func (w *World) unequipItemLocked(ch storage.Character, slot, requestedIndex int, itemID string, matchMakeIndex bool) (storage.Character, UnequipResult, error) {
 	before := ch
 	if slot < 0 || slot >= useSlotCount {
 		return ch, UnequipResult{}, fmt.Errorf("unsupported equip slot %d", slot)
@@ -179,26 +188,39 @@ func (w *World) unequipItemLocked(ch storage.Character, slot, requestedIndex int
 	if !ok {
 		return ch, UnequipResult{}, fmt.Errorf("slot %d is empty", slot)
 	}
+	if matchMakeIndex && wornItem.MakeIndex != int32(requestedIndex) {
+		return ch, UnequipResult{}, fmt.Errorf("item identity mismatch in slot %d", slot)
+	}
 	if itemID != "" && !w.itemNameMatchesLocked(wornItem.ItemID, itemID) {
 		return ch, UnequipResult{}, fmt.Errorf("item %s not in slot %d", itemID, slot)
 	}
-	if requestedIndex > 0 && wornItem.MakeIndex != int32(requestedIndex) {
-		return ch, UnequipResult{}, fmt.Errorf("item identity mismatch in slot %d", slot)
-	}
-	item, ok := w.data.Items[wornItem.ItemID]
+	_, ok = w.data.Items[wornItem.ItemID]
 	if !ok {
 		return ch, UnequipResult{}, fmt.Errorf("item %s not found", wornItem.ItemID)
+	}
+	item := w.data.Items[wornItem.ItemID]
+	if mysteryEquipStdMode(item.StdMode) && wornItem.Desc[7] != 0 && !ch.DrugUnlocked {
+		return ch, UnequipResult{}, fmt.Errorf("item %s cannot be taken off", wornItem.ItemID)
 	}
 	if !w.canCarryBagItemsLocked(ch, 1) {
 		return ch, UnequipResult{}, fmt.Errorf("bag is full")
 	}
 	bagItem := wornItem
-	if bagItem.DuraMax == 0 {
-		bagItem.DuraMax = itemDuraMax(item)
-	}
 	w.deleteEquippedItemLocked(&ch, slot)
 	w.applyStealthRingStateLocked(&ch, time.Now())
 	ch.BagItems = append(ch.BagItems, bagItem)
 	addedSkills, removedSkills := w.itemSkillChangesLocked(before, ch)
+	for _, skillID := range removedSkills {
+		delete(ch.ItemSkillHotkeys, skillID)
+	}
 	return ch, UnequipResult{Character: ch, RemovedItem: bagItem, HasRemovedItem: true, AddedSkills: addedSkills, RemovedSkills: removedSkills}, nil
+}
+
+func mysteryEquipStdMode(stdMode int) bool {
+	switch stdMode {
+	case 15, 19, 20, 21, 22, 23, 24, 26:
+		return true
+	default:
+		return false
+	}
 }

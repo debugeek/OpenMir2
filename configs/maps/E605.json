@@ -1,5 +1,6 @@
 {
   "id": "E605",
+  "light": 1,
   "name": "连接通道",
   "width": 100,
   "height": 100,
@@ -29,7 +30,8 @@
       "y": 62,
       "range": 0,
       "count": 1,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 78
     },
     {
       "monster_id": "弓箭护卫",
@@ -37,7 +39,8 @@
       "y": 68,
       "range": 0,
       "count": 1,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 79
     },
     {
       "monster_id": "蜈蚣",
@@ -45,7 +48,8 @@
       "y": 50,
       "range": 50,
       "count": 2,
-      "respawn_seconds": 23
+      "respawn_seconds": 23,
+      "reference_order": 1485
     },
     {
       "monster_id": "蜈蚣1",
@@ -53,7 +57,8 @@
       "y": 50,
       "range": 50,
       "count": 1,
-      "respawn_seconds": 120
+      "respawn_seconds": 120,
+      "reference_order": 1489
     },
     {
       "monster_id": "跳跳蜂",
@@ -61,7 +66,8 @@
       "y": 50,
       "range": 50,
       "count": 2,
-      "respawn_seconds": 23
+      "respawn_seconds": 23,
+      "reference_order": 1484
     },
     {
       "monster_id": "跳跳蜂1",
@@ -69,7 +75,8 @@
       "y": 50,
       "range": 50,
       "count": 1,
-      "respawn_seconds": 120
+      "respawn_seconds": 120,
+      "reference_order": 1488
     },
     {
       "monster_id": "钳虫",
@@ -77,7 +84,8 @@
       "y": 50,
       "range": 50,
       "count": 2,
-      "respawn_seconds": 23
+      "respawn_seconds": 23,
+      "reference_order": 1483
     },
     {
       "monster_id": "钳虫1",
@@ -85,7 +93,8 @@
       "y": 50,
       "range": 50,
       "count": 1,
-      "respawn_seconds": 120
+      "respawn_seconds": 120,
+      "reference_order": 1487
     },
     {
       "monster_id": "黑色恶蛆",
@@ -93,7 +102,8 @@
       "y": 50,
       "range": 50,
       "count": 2,
-      "respawn_seconds": 23
+      "respawn_seconds": 23,
+      "reference_order": 1482
     },
     {
       "monster_id": "黑色恶蛆1",
@@ -101,7 +111,8 @@
       "y": 50,
       "range": 50,
       "count": 1,
-      "respawn_seconds": 120
+      "respawn_seconds": 120,
+      "reference_order": 1486
     }
   ],
   "blocked_bits": "///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////z/////////z////8f//8////////x////wP//8f////8P/v//A/z/D/7///9/gP//P8L/f4D/////AfD//wDw/wHw////DwD//w80/g8C/////5jg//8BgP8C+P///wcA+P8/IPEHwf///x8AAP//BwAfAP7///+AAPD//wDhAPD///8PgAH+/x8AAIP///9/AACA//8DAAb8////AQAC8P9/AADg////D0OAAf//DwwA/////wAYAOD//wE48P///wfAAwD4/z/Ag////x8EfgAD//8DPPz///8A8I8A8P8/AOD///9vgP8JAP//AwH///9/EPw/APj/PwD4////AeD/A8D//wfA////DwD/PwD+/38M/v///wD4/wPw//8H8P///4fA/z+B//8/gP///x8A/v8H/P//APz///8A8P9/4P//h+D///8Pg///B///HwD///9/Afz/P/j//yD4////AeD//8H//w/A////DwD//wf+/38A/P///wD4/x/w//8BwP///yfA//+A//8PAPz//x8M/v8v/P//ANP///8A8P9/4f//HwD+//8PgP//Af///wPA//9/CPz/D/j//38A+P//AeD//8D///8PAP7/DwD//xf+////AYT//wD4/x/w////PwDw/wfA//+A/////wcA/x8A/v9P/P////8A4P8w8P9/4P////8fAPgPhP//If//////gwF/APz/D/j/////fwDwAeD//8D//////w8ADgD//yf+//////9BgAj4/x/w//////8/AADA//+I////////BwIA/v9P/P///////wAh8P9/4P///////x9ggP//Af////////8DAPz/D/j///////9/AOD//8D//////7//DwD//yf+///////x/wH4/x/w//////8P/D/A//+A//////9/0P9n/v9P/P//////Afz///9/wP//////D8D/////Afz//////3Dw////D8T//////w8A/////wD8//////8BwP///wfs//////8/APz//x8A/P//////BwX///8AgP///////wDw//8PAOD//////x8A//9/CCD4//////9Dw///AYAA//////9/APz/DwAA8P//////DwD//wAABP7//////wHw/wcAAYH//////z8Q/x8APCDw//////8HwP8g4AcA////////APwPAf8A8P//////HwJ/APAfAP///////wPzAcD/A/z//////38ADgL+f+D///////8PAADw/w//////////IYAA///4////////PwAB/P/f/////////wcA4P////////////8AAP////////////8fAPD/////////////A8D/////////////fwD+/////////////w/w//////////////8B//////////////8//P//////////////5/////////////////////////////////////////////////////////////////////////////8="

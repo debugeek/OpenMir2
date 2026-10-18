@@ -1,8 +1,13 @@
 {
   "id": "D024",
+  "light": 1,
+  "no_recall": true,
+  "no_reconnect": true,
+  "reconnect_map": "D023",
   "name": "沃玛寺庙",
   "width": 100,
   "height": 100,
+  "no_random_move": true,
   "connections": [
     {
       "to_map": "D023",
@@ -19,7 +24,8 @@
       "y": 21,
       "range": 7,
       "count": 8,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 311
     },
     {
       "monster_id": "沃玛勇士",
@@ -27,7 +33,8 @@
       "y": 21,
       "range": 7,
       "count": 5,
-      "respawn_seconds": 5
+      "respawn_seconds": 5,
+      "reference_order": 308
     },
     {
       "monster_id": "沃玛战将",
@@ -35,7 +42,8 @@
       "y": 21,
       "range": 7,
       "count": 5,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 309
     },
     {
       "monster_id": "火焰沃玛",
@@ -43,7 +51,8 @@
       "y": 21,
       "range": 7,
       "count": 8,
-      "respawn_seconds": 5
+      "respawn_seconds": 5,
+      "reference_order": 310
     },
     {
       "monster_id": "暗黑战士",
@@ -51,7 +60,8 @@
       "y": 40,
       "range": 20,
       "count": 5,
-      "respawn_seconds": 6
+      "respawn_seconds": 6,
+      "reference_order": 279
     },
     {
       "monster_id": "沃玛勇士",
@@ -59,7 +69,8 @@
       "y": 40,
       "range": 20,
       "count": 6,
-      "respawn_seconds": 5
+      "respawn_seconds": 5,
+      "reference_order": 278
     },
     {
       "monster_id": "沃玛战将",
@@ -67,7 +78,8 @@
       "y": 40,
       "range": 20,
       "count": 6,
-      "respawn_seconds": 6
+      "respawn_seconds": 6,
+      "reference_order": 277
     },
     {
       "monster_id": "火焰沃玛",
@@ -75,7 +87,8 @@
       "y": 40,
       "range": 20,
       "count": 6,
-      "respawn_seconds": 5
+      "respawn_seconds": 5,
+      "reference_order": 276
     },
     {
       "monster_id": "暗黑战士",
@@ -83,7 +96,8 @@
       "y": 50,
       "range": 20,
       "count": 5,
-      "respawn_seconds": 8
+      "respawn_seconds": 8,
+      "reference_order": 291
     },
     {
       "monster_id": "沃玛勇士",
@@ -91,7 +105,8 @@
       "y": 50,
       "range": 20,
       "count": 8,
-      "respawn_seconds": 5
+      "respawn_seconds": 5,
+      "reference_order": 288
     },
     {
       "monster_id": "沃玛战将",
@@ -99,7 +114,8 @@
       "y": 50,
       "range": 20,
       "count": 3,
-      "respawn_seconds": 7
+      "respawn_seconds": 7,
+      "reference_order": 289
     },
     {
       "monster_id": "火焰沃玛",
@@ -107,7 +123,8 @@
       "y": 50,
       "range": 20,
       "count": 3,
-      "respawn_seconds": 5
+      "respawn_seconds": 5,
+      "reference_order": 290
     },
     {
       "monster_id": "暗黑战士1",
@@ -115,7 +132,8 @@
       "y": 49,
       "range": 30,
       "count": 2,
-      "respawn_seconds": 60
+      "respawn_seconds": 60,
+      "reference_order": 315
     },
     {
       "monster_id": "沃玛勇士1",
@@ -123,7 +141,8 @@
       "y": 49,
       "range": 30,
       "count": 2,
-      "respawn_seconds": 60
+      "respawn_seconds": 60,
+      "reference_order": 314
     },
     {
       "monster_id": "沃玛战将1",
@@ -131,7 +150,8 @@
       "y": 49,
       "range": 30,
       "count": 2,
-      "respawn_seconds": 60
+      "respawn_seconds": 60,
+      "reference_order": 313
     },
     {
       "monster_id": "火焰沃玛1",
@@ -139,7 +159,8 @@
       "y": 49,
       "range": 30,
       "count": 2,
-      "respawn_seconds": 60
+      "respawn_seconds": 60,
+      "reference_order": 312
     },
     {
       "monster_id": "暗黑战士",
@@ -147,7 +168,8 @@
       "y": 40,
       "range": 20,
       "count": 5,
-      "respawn_seconds": 8
+      "respawn_seconds": 8,
+      "reference_order": 295
     },
     {
       "monster_id": "沃玛勇士",
@@ -155,7 +177,8 @@
       "y": 40,
       "range": 20,
       "count": 3,
-      "respawn_seconds": 5
+      "respawn_seconds": 5,
+      "reference_order": 294
     },
     {
       "monster_id": "沃玛战将",
@@ -163,7 +186,8 @@
       "y": 40,
       "range": 20,
       "count": 8,
-      "respawn_seconds": 8
+      "respawn_seconds": 8,
+      "reference_order": 293
     },
     {
       "monster_id": "火焰沃玛",
@@ -171,7 +195,8 @@
       "y": 40,
       "range": 20,
       "count": 3,
-      "respawn_seconds": 5
+      "respawn_seconds": 5,
+      "reference_order": 292
     },
     {
       "monster_id": "暗黑战士",
@@ -179,7 +204,8 @@
       "y": 50,
       "range": 20,
       "count": 5,
-      "respawn_seconds": 7
+      "respawn_seconds": 7,
+      "reference_order": 283
     },
     {
       "monster_id": "沃玛勇士",
@@ -187,7 +213,8 @@
       "y": 50,
       "range": 20,
       "count": 7,
-      "respawn_seconds": 5
+      "respawn_seconds": 5,
+      "reference_order": 282
     },
     {
       "monster_id": "沃玛卫士",
@@ -195,7 +222,8 @@
       "y": 50,
       "range": 30,
       "count": 1,
-      "respawn_seconds": 120
+      "respawn_seconds": 120,
+      "reference_order": 275
     },
     {
       "monster_id": "沃玛战将",
@@ -203,7 +231,8 @@
       "y": 50,
       "range": 20,
       "count": 7,
-      "respawn_seconds": 6
+      "respawn_seconds": 6,
+      "reference_order": 281
     },
     {
       "monster_id": "沃玛教主",
@@ -211,7 +240,8 @@
       "y": 50,
       "range": 20,
       "count": 1,
-      "respawn_seconds": 120
+      "respawn_seconds": 120,
+      "reference_order": 274
     },
     {
       "monster_id": "火焰沃玛",
@@ -219,7 +249,8 @@
       "y": 50,
       "range": 20,
       "count": 7,
-      "respawn_seconds": 5
+      "respawn_seconds": 5,
+      "reference_order": 280
     },
     {
       "monster_id": "暗黑战士",
@@ -227,7 +258,8 @@
       "y": 60,
       "range": 20,
       "count": 5,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 303
     },
     {
       "monster_id": "沃玛勇士",
@@ -235,7 +267,8 @@
       "y": 60,
       "range": 20,
       "count": 3,
-      "respawn_seconds": 5
+      "respawn_seconds": 5,
+      "reference_order": 300
     },
     {
       "monster_id": "沃玛战将",
@@ -243,7 +276,8 @@
       "y": 60,
       "range": 20,
       "count": 8,
-      "respawn_seconds": 9
+      "respawn_seconds": 9,
+      "reference_order": 301
     },
     {
       "monster_id": "火焰沃玛",
@@ -251,7 +285,8 @@
       "y": 60,
       "range": 20,
       "count": 8,
-      "respawn_seconds": 5
+      "respawn_seconds": 5,
+      "reference_order": 302
     },
     {
       "monster_id": "暗黑战士",
@@ -259,7 +294,8 @@
       "y": 50,
       "range": 20,
       "count": 5,
-      "respawn_seconds": 9
+      "respawn_seconds": 9,
+      "reference_order": 299
     },
     {
       "monster_id": "沃玛勇士",
@@ -267,7 +303,8 @@
       "y": 50,
       "range": 20,
       "count": 3,
-      "respawn_seconds": 5
+      "respawn_seconds": 5,
+      "reference_order": 296
     },
     {
       "monster_id": "沃玛战将",
@@ -275,7 +312,8 @@
       "y": 50,
       "range": 20,
       "count": 3,
-      "respawn_seconds": 9
+      "respawn_seconds": 9,
+      "reference_order": 297
     },
     {
       "monster_id": "火焰沃玛",
@@ -283,7 +321,8 @@
       "y": 50,
       "range": 20,
       "count": 8,
-      "respawn_seconds": 5
+      "respawn_seconds": 5,
+      "reference_order": 298
     },
     {
       "monster_id": "暗黑战士",
@@ -291,7 +330,8 @@
       "y": 60,
       "range": 20,
       "count": 5,
-      "respawn_seconds": 7
+      "respawn_seconds": 7,
+      "reference_order": 287
     },
     {
       "monster_id": "沃玛勇士",
@@ -299,7 +339,8 @@
       "y": 60,
       "range": 20,
       "count": 3,
-      "respawn_seconds": 5
+      "respawn_seconds": 5,
+      "reference_order": 286
     },
     {
       "monster_id": "沃玛战将",
@@ -307,7 +348,8 @@
       "y": 60,
       "range": 20,
       "count": 3,
-      "respawn_seconds": 7
+      "respawn_seconds": 7,
+      "reference_order": 285
     },
     {
       "monster_id": "火焰沃玛",
@@ -315,7 +357,8 @@
       "y": 60,
       "range": 20,
       "count": 3,
-      "respawn_seconds": 5
+      "respawn_seconds": 5,
+      "reference_order": 284
     },
     {
       "monster_id": "暗黑战士",
@@ -323,7 +366,8 @@
       "y": 84,
       "range": 7,
       "count": 8,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 307
     },
     {
       "monster_id": "沃玛勇士",
@@ -331,7 +375,8 @@
       "y": 84,
       "range": 7,
       "count": 5,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 305
     },
     {
       "monster_id": "沃玛战士",
@@ -339,7 +384,8 @@
       "y": 84,
       "range": 7,
       "count": 5,
-      "respawn_seconds": 5
+      "respawn_seconds": 5,
+      "reference_order": 306
     },
     {
       "monster_id": "火焰沃玛",
@@ -347,7 +393,8 @@
       "y": 84,
       "range": 7,
       "count": 5,
-      "respawn_seconds": 5
+      "respawn_seconds": 5,
+      "reference_order": 304
     }
   ],
   "blocked_bits": "/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////P//////////////h///////////////P/D//////////////wH+/////////////w/A////z////////38A/P//f/j///////8C4P///wP///////9PAP7//x/g////////APD///8A/P//////BwD///8HgP//////vwDw//8/MPD//////wEA/v//AQP+/////w8AwP//DwDA//////8AAPj/fwAA+P////8fAAD//wMAAP//////AwPg/x8AYOD/////f3gA/P8AAAb8/////88PgP8HAACA////////AfA/AAAA8P//////PwD+AQAAAP7//////wfADwAAwMD///////8AeAAAAAz4//////8fAAMAAAAA////////AwAAAAAA4P//////fwACAAAAAPz//////w8AAAAAgIH///////8BAAAAABjw//////8fAAAAAAAA/v//////AwAAAAAAwP//////PwAAAAAAAPj//////wMACAAAAAP//////18AAAAAADDg//////8AAAwAAAAA/P////8HAOABAAAAwP////8/AAAeAAAAAP7/////AQDAAAAAAPD/////DwBAgAAAAID/////fwAADhwAAAD8/////wMA4MABAADg/////x8AQA6cAAAA//////8AAECAAAAA+P////8HAADAAAAAwP////8/AAAAHgAAAP7/////AQAA4AEAAPD/////DwAAAAwAAID/////fwAAAAAAAAD8/////wMAAAAAAADg/////x8wAAAAAAAA//////8AAwAACAAA+P////8PAAAAAAAAwP//////AQAAAAAAAP7/////PwAAAAAAAOD//////wcAAAAAAAD///////8ABgAAAADw//////8fYAAAAAAA////////AwAAAAAA4P//////fwAAAAAAAPz//////w8AAAAAAID///////8BDAAAAADw//////8/wAAAADAA/v//////BwAAAIAHwP///////wAAAAD8APj//////x8AAADgHwD///////8DGAAA/wPg//////9/gAEA+H8A/Pz/////DwAAwP8PgIf//////wEAAP7/ATDw/////z8AAPD/PwAA/v////8HMID//wcAwP//////AAP8//8AAPz/////HwDg//8fAOD//////wMA////QQP//////38A+P//PzD4//////8PwP///wPA////////Af7//z8A/v//////P/D///8B8P///////4f///8PgP/////////8////APz/////////////H+D//////////////wP//////////////3/4///////////////P//////////////////////////////////////////////////////////////////////////////////////////////////////8="

@@ -9,9 +9,9 @@ import (
 func unpackBundleItem(item data.StdItem) (string, error) {
 	switch item.Shape {
 	case 100:
-		return "超级金创药", nil
+		return "强效金创药", nil
 	case 101:
-		return "超级魔法药", nil
+		return "强效魔法药", nil
 	case 102:
 		return "金创药(小量)", nil
 	case 103:
@@ -28,12 +28,6 @@ func unpackBundleItem(item data.StdItem) (string, error) {
 		return "回城卷", nil
 	case 109:
 		return "行会回城卷", nil
-	case 117:
-		return "强效太阳水", nil
-	case 118:
-		return "万年雪霜", nil
-	case 119:
-		return "疗伤药", nil
 	default:
 		return "", fmt.Errorf("item %s cannot be used", item.ID)
 	}

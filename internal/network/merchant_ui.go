@@ -61,14 +61,34 @@ func (s *Server) sendMerchantBuyList(conn net.Conn, merchantID int32, entity npc
 }
 
 func merchantDetailGoodsListBody(w *world.World, stocks []storage.UserItem, itemName string, page, rate int, ch storage.Character) ([]byte, int, int) {
+	return merchantDetailGoodsListBodyWith(w, stocks, itemName, page, rate, ch, nil)
+}
+
+func (s *Server) merchantDetailGoodsListBodyForClient(conn net.Conn, stocks []storage.UserItem, itemName string, page, rate int, ch storage.Character) ([]byte, int, int) {
+	return merchantDetailGoodsListBodyWith(s.world, stocks, itemName, page, rate, ch, func(item data.StdItem, desc [14]byte, makeIndex int32, dura, duraMax uint16) []byte {
+		return s.itemBodyWithoutTimedDurabilityForClient(conn, item, desc, makeIndex, dura, duraMax)
+	})
+}
+
+func merchantDetailGoodsListBodyWith(w *world.World, stocks []storage.UserItem, itemName string, page, rate int, ch storage.Character, bodyFor func(data.StdItem, [14]byte, int32, uint16, uint16) []byte) ([]byte, int, int) {
 	var body bytes.Buffer
 	if len(stocks) == 0 {
 		return nil, 0, 0
 	}
-	matches := make([]storage.UserItem, 0, len(stocks))
+	groupItemID := ""
 	for _, stock := range stocks {
 		item, ok := w.Item(stock.ItemID)
-		if !ok || !strings.EqualFold(item.Name, itemName) {
+		if ok && item.Name == itemName {
+			groupItemID = stock.ItemID
+			break
+		}
+	}
+	if groupItemID == "" {
+		return nil, 0, 0
+	}
+	matches := make([]storage.UserItem, 0, len(stocks))
+	for _, stock := range stocks {
+		if stock.ItemID != groupItemID {
 			continue
 		}
 		matches = append(matches, stock)
@@ -95,8 +115,11 @@ func merchantDetailGoodsListBody(w *world.World, stocks []storage.UserItem, item
 		base := merchantUserItemPrice(item, entry)
 		price := merchantPriceValue(base, rate)
 		display := world.UpgradeClientItemForDisplay(item, entry, false)
-		display.Price = price
-		body.Write(EncodeBuffer(itemBodyForBag(ch, display, entry.Desc, entry.MakeIndex, entry.Dura, uint16(price))))
+		itemBody := itemBodyForBag(ch, display, entry.Desc, entry.MakeIndex, entry.Dura, uint16(price))
+		if bodyFor != nil {
+			itemBody = bodyFor(display, entry.Desc, entry.MakeIndex, entry.Dura, uint16(price))
+		}
+		body.Write(EncodeBuffer(itemBody))
 		body.WriteByte('/')
 		count++
 		if count >= 10 {
@@ -119,8 +142,8 @@ func (s *Server) sendMerchantStorageWindow(conn net.Conn, merchantID int32, ch s
 }
 
 func (s *Server) sendMerchantGetBackList(conn net.Conn, merchantID int32, ch storage.Character) {
-	body, count := storageItemListBody(s.world, ch)
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMSaveItemList, Recog: merchantID, Series: uint16(count)}, EncodeBuffer(body))
+	body, count := s.storageItemListBodyForClient(conn, ch)
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMSaveItemList, Recog: merchantID, Series: uint16(count)}, body)
 }
 
 func (s *Server) sendMerchantMakeDrugList(conn net.Conn, merchantID int32, entity npc.Entity) bool {
@@ -135,11 +158,16 @@ func (s *Server) sendMerchantMakeDrugList(conn net.Conn, merchantID int32, entit
 func merchantMakeDrugListBody(w *world.World, stocks []storage.UserItem) (string, int) {
 	var b strings.Builder
 	count := 0
+	seen := make(map[string]struct{})
 	for _, stock := range stocks {
 		item, ok := w.Item(stock.ItemID)
 		if !ok {
 			continue
 		}
+		if _, ok := seen[item.ID]; ok {
+			continue
+		}
+		seen[item.ID] = struct{}{}
 		fmt.Fprintf(&b, "%s/%d/%d/%d/", item.Name, 0, makeDrugPrice, 1)
 		count++
 	}
@@ -184,6 +212,16 @@ func merchantGoodsListBody(w *world.World, stocks []storage.UserItem, entity npc
 }
 
 func storageItemListBody(w *world.World, ch storage.Character) ([]byte, int) {
+	return storageItemListBodyWith(w, ch, nil)
+}
+
+func (s *Server) storageItemListBodyForClient(conn net.Conn, ch storage.Character) ([]byte, int) {
+	return storageItemListBodyWith(s.world, ch, func(item data.StdItem, desc [14]byte, makeIndex int32, dura, duraMax uint16) []byte {
+		return s.itemBodyWithoutTimedDurabilityForClient(conn, item, desc, makeIndex, dura, duraMax)
+	})
+}
+
+func storageItemListBodyWith(w *world.World, ch storage.Character, bodyFor func(data.StdItem, [14]byte, int32, uint16, uint16) []byte) ([]byte, int) {
 	var body bytes.Buffer
 	for _, entry := range ch.StorageItems {
 		item, ok := w.Item(entry.ItemID)
@@ -191,8 +229,11 @@ func storageItemListBody(w *world.World, ch storage.Character) ([]byte, int) {
 			continue
 		}
 		display := world.UpgradeClientItemForDisplay(item, entry, false)
-		dura, duraMax := bagItemDurability(display, entry)
-		body.Write(EncodeBuffer(itemBodyForBag(ch, display, entry.Desc, entry.MakeIndex, dura, duraMax)))
+		itemBody := itemBodyForBag(ch, display, entry.Desc, entry.MakeIndex, entry.Dura, entry.DuraMax)
+		if bodyFor != nil {
+			itemBody = bodyFor(display, entry.Desc, entry.MakeIndex, entry.Dura, entry.DuraMax)
+		}
+		body.Write(EncodeBuffer(itemBody))
 		body.WriteByte('/')
 	}
 	return body.Bytes(), len(ch.StorageItems)

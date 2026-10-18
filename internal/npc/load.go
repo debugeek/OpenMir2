@@ -30,6 +30,11 @@ func Load(dir string) (Library, error) {
 			return Library{}, fmt.Errorf("%s: npc id is required", path)
 		}
 		cfg.Kind = NormalizeKind(cfg.Kind)
+		if cfg.Kind == KindGuard {
+			cfg.Light = 4
+		} else {
+			cfg.Light = 2
+		}
 		if _, ok := lib.Entities[cfg.ID]; ok {
 			return Library{}, fmt.Errorf("duplicate npc id %s", cfg.ID)
 		}

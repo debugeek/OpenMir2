@@ -1,6 +1,8 @@
 package world
 
 import (
+	"fmt"
+
 	"openmir2/internal/data"
 	"openmir2/internal/storage"
 )
@@ -24,6 +26,16 @@ func (w *World) AllocateItemMakeIndex() int32 {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.nextItemMakeIndexLocked()
+}
+
+func (w *World) NewItemInstance(itemID string) (storage.UserItem, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	item, ok := w.data.Items[itemID]
+	if !ok {
+		return storage.UserItem{}, fmt.Errorf("item %s not found", itemID)
+	}
+	return w.createUserItemFromStd(item, 0, [14]byte{}), nil
 }
 
 // createUserItemFromStd must only be used when a brand-new item instance is

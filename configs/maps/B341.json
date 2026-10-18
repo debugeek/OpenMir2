@@ -1,5 +1,6 @@
 {
   "id": "B341",
+  "fight_zone": true,
   "name": "封魔堡",
   "width": 40,
   "height": 40,
@@ -45,7 +46,8 @@
       "y": 19,
       "range": 20,
       "count": 2,
-      "respawn_seconds": 60
+      "respawn_seconds": 60,
+      "reference_order": 1796
     }
   ],
   "blocked_bits": "//////////////////////////////////////////////////////////////////////////////////+//v///w/8////B/b///8D4////wHB////AYD///8DAP///wcA/v//AQD8/+8AAP7/RwAA//9DAID//wEAwP//AADg///gAPD//7EB+P//HwH8//8HA/z//38C+P//S4T9///DxP///4fg////j/H///8f+P///z/8////f/7///////////////8="

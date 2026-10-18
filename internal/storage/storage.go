@@ -31,19 +31,26 @@ type Account struct {
 }
 
 type Guild struct {
-	ID             string          `json:"id"`
-	Notice         string          `json:"notice,omitempty"`
-	Ranks          []GuildRank     `json:"ranks,omitempty"`
-	Alliance       string          `json:"alliance,omitempty"`
-	Alliances      []string        `json:"alliances,omitempty"`
-	Wars           map[string]bool `json:"wars,omitempty"`
-	EnableAuthAlly bool            `json:"-"`
+	ID             string               `json:"id"`
+	Notice         string               `json:"notice,omitempty"`
+	Ranks          []GuildRank          `json:"ranks,omitempty"`
+	Alliance       string               `json:"alliance,omitempty"`
+	Alliances      []string             `json:"alliances,omitempty"`
+	Wars           map[string]bool      `json:"wars,omitempty"`
+	WarOrder       []string             `json:"war_order,omitempty"`
+	WarExpires     map[string]time.Time `json:"war_expires,omitempty"`
+	EnableAuthAlly bool                 `json:"-"`
 }
 
 type GuildRank struct {
 	Number  int      `json:"number"`
 	Name    string   `json:"name"`
 	Members []string `json:"members,omitempty"`
+}
+
+type ExpiredGuildWar struct {
+	GuildID  string
+	TargetID string
 }
 
 type Castle struct {
@@ -59,6 +66,9 @@ type Castle struct {
 	WallHitAt     [3]int64         `json:"wall_hit_at,omitempty"`
 	GuardSlots    [4]string        `json:"guard_slots,omitempty"`
 	ArcherSlots   [12]string       `json:"archer_slots,omitempty"`
+	GuardHP       [4]int           `json:"guard_hp,omitempty"`
+	ArcherHP      [12]int          `json:"archer_hp,omitempty"`
+	DefenseHPSet  bool             `json:"defense_hp_set,omitempty"`
 	Attackers     map[string]int64 `json:"attackers,omitempty"`
 }
 
@@ -69,6 +79,8 @@ type Character struct {
 	Class               string              `json:"class"`
 	Hair                int                 `json:"hair"`
 	Sex                 int                 `json:"sex"`
+	Selected            bool                `json:"selected,omitempty"`
+	Deleted             bool                `json:"deleted,omitempty"`
 	Level               int                 `json:"level"`
 	Experience          int                 `json:"experience"`
 	ExperienceMultiple  int                 `json:"experience_multiple,omitempty"`
@@ -84,12 +96,13 @@ type Character struct {
 	Dir                 int                 `json:"dir"`
 	TargetID            string              `json:"-"`
 	Sitting             bool                `json:"-"`
-	SpellBlocked        bool                `json:"-"`
 	ParalyzedUntil      int64               `json:"paralyzed_until,omitempty"`
 	HP                  int                 `json:"hp"`
 	MaxHP               int                 `json:"max_hp"`
 	MP                  int                 `json:"mp"`
 	MaxMP               int                 `json:"max_mp"`
+	FightZoneDieCount   int                 `json:"fight_zone_die_count,omitempty"`
+	DieInFight3Zone     bool                `json:"-"`
 	IncHealth           int                 `json:"inc_health,omitempty"`
 	IncSpell            int                 `json:"inc_spell,omitempty"`
 	IncHealing          int                 `json:"inc_healing,omitempty"`
@@ -102,40 +115,45 @@ type Character struct {
 	SpellTick           int                 `json:"-"`
 	SpellTickAt         int64               `json:"-"`
 	Gold                int                 `json:"gold,omitempty"`
-	PremiumGold         int                 `json:"game_gold,omitempty"`
-	PremiumPoint        int                 `json:"game_point,omitempty"`
 	AttackMode          int                 `json:"attack_mode,omitempty"`
 	AdminMode           bool                `json:"-"`
 	ObserverMode        bool                `json:"-"`
 	Ghost               bool                `json:"-"`
 	StoneMode           bool                `json:"-"`
+	DrugUnlocked        bool                `json:"-"`
 	PKPoint             int                 `json:"pk_point,omitempty"`
+	PKPointDecayAt      int64               `json:"-"`
 	PKFlag              bool                `json:"-"`
 	PKFlagUntil         int64               `json:"-"`
+	TargetFocusAt       int64               `json:"-"`
 	LastHitterID        string              `json:"-"`
 	LastHitterAt        int64               `json:"-"`
+	ExpHitterID         string              `json:"-"`
+	ExpHitterAt         int64               `json:"-"`
 	FireHitArmed        bool                `json:"-"`
 	FireHitLatestAt     int64               `json:"-"`
 	PowerHitArmed       bool                `json:"-"`
 	FreePKArea          bool                `json:"-"`
 	MapMoveAt           int64               `json:"-"`
 	TeleportRingAt      int64               `json:"-"`
-	ObjectOrder         uint64              `json:"object_order,omitempty"`
+	ObjectOrder         uint64              `json:"-"`
 	AntiPoison          int                 `json:"anti_poison,omitempty"`
 	ThrustingDisabled   bool                `json:"-"`
 	HalfMoonDisabled    bool                `json:"-"`
 	BonusPoint          int                 `json:"bonus_point,omitempty"`
 	CreditPoint         int                 `json:"credit_point,omitempty"`
 	BonusAbil           BonusAbility        `json:"bonus_abil,omitempty"`
-	ExtraAbil           [7]uint16           `json:"extra_abil,omitempty"`
-	ExtraAbilTimes      [7]int64            `json:"extra_abil_times,omitempty"`
+	ExtraAbil           [6]uint16           `json:"-"`
+	ExtraAbilTimes      [6]int64            `json:"-"`
 	EquippedItems       map[int]UserItem    `json:"equipped_items,omitempty"`
 	BagItems            []UserItem          `json:"bag_items"`
 	StorageItems        []UserItem          `json:"storage_items"`
 	Skills              SkillStates         `json:"skills,omitempty"`
+	ItemSkillHotkeys    map[string]byte     `json:"item_skill_hotkeys,omitempty"`
 	GroupOwnerID        string              `json:"group_owner_id,omitempty"`
 	AllowGroup          bool                `json:"allow_group,omitempty"`
 	AllowGroupRecall    bool                `json:"allow_group_recall,omitempty"`
+	SlaveRelax          bool                `json:"-"`
 	GroupRecallUntil    int64               `json:"group_recall_until,omitempty"`
 	GroupMembers        []string            `json:"group_members,omitempty"`
 	GuildID             string              `json:"guild_id,omitempty"`
@@ -146,6 +164,9 @@ type Character struct {
 	GuildAllianceIDs    []string            `json:"guild_alliance_ids,omitempty"`
 	GuildWarArea        bool                `json:"guild_war_area,omitempty"`
 	AllowGuild          bool                `json:"-"`
+	ChatPreferencesInit bool                `json:"-"`
+	BanShout            bool                `json:"-"`
+	BanGuildChat        bool                `json:"-"`
 	WeaponUpgrade       *WeaponUpgradeState `json:"weapon_upgrade,omitempty"`
 	DefenceUpUntil      int64               `json:"defence_up_until,omitempty"`
 	MagDefenceUpUntil   int64               `json:"mag_defence_up_until,omitempty"`
@@ -153,6 +174,7 @@ type Character struct {
 	BubbleDefenceUntil  int64               `json:"bubble_defence_until,omitempty"`
 	BubbleDefenceActive *bool               `json:"-"`
 	PoisonHealthLevel   byte                `json:"poison_health_level,omitempty"`
+	PoisonHealthPoint   int                 `json:"-"`
 	PoisonHealthStartAt int64               `json:"poison_health_start_at,omitempty"`
 	PoisonHealthUntil   int64               `json:"poison_health_until,omitempty"`
 	PoisonHealthTickAt  int64               `json:"poison_health_tick_at,omitempty"`
@@ -292,6 +314,7 @@ type BonusAbility struct {
 	MP    int `json:"mp,omitempty"`
 	Hit   int `json:"hit,omitempty"`
 	Speed int `json:"speed,omitempty"`
+	X2    int `json:"x2,omitempty"`
 }
 
 type UserItem struct {
@@ -452,15 +475,27 @@ func (s *Store) SaveCastle(castle Castle) error {
 	if s.db.Castles == nil {
 		s.db.Castles = map[string]Castle{}
 	}
+	previous, existed := s.db.Castles[castle.ID]
 	s.db.Castles[castle.ID] = castle
-	return s.saveLocked()
+	if err := s.saveLocked(); err != nil {
+		if existed {
+			s.db.Castles[castle.ID] = previous
+		} else {
+			delete(s.db.Castles, castle.ID)
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Store) Guild(id string) (Guild, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	guild, ok := s.db.Guilds[id]
-	return guild, ok
+	if !ok {
+		return Guild{}, false
+	}
+	return cloneGuild(guild), true
 }
 
 func (s *Store) SaveGuild(guild Guild) error {
@@ -472,12 +507,66 @@ func (s *Store) SaveGuild(guild Guild) error {
 	if s.db.Guilds == nil {
 		s.db.Guilds = map[string]Guild{}
 	}
+	previous, existed := s.db.Guilds[guild.ID]
 	s.db.Guilds[guild.ID] = guild
+	if err := s.saveLocked(); err != nil {
+		if existed {
+			s.db.Guilds[guild.ID] = previous
+		} else {
+			delete(s.db.Guilds, guild.ID)
+		}
+		return err
+	}
+	return nil
+}
+
+func (s *Store) UpdateGuildNoticeBestEffort(guildID, notice string) error {
+	if guildID == "" {
+		return errors.New("guild id is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	guild, ok := s.db.Guilds[guildID]
+	if !ok {
+		return errors.New("guild not found")
+	}
+	guild.Notice = notice
+	s.db.Guilds[guildID] = guild
 	return s.saveLocked()
 }
 
-func (s *Store) AddGuildWar(guildID, targetID string) error {
-	if guildID == "" || targetID == "" || guildID == targetID {
+func (s *Store) UpdateGuildRanksBestEffort(guildID string, ranks []GuildRank) error {
+	if guildID == "" {
+		return errors.New("guild id is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	guild, ok := s.db.Guilds[guildID]
+	if !ok {
+		return errors.New("guild not found")
+	}
+	guild.Ranks = append([]GuildRank(nil), ranks...)
+	for i := range guild.Ranks {
+		guild.Ranks[i].Members = append([]string(nil), guild.Ranks[i].Members...)
+	}
+	s.db.Guilds[guildID] = guild
+	return s.saveLocked()
+}
+
+func (s *Store) SetGuildAuthAllyRuntime(guildID string, enabled bool) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	guild, ok := s.db.Guilds[guildID]
+	if !ok {
+		return false
+	}
+	guild.EnableAuthAlly = enabled
+	s.db.Guilds[guildID] = guild
+	return true
+}
+
+func (s *Store) AddGuildWar(guildID, targetID string, duration ...time.Duration) error {
+	if guildID == "" || targetID == "" {
 		return errors.New("invalid guild war")
 	}
 	s.mu.Lock()
@@ -496,14 +585,79 @@ func (s *Store) AddGuildWar(guildID, targetID string) error {
 	if target.Wars == nil {
 		target.Wars = map[string]bool{}
 	}
+	previousGuild := cloneGuild(guild)
+	previousTarget := cloneGuild(target)
 	if guild.Wars[targetID] || target.Wars[guildID] {
-		return errors.New("guild war already exists")
+		if len(duration) == 0 || duration[0] <= 0 {
+			return errors.New("guild war already exists")
+		}
 	}
 	guild.Wars[targetID] = true
 	target.Wars[guildID] = true
+	if len(duration) > 0 && duration[0] > 0 {
+		if guild.WarExpires == nil {
+			guild.WarExpires = map[string]time.Time{}
+		}
+		if target.WarExpires == nil {
+			target.WarExpires = map[string]time.Time{}
+		}
+		expires := time.Now().Add(duration[0])
+		guild.WarExpires[targetID] = expires
+		target.WarExpires[guildID] = expires
+	}
+	guild.WarOrder = appendGuildWarOrder(guild.WarOrder, targetID)
+	target.WarOrder = appendGuildWarOrder(target.WarOrder, guildID)
 	s.db.Guilds[guildID] = guild
 	s.db.Guilds[targetID] = target
-	return s.saveLocked()
+	if err := s.saveLocked(); err != nil {
+		s.db.Guilds[guildID] = previousGuild
+		s.db.Guilds[targetID] = previousTarget
+		return err
+	}
+	return nil
+}
+
+func (s *Store) ExpireGuildWars(now time.Time) ([]ExpiredGuildWar, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	changed := false
+	expired := make([]ExpiredGuildWar, 0)
+	for guildID, guild := range s.db.Guilds {
+		for targetID, expires := range guild.WarExpires {
+			if expires.IsZero() || now.Before(expires) {
+				continue
+			}
+			delete(guild.WarExpires, targetID)
+			if guild.Wars != nil {
+				delete(guild.Wars, targetID)
+			}
+			if targetID == guildID {
+				expired = append(expired, ExpiredGuildWar{GuildID: guildID, TargetID: targetID})
+				changed = true
+				continue
+			}
+			if target, ok := s.db.Guilds[targetID]; ok {
+				if target.Wars != nil {
+					delete(target.Wars, guildID)
+				}
+				if target.WarExpires != nil {
+					delete(target.WarExpires, guildID)
+				}
+				s.db.Guilds[targetID] = target
+				expired = append(expired, ExpiredGuildWar{GuildID: targetID, TargetID: guildID})
+			}
+			expired = append(expired, ExpiredGuildWar{GuildID: guildID, TargetID: targetID})
+			changed = true
+		}
+		s.db.Guilds[guildID] = guild
+	}
+	if !changed {
+		return expired, nil
+	}
+	if err := s.saveLocked(); err != nil {
+		return nil, err
+	}
+	return expired, nil
 }
 
 func (s *Store) GuildAtWar(guildID, targetID string) bool {
@@ -519,14 +673,18 @@ func (s *Store) DisbandGuild(id string) ([]Character, error) {
 	if id == "" {
 		return nil, errors.New("guild id is required")
 	}
-	if _, ok := s.db.Guilds[id]; !ok {
+	guild, ok := s.db.Guilds[id]
+	if !ok {
 		return nil, errors.New("guild not found")
 	}
+	previousGuild := cloneGuild(guild)
+	previousCharacters := make(map[string]Character)
 	updated := make([]Character, 0)
 	for key, ch := range s.db.Characters {
 		if ch.GuildID != id {
 			continue
 		}
+		previousCharacters[key] = ch
 		ch.GuildID = ""
 		ch.GuildRank = 0
 		ch.GuildRankName = ""
@@ -538,9 +696,44 @@ func (s *Store) DisbandGuild(id string) ([]Character, error) {
 	}
 	delete(s.db.Guilds, id)
 	if err := s.saveLocked(); err != nil {
+		s.db.Guilds[id] = previousGuild
+		for key, ch := range previousCharacters {
+			s.db.Characters[key] = ch
+		}
 		return nil, err
 	}
 	return updated, nil
+}
+
+func (s *Store) DeleteGuild(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if id == "" {
+		return errors.New("guild id is required")
+	}
+	previous, ok := s.db.Guilds[id]
+	if !ok {
+		return errors.New("guild not found")
+	}
+	delete(s.db.Guilds, id)
+	if err := s.saveLocked(); err != nil {
+		s.db.Guilds[id] = previous
+		return err
+	}
+	return nil
+}
+
+func (s *Store) DeleteGuildBestEffort(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if id == "" {
+		return errors.New("guild id is required")
+	}
+	if _, ok := s.db.Guilds[id]; !ok {
+		return errors.New("guild not found")
+	}
+	delete(s.db.Guilds, id)
+	return s.saveLocked()
 }
 
 func (s *Store) ensureDefaultAccounts() bool {
@@ -563,11 +756,79 @@ func (s *Store) Characters(account string) []Character {
 	defer s.mu.Unlock()
 	out := []Character{}
 	for _, ch := range s.db.Characters {
-		if ch.Account == account {
+		if ch.Account == account && !ch.Deleted {
 			out = append(out, ch)
 		}
 	}
 	return out
+}
+
+func (s *Store) CharacterNameExists(name string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, ch := range s.db.Characters {
+		if ch.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Store) SelectCharacter(account, name string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	previous := make(map[string]Character, len(s.db.Characters))
+	found := false
+	for id, ch := range s.db.Characters {
+		if ch.Account != account || ch.Deleted {
+			continue
+		}
+		previous[id] = ch
+		ch.Selected = ch.Name == name
+		if ch.Selected {
+			found = true
+		}
+		s.db.Characters[id] = ch
+	}
+	if !found {
+		for id, ch := range previous {
+			s.db.Characters[id] = ch
+		}
+		return false, nil
+	}
+	if err := s.saveLocked(); err != nil {
+		for id, ch := range previous {
+			s.db.Characters[id] = ch
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func (s *Store) DeleteCharacter(account, name string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var id string
+	var previous Character
+	for candidateID, ch := range s.db.Characters {
+		if ch.Account == account && ch.Name == name {
+			id = candidateID
+			previous = ch
+			break
+		}
+	}
+	if id == "" {
+		return false, nil
+	}
+	ch := previous
+	ch.Deleted = true
+	ch.Selected = false
+	s.db.Characters[id] = ch
+	if err := s.saveLocked(); err != nil {
+		s.db.Characters[id] = previous
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *Store) InsertCharacter(ch Character) (Character, error) {
@@ -579,11 +840,14 @@ func (s *Store) InsertCharacter(ch Character) (Character, error) {
 		}
 	}
 	id := fmt.Sprintf("char-%d", s.db.NextID)
+	previousNextID := s.db.NextID
 	s.db.NextID++
 	ch.ID = id
 	normalizeCharacterForSave(&ch)
 	s.db.Characters[id] = ch
 	if err := s.saveLocked(); err != nil {
+		delete(s.db.Characters, id)
+		s.db.NextID = previousNextID
 		return Character{}, err
 	}
 	return ch, nil
@@ -601,10 +865,12 @@ func (s *Store) ExpireWeaponUpgrades(before time.Time) ([]string, error) {
 	defer s.mu.Unlock()
 	cutoff := before.UnixMilli()
 	changed := make([]string, 0)
+	previous := make(map[string]Character)
 	for id, ch := range s.db.Characters {
 		if ch.WeaponUpgrade == nil || ch.WeaponUpgrade.StartedAt <= 0 || ch.WeaponUpgrade.StartedAt > cutoff {
 			continue
 		}
+		previous[id] = ch
 		ch.WeaponUpgrade = nil
 		s.db.Characters[id] = ch
 		changed = append(changed, id)
@@ -613,6 +879,9 @@ func (s *Store) ExpireWeaponUpgrades(before time.Time) ([]string, error) {
 		return nil, nil
 	}
 	if err := s.saveLocked(); err != nil {
+		for id, ch := range previous {
+			s.db.Characters[id] = ch
+		}
 		return nil, err
 	}
 	return changed, nil
@@ -635,13 +904,120 @@ func (s *Store) SaveCharacter(ch Character) error {
 	return nil
 }
 
+func (s *Store) SetCharacterRuntime(ch Character) error {
+	if ch.ID == "" {
+		return errors.New("character id is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.db.Characters[ch.ID] = ch
+	return nil
+}
+
+func (s *Store) SetCharacterRuntimePair(first, second Character) error {
+	if first.ID == "" || second.ID == "" || first.ID == second.ID {
+		return errors.New("distinct character ids are required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.db.Characters[first.ID] = first
+	s.db.Characters[second.ID] = second
+	return nil
+}
+
+func (s *Store) SetCharacterRuntimeBatch(characters []Character) error {
+	if len(characters) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(characters))
+	for _, character := range characters {
+		if character.ID == "" {
+			return errors.New("character id is required")
+		}
+		if _, ok := seen[character.ID]; ok {
+			return errors.New("character ids must be distinct")
+		}
+		seen[character.ID] = struct{}{}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, character := range characters {
+		s.db.Characters[character.ID] = character
+	}
+	return nil
+}
+
+func (s *Store) SaveCharacterPair(first, second Character) error {
+	if first.ID == "" || second.ID == "" || first.ID == second.ID {
+		return errors.New("distinct character ids are required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	normalizeCharacterForSave(&first)
+	normalizeCharacterForSave(&second)
+	previousFirst, firstExists := s.db.Characters[first.ID]
+	previousSecond, secondExists := s.db.Characters[second.ID]
+	s.db.Characters[first.ID] = first
+	s.db.Characters[second.ID] = second
+	if err := s.saveLocked(); err != nil {
+		if firstExists {
+			s.db.Characters[first.ID] = previousFirst
+		} else {
+			delete(s.db.Characters, first.ID)
+		}
+		if secondExists {
+			s.db.Characters[second.ID] = previousSecond
+		} else {
+			delete(s.db.Characters, second.ID)
+		}
+		return err
+	}
+	return nil
+}
+
+func (s *Store) SaveCharacterBatch(characters []Character) error {
+	if len(characters) == 0 {
+		return nil
+	}
+	previous := make(map[string]Character, len(characters))
+	existed := make(map[string]bool, len(characters))
+	for i := range characters {
+		if characters[i].ID == "" {
+			return errors.New("character id is required")
+		}
+		if _, ok := previous[characters[i].ID]; ok {
+			return errors.New("character ids must be distinct")
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range characters {
+		normalizeCharacterForSave(&characters[i])
+		previous[characters[i].ID], existed[characters[i].ID] = s.db.Characters[characters[i].ID]
+		s.db.Characters[characters[i].ID] = characters[i]
+	}
+	if err := s.saveLocked(); err != nil {
+		for _, character := range characters {
+			if existed[character.ID] {
+				s.db.Characters[character.ID] = previous[character.ID]
+			} else {
+				delete(s.db.Characters, character.ID)
+			}
+		}
+		return err
+	}
+	return nil
+}
+
 func (s *Store) UpdateGuildRanks(guildID string, ranks []GuildRank) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	previous := make(map[string]Character)
 	for id, ch := range s.db.Characters {
 		if ch.GuildID != guildID {
 			continue
 		}
+		previous[id] = ch
 		ch.GuildRank = 0
 		ch.GuildRankName = ""
 		for _, rank := range ranks {
@@ -654,20 +1030,34 @@ func (s *Store) UpdateGuildRanks(guildID string, ranks []GuildRank) error {
 		}
 		s.db.Characters[id] = ch
 	}
-	return s.saveLocked()
+	if err := s.saveLocked(); err != nil {
+		for id, ch := range previous {
+			s.db.Characters[id] = ch
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Store) UpdateGuildNotice(guildID, notice string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	previous := make(map[string]Character)
 	for id, ch := range s.db.Characters {
 		if ch.GuildID != guildID {
 			continue
 		}
+		previous[id] = ch
 		ch.GuildNotice = notice
 		s.db.Characters[id] = ch
 	}
-	return s.saveLocked()
+	if err := s.saveLocked(); err != nil {
+		for id, ch := range previous {
+			s.db.Characters[id] = ch
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Store) UpdateGuildAlliance(guildID, allianceID string) error {
@@ -680,10 +1070,12 @@ func (s *Store) UpdateGuildAlliance(guildID, allianceID string) error {
 func (s *Store) UpdateGuildAlliances(guildID string, alliances []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	previous := make(map[string]Character)
 	for id, ch := range s.db.Characters {
 		if ch.GuildID != guildID {
 			continue
 		}
+		previous[id] = ch
 		ch.GuildAllianceIDs = append([]string(nil), alliances...)
 		ch.GuildAllianceID = ""
 		if len(alliances) > 0 {
@@ -691,7 +1083,108 @@ func (s *Store) UpdateGuildAlliances(guildID string, alliances []string) error {
 		}
 		s.db.Characters[id] = ch
 	}
+	if err := s.saveLocked(); err != nil {
+		for id, ch := range previous {
+			s.db.Characters[id] = ch
+		}
+		return err
+	}
+	return nil
+}
+
+func (s *Store) SaveGuildAlliancePair(guild, ally Guild, guildAlliances, allyAlliances []string) error {
+	if guild.ID == "" || ally.ID == "" {
+		return errors.New("guild alliance pair is invalid")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	previousGuild, guildExists := s.db.Guilds[guild.ID]
+	previousAlly, allyExists := s.db.Guilds[ally.ID]
+	guild.Alliances = append([]string(nil), guildAlliances...)
+	guild.Alliance = ""
+	if len(guildAlliances) > 0 {
+		guild.Alliance = guildAlliances[0]
+	}
+	ally.Alliances = append([]string(nil), allyAlliances...)
+	ally.Alliance = ""
+	if len(allyAlliances) > 0 {
+		ally.Alliance = allyAlliances[0]
+	}
+	s.db.Guilds[guild.ID] = guild
+	if guild.ID == ally.ID {
+		return s.saveLocked()
+	}
+	s.db.Guilds[ally.ID] = ally
+	if err := s.saveLocked(); err != nil {
+		if guildExists {
+			s.db.Guilds[guild.ID] = previousGuild
+		} else {
+			delete(s.db.Guilds, guild.ID)
+		}
+		if allyExists {
+			s.db.Guilds[ally.ID] = previousAlly
+		} else {
+			delete(s.db.Guilds, ally.ID)
+		}
+		return err
+	}
+	return nil
+}
+
+func (s *Store) SaveGuildAlliancePairBestEffort(guild, ally Guild, guildAlliances, allyAlliances []string) error {
+	if guild.ID == "" || ally.ID == "" {
+		return errors.New("guild alliance pair is invalid")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	guild.Alliances = append([]string(nil), guildAlliances...)
+	guild.Alliance = ""
+	if len(guildAlliances) > 0 {
+		guild.Alliance = guildAlliances[0]
+	}
+	ally.Alliances = append([]string(nil), allyAlliances...)
+	ally.Alliance = ""
+	if len(allyAlliances) > 0 {
+		ally.Alliance = allyAlliances[0]
+	}
+	s.db.Guilds[guild.ID] = guild
+	if guild.ID == ally.ID {
+		return s.saveLocked()
+	}
+	s.db.Guilds[ally.ID] = ally
 	return s.saveLocked()
+}
+
+func cloneGuild(guild Guild) Guild {
+	guild.Ranks = append([]GuildRank(nil), guild.Ranks...)
+	for i := range guild.Ranks {
+		guild.Ranks[i].Members = append([]string(nil), guild.Ranks[i].Members...)
+	}
+	guild.Alliances = append([]string(nil), guild.Alliances...)
+	guild.WarOrder = append([]string(nil), guild.WarOrder...)
+	if guild.WarExpires != nil {
+		guild.WarExpires = make(map[string]time.Time, len(guild.WarExpires))
+		for id, expires := range guild.WarExpires {
+			guild.WarExpires[id] = expires
+		}
+	}
+	if guild.Wars != nil {
+		wars := make(map[string]bool, len(guild.Wars))
+		for id, atWar := range guild.Wars {
+			wars[id] = atWar
+		}
+		guild.Wars = wars
+	}
+	return guild
+}
+
+func appendGuildWarOrder(order []string, guildID string) []string {
+	for _, existing := range order {
+		if existing == guildID {
+			return order
+		}
+	}
+	return append(order, guildID)
 }
 
 func (s *Store) RemoveGuildMember(guildID, name string) (Character, bool, error) {
@@ -701,40 +1194,61 @@ func (s *Store) RemoveGuildMember(guildID, name string) (Character, bool, error)
 	if !ok {
 		return Character{}, false, errors.New("guild not found")
 	}
+	previousGuild := cloneGuild(guild)
 	found := false
+	removed := false
 	for i := range guild.Ranks {
 		filtered := guild.Ranks[i].Members[:0]
 		for _, member := range guild.Ranks[i].Members {
-			if strings.EqualFold(member, name) {
+			if !removed && member == name {
 				found = true
+				removed = true
 				continue
 			}
 			filtered = append(filtered, member)
 		}
 		guild.Ranks[i].Members = filtered
+		if removed {
+			break
+		}
 	}
 	if !found {
 		return Character{}, false, nil
 	}
-	var updated Character
-	for id, ch := range s.db.Characters {
-		if ch.GuildID == guildID && strings.EqualFold(ch.Name, name) {
-			ch.GuildID = ""
-			ch.GuildRank = 0
-			ch.GuildRankName = ""
-			ch.GuildNotice = ""
-			ch.GuildAllianceID = ""
-			ch.GuildAllianceIDs = nil
-			s.db.Characters[id] = ch
-			updated = ch
+	s.db.Guilds[guildID] = guild
+	if err := s.saveLocked(); err != nil {
+		s.db.Guilds[guildID] = previousGuild
+		return Character{}, false, err
+	}
+	return Character{}, true, nil
+}
+
+func (s *Store) RemoveGuildMemberBestEffort(guildID, name string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	guild, ok := s.db.Guilds[guildID]
+	if !ok {
+		return false, errors.New("guild not found")
+	}
+	removed := false
+	for i := range guild.Ranks {
+		for j, member := range guild.Ranks[i].Members {
+			if member != name {
+				continue
+			}
+			guild.Ranks[i].Members = append(guild.Ranks[i].Members[:j], guild.Ranks[i].Members[j+1:]...)
+			removed = true
+			break
+		}
+		if removed {
 			break
 		}
 	}
-	s.db.Guilds[guildID] = guild
-	if err := s.saveLocked(); err != nil {
-		return Character{}, false, err
+	if !removed {
+		return false, nil
 	}
-	return updated, true, nil
+	s.db.Guilds[guildID] = guild
+	return true, s.saveLocked()
 }
 
 func (s *Store) saveLocked() error {

@@ -1,5 +1,6 @@
 {
   "id": "0100",
+  "fight_zone": true,
   "name": "厨房",
   "width": 15,
   "height": 18,

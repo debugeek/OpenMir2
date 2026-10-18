@@ -1,5 +1,7 @@
 {
   "id": "G001",
+  "light": 0,
+  "safe": true,
   "name": "质询屋",
   "width": 100,
   "height": 100,

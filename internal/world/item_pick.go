@@ -1,11 +1,22 @@
 package world
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
 	"openmir2/internal/storage"
 )
+
+var ErrPickupNotAllowed = errors.New("item is not yet pickable")
+
+type PickupTooHeavyError struct {
+	Over int
+}
+
+func (e *PickupTooHeavyError) Error() string {
+	return fmt.Sprintf("item is too heavy by %d", e.Over)
+}
 
 type PickupResult struct {
 	Character   storage.Character
@@ -23,26 +34,12 @@ func (w *World) addDropToBagLocked(ch storage.Character, drop GroundDrop) (stora
 	added := make([]storage.UserItem, 0, max(1, drop.Count))
 	for i := 0; i < max(1, drop.Count); i++ {
 		makeIndex := drop.MakeIndex + int32(i)
-		if makeIndex <= 0 {
-			makeIndex = w.nextItemMakeIndexLocked()
-		}
 		entry := storage.UserItem{
 			ItemID:    drop.ItemID,
 			MakeIndex: makeIndex,
 			Desc:      drop.Desc,
 			Dura:      drop.Dura,
 			DuraMax:   drop.DuraMax,
-		}
-		if entry.DuraMax == 0 {
-			if item, ok := w.data.Items[drop.ItemID]; ok {
-				entry.DuraMax = itemDuraMax(item)
-				if entry.Dura == 0 {
-					entry.Dura = entry.DuraMax
-				}
-			}
-		}
-		if entry.Dura == 0 && entry.DuraMax > 0 {
-			entry.Dura = entry.DuraMax
 		}
 		ch.BagItems = append(ch.BagItems, entry)
 		added = append(added, entry)
@@ -74,7 +71,24 @@ func (w *World) canPickupDropLocked(ch storage.Character, drop GroundDrop, now t
 	if drop.PickupAt.IsZero() {
 		return true
 	}
-	return !now.Before(drop.PickupAt)
+	return now.After(drop.PickupAt)
+}
+
+func (w *World) releaseExpiredDropOwnerLocked(drop *GroundDrop, now time.Time) {
+	if drop == nil || drop.PickupAt.IsZero() || !now.After(drop.PickupAt) || drop.OwnerID == "" && drop.OwnerGroupID == "" {
+		return
+	}
+	drop.OwnerID = ""
+	drop.OwnerGroupID = ""
+	w.drops[drop.ID] = *drop
+}
+
+func (w *World) restoreDropToMapLocked(drop GroundDrop) {
+	if w.nextObjectOrder > 0 {
+		drop.ObjectOrder = w.nextObjectOrder
+		w.nextObjectOrder++
+	}
+	w.drops[drop.ID] = drop
 }
 
 func (w *World) pickupableDropAtLocked(mapID string, x, y int) (GroundDrop, bool) {
@@ -86,7 +100,7 @@ func (w *World) pickupableDropAtLocked(mapID string, x, y int) (GroundDrop, bool
 		if drop.MapID != mapID || drop.X != x || drop.Y != y {
 			continue
 		}
-		if !ok || idSeq(drop.ID) < idSeq(found.ID) {
+		if !ok || groundDropBefore(drop, found) {
 			found = drop
 			ok = true
 		}
@@ -94,18 +108,33 @@ func (w *World) pickupableDropAtLocked(mapID string, x, y int) (GroundDrop, bool
 	return found, ok
 }
 
+func groundDropBefore(candidate, current GroundDrop) bool {
+	if candidate.ObjectOrder != 0 || current.ObjectOrder != 0 {
+		if candidate.ObjectOrder == 0 {
+			return false
+		}
+		if current.ObjectOrder == 0 {
+			return true
+		}
+		if candidate.ObjectOrder != current.ObjectOrder {
+			return candidate.ObjectOrder < current.ObjectOrder
+		}
+	}
+	return idSeq(candidate.ID) < idSeq(current.ID)
+}
+
 func (w *World) PickupWithResult(ch storage.Character, dropID string) (storage.Character, PickupResult, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	ch = cloneCharacterForMutation(ch)
 	drop, ok := w.drops[dropID]
 	if !ok {
 		return ch, PickupResult{}, fmt.Errorf("drop not found")
 	}
-	if !w.canPickupDropLocked(ch, drop, time.Now()) {
-		return ch, PickupResult{}, fmt.Errorf("item %s is not yet pickable", drop.ItemID)
-	}
-	if drop.ItemID == "金币" && w.gameplay.Item.MaxGold > 0 && ch.Gold+drop.Count > w.gameplay.Item.MaxGold {
-		return ch, PickupResult{}, fmt.Errorf("gold limit reached")
+	now := time.Now()
+	w.releaseExpiredDropOwnerLocked(&drop, now)
+	if !w.canPickupDropLocked(ch, drop, now) {
+		return ch, PickupResult{}, fmt.Errorf("%w: %s", ErrPickupNotAllowed, drop.ItemID)
 	}
 	if drop.MapID != ch.MapID || abs(drop.X-ch.X) > 1 || abs(drop.Y-ch.Y) > 1 {
 		return ch, PickupResult{}, fmt.Errorf("drop is out of range")
@@ -113,11 +142,17 @@ func (w *World) PickupWithResult(ch storage.Character, dropID string) (storage.C
 	if drop.ItemID != "金币" && !w.canCarryBagItemsLocked(ch, drop.Count) {
 		return ch, PickupResult{}, fmt.Errorf("bag is full")
 	}
+	delete(w.drops, dropID)
+	if drop.ItemID == "金币" && w.gameplay.Item.MaxGold > 0 && ch.Gold+drop.Count > w.gameplay.Item.MaxGold {
+		w.restoreDropToMapLocked(drop)
+		return ch, PickupResult{}, fmt.Errorf("gold limit reached")
+	}
 	if drop.ItemID != "金币" && !w.canCarryDropLocked(ch, drop) {
-		return ch, PickupResult{}, fmt.Errorf("item %s is too heavy", drop.ItemID)
+		item := w.data.Items[drop.ItemID]
+		w.restoreDropToMapLocked(drop)
+		return ch, PickupResult{}, &PickupTooHeavyError{Over: w.bagItemsWeightLocked(ch) + item.Weight*drop.Count - w.maxCarryWeightLocked(ch)}
 	}
 	updated, added := w.addDropToBagLocked(ch, drop)
-	delete(w.drops, dropID)
 	result := PickupResult{Character: updated, Drop: drop}
 	if drop.ItemID == "金币" {
 		result.GoldChanged = true
@@ -125,7 +160,7 @@ func (w *World) PickupWithResult(ch storage.Character, dropID string) (storage.C
 	} else {
 		result.AddedItems = added
 	}
-	return updated, result, w.store.SaveCharacter(updated)
+	return updated, result, nil
 }
 
 func (w *World) PickupAt(ch storage.Character, x, y int) (storage.Character, GroundDrop, error) {
@@ -136,27 +171,37 @@ func (w *World) PickupAt(ch storage.Character, x, y int) (storage.Character, Gro
 func (w *World) PickupAtWithResult(ch storage.Character, x, y int) (storage.Character, PickupResult, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	ch = cloneCharacterForMutation(ch)
 	if ch.MapID == "" || ch.X != x || ch.Y != y {
 		return ch, PickupResult{}, fmt.Errorf("drop is out of range")
+	}
+	mp, ok := w.data.Maps[ch.MapID]
+	if !ok || !mp.Walkable(x, y) {
+		return ch, PickupResult{}, fmt.Errorf("drop not found")
 	}
 	drop, ok := w.pickupableDropAtLocked(ch.MapID, x, y)
 	if !ok {
 		return ch, PickupResult{}, fmt.Errorf("drop not found")
 	}
-	if !w.canPickupDropLocked(ch, drop, time.Now()) {
-		return ch, PickupResult{}, fmt.Errorf("item %s is not yet pickable", drop.ItemID)
-	}
-	if drop.ItemID == "金币" && w.gameplay.Item.MaxGold > 0 && ch.Gold+drop.Count > w.gameplay.Item.MaxGold {
-		return ch, PickupResult{}, fmt.Errorf("gold limit reached")
+	now := time.Now()
+	w.releaseExpiredDropOwnerLocked(&drop, now)
+	if !w.canPickupDropLocked(ch, drop, now) {
+		return ch, PickupResult{}, fmt.Errorf("%w: %s", ErrPickupNotAllowed, drop.ItemID)
 	}
 	if drop.ItemID != "金币" && !w.canCarryBagItemsLocked(ch, drop.Count) {
 		return ch, PickupResult{}, fmt.Errorf("bag is full")
 	}
+	delete(w.drops, drop.ID)
+	if drop.ItemID == "金币" && w.gameplay.Item.MaxGold > 0 && ch.Gold+drop.Count > w.gameplay.Item.MaxGold {
+		w.restoreDropToMapLocked(drop)
+		return ch, PickupResult{}, fmt.Errorf("gold limit reached")
+	}
 	if drop.ItemID != "金币" && !w.canCarryDropLocked(ch, drop) {
-		return ch, PickupResult{}, fmt.Errorf("item %s is too heavy", drop.ItemID)
+		item := w.data.Items[drop.ItemID]
+		w.restoreDropToMapLocked(drop)
+		return ch, PickupResult{}, &PickupTooHeavyError{Over: w.bagItemsWeightLocked(ch) + item.Weight*drop.Count - w.maxCarryWeightLocked(ch)}
 	}
 	updated, added := w.addDropToBagLocked(ch, drop)
-	delete(w.drops, drop.ID)
 	result := PickupResult{Character: updated, Drop: drop}
 	if drop.ItemID == "金币" {
 		result.GoldChanged = true
@@ -164,5 +209,5 @@ func (w *World) PickupAtWithResult(ch storage.Character, x, y int) (storage.Char
 	} else {
 		result.AddedItems = added
 	}
-	return updated, result, w.store.SaveCharacter(updated)
+	return updated, result, nil
 }

@@ -21,8 +21,9 @@ func UpgradeClientItemForDisplay(item data.StdItem, userItem storage.UserItem, a
 		item.Stats.DcMin = packWordLowHigh(item.Stats.DcMin, userItem.Desc[0], 255)
 		item.Stats.McMin = packWordLowHigh(item.Stats.McMin, userItem.Desc[1], 255)
 		item.Stats.ScMin = packWordLowHigh(item.Stats.ScMin, userItem.Desc[2], 255)
-		item.Stats.AcMin = packWordLowHigh(item.Stats.AcMin, userItem.Desc[3], 255)
-		item.Stats.MacMin = packWordLowHigh(item.Stats.MacMin, userItem.Desc[4], 255)
+		item.Stats.AcMin = packWordLowByte(item.Stats.AcMin, userItem.Desc[3], 255)
+		item.Stats.AcMin = packWordLowHigh(item.Stats.AcMin, userItem.Desc[5], 255)
+		item.Stats.MacMin = packWordLowByte(item.Stats.MacMin, userItem.Desc[4], 255)
 		item.Stats.MacMin = setHighByteWithSpeed(item.Stats.MacMin, userItem.Desc[6])
 		if userItem.Desc[7] >= 1 && userItem.Desc[7] <= 10 && item.SpecialPwr >= 0 {
 			item.SpecialPwr = int(userItem.Desc[7])
@@ -30,26 +31,18 @@ func UpgradeClientItemForDisplay(item data.StdItem, userItem storage.UserItem, a
 		if userItem.Desc[10] != 0 {
 			item.ItemDesc |= 0x01
 		}
-		item.Slowdown += int(userItem.Desc[12])
-		item.Tox += int(userItem.Desc[13])
 	case 10, 11:
 		item.Stats.AcMin = packWordLowHigh(item.Stats.AcMin, userItem.Desc[0], 255)
 		item.Stats.MacMin = packWordLowHigh(item.Stats.MacMin, userItem.Desc[1], 255)
 		item.Stats.DcMin = packWordLowHigh(item.Stats.DcMin, userItem.Desc[2], 255)
 		item.Stats.McMin = packWordLowHigh(item.Stats.McMin, userItem.Desc[3], 255)
 		item.Stats.ScMin = packWordLowHigh(item.Stats.ScMin, userItem.Desc[4], 255)
-		item.Agility += int(userItem.Desc[11])
-		item.MgAvoid += int(userItem.Desc[12])
-		item.ToxAvoid += int(userItem.Desc[13])
 	case 15:
 		item.Stats.AcMin = packWordLowHigh(item.Stats.AcMin, userItem.Desc[0], 255)
 		item.Stats.MacMin = packWordLowHigh(item.Stats.MacMin, userItem.Desc[1], 255)
 		item.Stats.DcMin = packWordLowHigh(item.Stats.DcMin, userItem.Desc[2], 255)
 		item.Stats.McMin = packWordLowHigh(item.Stats.McMin, userItem.Desc[3], 255)
 		item.Stats.ScMin = packWordLowHigh(item.Stats.ScMin, userItem.Desc[4], 255)
-		item.Accurate += int(userItem.Desc[11])
-		item.MgAvoid += int(userItem.Desc[12])
-		item.ToxAvoid += int(userItem.Desc[13])
 		if userItem.Desc[5] > 0 {
 			item.Need = int(userItem.Desc[5])
 		}
@@ -62,18 +55,6 @@ func UpgradeClientItemForDisplay(item data.StdItem, userItem storage.UserItem, a
 		item.Stats.DcMin = packWordLowHigh(item.Stats.DcMin, userItem.Desc[2], 255)
 		item.Stats.McMin = packWordLowHigh(item.Stats.McMin, userItem.Desc[3], 255)
 		item.Stats.ScMin = packWordLowHigh(item.Stats.ScMin, userItem.Desc[4], 255)
-		item.AtkSpd += int(userItem.Desc[9])
-		item.Slowdown += int(userItem.Desc[12])
-		item.Tox += int(userItem.Desc[13])
-		switch item.StdMode {
-		case 19:
-			item.Accurate += int(userItem.Desc[11])
-		case 20:
-			item.MgAvoid += int(userItem.Desc[11])
-		case 21:
-			item.Accurate += int(userItem.Desc[11])
-			item.MgAvoid += int(userItem.Desc[7])
-		}
 		if userItem.Desc[5] > 0 {
 			item.Need = int(userItem.Desc[5])
 		}
@@ -86,9 +67,6 @@ func UpgradeClientItemForDisplay(item data.StdItem, userItem storage.UserItem, a
 		item.Stats.DcMin = packWordLowHigh(item.Stats.DcMin, userItem.Desc[2], 255)
 		item.Stats.McMin = packWordLowHigh(item.Stats.McMin, userItem.Desc[3], 255)
 		item.Stats.ScMin = packWordLowHigh(item.Stats.ScMin, userItem.Desc[4], 255)
-		item.AtkSpd += int(userItem.Desc[9])
-		item.Slowdown += int(userItem.Desc[12])
-		item.Tox += int(userItem.Desc[13])
 		if userItem.Desc[5] > 0 {
 			item.Need = int(userItem.Desc[5])
 		}
@@ -113,14 +91,14 @@ func UpgradeClientItemForDisplay(item data.StdItem, userItem storage.UserItem, a
 		item.Stats.DcMin = packWordLowHigh(item.Stats.DcMin, userItem.Desc[2], 255)
 		item.Stats.McMin = packWordLowHigh(item.Stats.McMin, userItem.Desc[3], 255)
 		item.Stats.ScMin = packWordLowHigh(item.Stats.ScMin, userItem.Desc[4], 255)
-		item.Accurate += int(userItem.Desc[11])
-		item.Agility += int(userItem.Desc[12])
 		if userItem.Desc[5] > 0 {
 			item.Need = int(userItem.Desc[5])
 		}
 		if userItem.Desc[6] > 0 {
 			item.NeedLevel = int(userItem.Desc[6])
 		}
+	case 25, 30:
+		item.Stats = data.StdItemStats{}
 	case 52:
 		item.Stats.AcMin = packWordLowHigh(item.Stats.AcMin, userItem.Desc[0], 255)
 		item.Stats.MacMin = packWordLowHigh(item.Stats.MacMin, userItem.Desc[1], 255)
@@ -130,7 +108,6 @@ func UpgradeClientItemForDisplay(item data.StdItem, userItem storage.UserItem, a
 		item.Stats.MacMin = packWordLowHigh(item.Stats.MacMin, userItem.Desc[1], 255)
 		item.Accurate += int(userItem.Desc[2])
 		item.Agility += int(userItem.Desc[3])
-		item.ToxAvoid += int(userItem.Desc[13])
 	}
 	if applyShape && isStdModeShapeMode(item.StdMode) {
 		if userItem.Desc[8] == 0 {
@@ -154,6 +131,12 @@ func packWordLowHigh(packed int, add byte, max int) int {
 	low := int(byte(packed))
 	high := int(byte(packed >> 8))
 	high = minInt(max, high+int(add))
+	return int(MakeWord(low, high))
+}
+
+func packWordLowByte(packed int, add byte, max int) int {
+	low := minInt(max, int(byte(packed))+int(add))
+	high := int(byte(packed >> 8))
 	return int(MakeWord(low, high))
 }
 
@@ -193,7 +176,7 @@ func isStdModeShapeMode(stdMode int) bool {
 
 func IsAccessoryStdMode(stdMode int) bool {
 	switch stdMode {
-	case 19, 20, 21, 22, 23, 24, 26:
+	case 15, 19, 20, 21, 22, 23, 24, 26, 51, 52, 53, 54, 62, 63, 64:
 		return true
 	default:
 		return false

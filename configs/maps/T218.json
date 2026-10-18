@@ -1,8 +1,13 @@
 {
   "id": "T218",
+  "light": 0,
+  "no_recall": true,
+  "no_reconnect": true,
+  "reconnect_map": "0",
   "name": "死亡神殿",
   "width": 30,
   "height": 30,
+  "no_random_move": true,
   "connections": [],
   "monster_spawns": [
     {
@@ -11,7 +16,8 @@
       "y": 17,
       "range": 5,
       "count": 1,
-      "respawn_seconds": 120
+      "respawn_seconds": 120,
+      "reference_order": 2477
     }
   ],
   "blocked_bits": "///////////////////////////////////////////////n////8P//H/j//wP8/38A/v8PAP//AYD/PwDA/wcA4P8BAPj/AAD/fwDg/z8A/P8fgP//D/D//wf+///D////+f///////////////w8="

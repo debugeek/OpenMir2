@@ -3,12 +3,15 @@ package world
 import "openmir2/internal/storage"
 
 func (w *World) canCarryWeightLocked(ch storage.Character, addWeight int) bool {
+	return w.bagItemsWeightLocked(ch)+addWeight <= w.maxCarryWeightLocked(ch)
+}
+
+func (w *World) maxCarryWeightLocked(ch storage.Character) int {
 	level := ch.Level
 	if level <= 0 {
 		level = 1
 	}
-	base := Base(ch.Class, level)
-	return w.bagItemsWeightLocked(ch)+addWeight <= base.MaxWeight
+	return Base(ch.Class, level).MaxWeight
 }
 
 func (w *World) canCarryBagItemsLocked(ch storage.Character, addItems int) bool {

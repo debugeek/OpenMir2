@@ -2,10 +2,89 @@ package world
 
 import (
 	"math"
+
+	"openmir2/internal/config"
 	"openmir2/internal/data"
 	"openmir2/internal/storage"
 	"openmir2/internal/world/core"
 )
+
+var groupExperienceBonus = [...]float64{1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2, 2.1, 2.2}
+
+const maxCharacterLevel = 65535
+
+func monsterExperienceForCharacter(combat config.CombatSettings, characterLevel, monsterLevel, baseExperience int) int {
+	if baseExperience <= 0 {
+		return baseExperience
+	}
+	if combat.HighLevelKillMonFixExp || characterLevel < monsterLevel+10 {
+		return baseExperience
+	}
+	result := baseExperience - referenceRound(float64(baseExperience)/15*float64(characterLevel-(monsterLevel+10)))
+	if result <= 0 {
+		return 1
+	}
+	return result
+}
+
+func (w *World) gainMonsterExperienceLocked(killer storage.Character, baseExperience int, players map[string]storage.Character) ([]SpellExperience, storage.Character, error) {
+	if baseExperience <= 0 || killer.ID == "" {
+		return nil, killer, nil
+	}
+	owner, ok := players[killer.GroupOwnerID]
+	if killer.GroupOwnerID == "" || !ok {
+		updated, _, gained, levelUp, err := gainExperienceLocked(w, killer, baseExperience)
+		if err != nil {
+			return nil, killer, err
+		}
+		return []SpellExperience{{CharacterID: updated.ID, Experience: gained, CurrentExp: updated.Experience, LevelUp: levelUp, Character: updated}}, updated, nil
+	}
+	ids := owner.GroupMembers
+	if len(ids) == 0 {
+		ids = []string{owner.ID}
+	}
+	recipients := make([]storage.Character, 0, len(ids))
+	for _, id := range ids {
+		member, exists := players[id]
+		if !exists || member.ID == "" || member.HP <= 0 || member.MapID != killer.MapID || abs(member.X-killer.X) > 12 || abs(member.Y-killer.Y) > 12 {
+			continue
+		}
+		recipients = append(recipients, member)
+	}
+	levelSum := 0
+	for _, member := range recipients {
+		levelSum += member.Level
+	}
+	if len(recipients) <= 1 || levelSum <= 0 {
+		updated, _, gained, levelUp, err := gainExperienceLocked(w, killer, baseExperience)
+		if err != nil {
+			return nil, killer, err
+		}
+		return []SpellExperience{{CharacterID: updated.ID, Experience: gained, CurrentExp: updated.Experience, LevelUp: levelUp, Character: updated}}, updated, nil
+	}
+	sharedExperience := float64(baseExperience)
+	if len(recipients) < len(groupExperienceBonus) {
+		sharedExperience *= groupExperienceBonus[len(recipients)]
+	}
+	result := make([]SpellExperience, 0, len(recipients))
+	updatedKiller := killer
+	for _, member := range recipients {
+		share := sharedExperience / float64(len(recipients))
+		if !w.gameplay.Combat.HighLevelGroupFixExp && levelSum > 0 {
+			share = sharedExperience * float64(member.Level) / float64(levelSum)
+		}
+		updated, _, gained, levelUp, err := gainExperienceLocked(w, member, referenceRound(share))
+		if err != nil {
+			return nil, killer, err
+		}
+		players[updated.ID] = updated
+		if updated.ID == killer.ID {
+			updatedKiller = updated
+		}
+		result = append(result, SpellExperience{CharacterID: updated.ID, Experience: gained, CurrentExp: updated.Experience, LevelUp: levelUp, Character: updated})
+	}
+	return result, updatedKiller, nil
+}
 
 func canLearnSkill(ch storage.Character, skill data.StdSkill) bool {
 	job := 0
@@ -64,8 +143,8 @@ func gainExperienceLocked(w *World, ch storage.Character, exp int) (storage.Char
 	}
 	exp = exp * globalMultiple
 	exp = exp * characterMultiple
-	exp = int(math.Round(float64(characterRate) / 100 * float64(exp)))
-	exp = int(math.Round(float64(mapRate) / 100 * float64(exp)))
+	exp = referenceRound(float64(characterRate) / 100 * float64(exp))
+	exp = referenceRound(float64(mapRate) / 100 * float64(exp))
 	if exp <= 0 {
 		exp = 1
 	}
@@ -73,16 +152,12 @@ func gainExperienceLocked(w *World, ch storage.Character, exp int) (storage.Char
 	addBodyLuck(&ch, float64(exp)*0.002)
 	gained := exp
 	leveled := false
-	for {
-		required := w.RequiredExperience(ch.Level)
-		if required <= 0 {
-			break
-		}
-		if ch.Experience < required {
-			break
-		}
+	required := w.RequiredExperience(ch.Level)
+	if required > 0 && ch.Experience >= required {
 		ch.Experience -= required
-		ch.Level++
+		if ch.Level < maxCharacterLevel {
+			ch.Level++
+		}
 		addBodyLuck(&ch, 100)
 		leveled = true
 	}

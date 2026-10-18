@@ -1,5 +1,9 @@
 {
   "id": "01152",
+  "fight_zone": true,
+  "no_recall": true,
+  "no_reconnect": true,
+  "reconnect_map": "0115",
   "name": "高级魔法师之家",
   "width": 40,
   "height": 40,

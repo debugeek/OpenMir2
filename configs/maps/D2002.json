@@ -1,5 +1,6 @@
 {
   "id": "D2002",
+  "light": 1,
   "name": "连接通道",
   "width": 50,
   "height": 50,
@@ -30,7 +31,8 @@
       "y": 23,
       "range": 1,
       "count": 7,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1683
     },
     {
       "monster_id": "僵尸1",
@@ -38,7 +40,8 @@
       "y": 23,
       "range": 1,
       "count": 7,
-      "respawn_seconds": 11
+      "respawn_seconds": 11,
+      "reference_order": 1685
     },
     {
       "monster_id": "僵尸2",
@@ -46,7 +49,8 @@
       "y": 23,
       "range": 1,
       "count": 7,
-      "respawn_seconds": 13
+      "respawn_seconds": 13,
+      "reference_order": 1687
     },
     {
       "monster_id": "僵尸3",
@@ -54,7 +58,8 @@
       "y": 23,
       "range": 1,
       "count": 7,
-      "respawn_seconds": 15
+      "respawn_seconds": 15,
+      "reference_order": 1689
     },
     {
       "monster_id": "僵尸4",
@@ -62,7 +67,8 @@
       "y": 23,
       "range": 1,
       "count": 7,
-      "respawn_seconds": 18
+      "respawn_seconds": 18,
+      "reference_order": 1691
     },
     {
       "monster_id": "僵尸5",
@@ -70,7 +76,8 @@
       "y": 23,
       "range": 1,
       "count": 1,
-      "respawn_seconds": 20
+      "respawn_seconds": 20,
+      "reference_order": 1684
     },
     {
       "monster_id": "僵尸6",
@@ -78,7 +85,8 @@
       "y": 23,
       "range": 1,
       "count": 1,
-      "respawn_seconds": 12
+      "respawn_seconds": 12,
+      "reference_order": 1686
     },
     {
       "monster_id": "僵尸7",
@@ -86,7 +94,8 @@
       "y": 23,
       "range": 1,
       "count": 1,
-      "respawn_seconds": 14
+      "respawn_seconds": 14,
+      "reference_order": 1688
     },
     {
       "monster_id": "僵尸8",
@@ -94,7 +103,8 @@
       "y": 23,
       "range": 1,
       "count": 1,
-      "respawn_seconds": 16
+      "respawn_seconds": 16,
+      "reference_order": 1690
     },
     {
       "monster_id": "僵尸9",
@@ -102,7 +112,8 @@
       "y": 23,
       "range": 1,
       "count": 1,
-      "respawn_seconds": 19
+      "respawn_seconds": 19,
+      "reference_order": 1692
     },
     {
       "monster_id": "尸王",
@@ -110,7 +121,8 @@
       "y": 23,
       "range": 10,
       "count": 8,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1678
     },
     {
       "monster_id": "尸王",
@@ -118,7 +130,8 @@
       "y": 23,
       "range": 10,
       "count": 2,
-      "respawn_seconds": 40
+      "respawn_seconds": 40,
+      "reference_order": 1681
     },
     {
       "monster_id": "尸王",
@@ -126,7 +139,8 @@
       "y": 23,
       "range": 10,
       "count": 4,
-      "respawn_seconds": 30
+      "respawn_seconds": 30,
+      "reference_order": 1680
     },
     {
       "monster_id": "尸王",
@@ -134,7 +148,8 @@
       "y": 23,
       "range": 10,
       "count": 6,
-      "respawn_seconds": 20
+      "respawn_seconds": 20,
+      "reference_order": 1679
     },
     {
       "monster_id": "尸王3",
@@ -142,7 +157,8 @@
       "y": 23,
       "range": 10,
       "count": 3,
-      "respawn_seconds": 60
+      "respawn_seconds": 60,
+      "reference_order": 1682
     }
   ],
   "blocked_bits": "////////////////////////////////////////////////////////////////////////////////////////////////5///////n//////7f9T///+P/wP///8X/B/4//8fAH/A////ADyA////A2AA////DwAA/v//fwAA+P///wEA8P///wcAwP///x8AAP///z8AAPz//38AAPj//38AAOD///8AAID///8CAAD8//8DAADg//8HAAAA/v8PAAAA8P9/YAAA4P//xQEAgP//nw8AAP//f38BAP////8PBvz///8/HOD/////+Zj//////3f+////////////////////////////////////////////////////////////////////////////////////Dw=="

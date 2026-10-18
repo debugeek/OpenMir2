@@ -28,9 +28,12 @@ type Entity struct {
 	Appr           int             `json:"appr,omitempty"`
 	RaceImg        int             `json:"race_img,omitempty"`
 	MonsterWeapon  int             `json:"monster_weapon,omitempty"`
+	Light          int             `json:"-"`
 	Hidden         bool            `json:"hidden,omitempty"`
 	CastleOfficial bool            `json:"castle_official,omitempty"`
+	GuildOfficial  bool            `json:"guild_official,omitempty"`
 	ScriptID       string          `json:"script_id,omitempty"`
+	ReferenceOrder int             `json:"reference_order,omitempty"`
 	Merchant       MerchantProfile `json:"merchant,omitempty"`
 }
 
@@ -43,6 +46,7 @@ type MerchantProfile struct {
 type MerchantCapabilities struct {
 	Buy           bool `json:"buy,omitempty"`
 	Sell          bool `json:"sell,omitempty"`
+	Teleport      bool `json:"teleport,omitempty"`
 	Storage       bool `json:"storage,omitempty"`
 	GetBack       bool `json:"get_back,omitempty"`
 	Repair        bool `json:"repair,omitempty"`
@@ -87,6 +91,7 @@ type Action struct {
 }
 
 type Context struct {
+	Username         string
 	OwnerGuild       string
 	Lord             string
 	CastleGold       int
@@ -174,7 +179,7 @@ func (s Script) Conversation(entity Entity, label string, ctx Context) Conversat
 		if text == "" && len(actions) == 0 {
 			continue
 		}
-		conversation.Text = renderDialogueText(text, ctx, entity)
+		conversation.Text += renderDialogueText(text, ctx, entity)
 		for _, action := range actions {
 			switch strings.ToLower(strings.TrimSpace(action.Op)) {
 			case "close":
@@ -185,7 +190,6 @@ func (s Script) Conversation(entity Entity, label string, ctx Context) Conversat
 				}
 			}
 		}
-		return conversation
 	}
 	return conversation
 }
@@ -199,34 +203,7 @@ func lookupLabel(labels map[string]Label, want string) (Label, bool) {
 			return lbl, true
 		}
 	}
-	if base, ok := stripLabelSuffix(want); ok {
-		if lbl, ok := lookupLabel(labels, base); ok {
-			return lbl, true
-		}
-	}
 	return Label{}, false
-}
-
-func stripLabelSuffix(label string) (string, bool) {
-	label = strings.TrimSpace(label)
-	if label == "" {
-		return "", false
-	}
-	for i := len(label) - 1; i >= 0; i-- {
-		if label[i] != '-' {
-			continue
-		}
-		if i == 0 || i == len(label)-1 {
-			return "", false
-		}
-		for _, ch := range label[i+1:] {
-			if ch < '0' || ch > '9' {
-				return "", false
-			}
-		}
-		return label[:i], true
-	}
-	return "", false
 }
 
 func (c Condition) Match(ctx Context, entity Entity) bool {
@@ -250,6 +227,7 @@ func renderDialogueText(text string, ctx Context, entity Entity) string {
 		"\r", "\\",
 	).Replace(text)
 	replacer := strings.NewReplacer(
+		"<$USERNAME>", ctx.Username,
 		"<$OWNERGUILD>", ctx.OwnerGuild,
 		"<$LORD>", ctx.Lord,
 		"<$CASTLEGOLD>", strconv.Itoa(ctx.CastleGold),

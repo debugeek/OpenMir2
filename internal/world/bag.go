@@ -2,6 +2,30 @@ package world
 
 import "openmir2/internal/storage"
 
+func cloneCharacterForMutation(ch storage.Character) storage.Character {
+	if ch.EquippedItems != nil {
+		cloned := make(map[int]storage.UserItem, len(ch.EquippedItems))
+		for slot, item := range ch.EquippedItems {
+			cloned[slot] = item
+		}
+		ch.EquippedItems = cloned
+	}
+	if ch.BagItems != nil {
+		ch.BagItems = append([]storage.UserItem(nil), ch.BagItems...)
+	}
+	if ch.StorageItems != nil {
+		ch.StorageItems = append([]storage.UserItem(nil), ch.StorageItems...)
+	}
+	if ch.ItemSkillHotkeys != nil {
+		cloned := make(map[string]byte, len(ch.ItemSkillHotkeys))
+		for skillID, hotkey := range ch.ItemSkillHotkeys {
+			cloned[skillID] = hotkey
+		}
+		ch.ItemSkillHotkeys = cloned
+	}
+	return ch
+}
+
 func (w *World) bagItemCountLocked(ch storage.Character) int {
 	return len(ch.BagItems)
 }
@@ -18,6 +42,15 @@ func (w *World) findBagItemSlotLocked(ch storage.Character, itemID string, makeI
 			continue
 		}
 		return i
+	}
+	return -1
+}
+
+func (w *World) findBagItemByMakeIndexLocked(ch storage.Character, makeIndex int32) int {
+	for i, entry := range ch.BagItems {
+		if entry.ItemID != "" && entry.MakeIndex == makeIndex {
+			return i
+		}
 	}
 	return -1
 }
@@ -75,6 +108,21 @@ func (w *World) normalizeEquippedItemsLocked(ch *storage.Character) bool {
 			changed = true
 			continue
 		}
+		standard, ok := w.data.Items[item.ItemID]
+		if !ok {
+			delete(ch.EquippedItems, slot)
+			changed = true
+			continue
+		}
+		if !w.canWearInSlotLocked(standard, slot) {
+			if item.MakeIndex == 0 {
+				item.MakeIndex = w.nextItemMakeIndexLocked()
+			}
+			ch.BagItems = append([]storage.UserItem{item}, ch.BagItems...)
+			delete(ch.EquippedItems, slot)
+			changed = true
+			continue
+		}
 		if item.MakeIndex != 0 {
 			if item.MakeIndex <= itemMakeIndexMax && item.MakeIndex+1 > w.nextItemID {
 				w.nextItemID = item.MakeIndex + 1
@@ -123,37 +171,6 @@ func (w *World) normalizeStorageItemMakeIndexesLocked(ch *storage.Character) boo
 	return changed
 }
 
-func (w *World) pruneStaleEquippedItemsLocked(ch *storage.Character) bool {
-	if ch.EquippedItems == nil {
-		return false
-	}
-	changed := false
-	for slot, item := range ch.EquippedItems {
-		if item.ItemID == "" || slot == SlotDress || slot == SlotWeapon {
-			continue
-		}
-		if w.bagHasItemLocked(*ch, item.ItemID, item.MakeIndex) {
-			continue
-		}
-		delete(ch.EquippedItems, slot)
-		changed = true
-	}
-	return changed
-}
-
-func (w *World) bagHasItemLocked(ch storage.Character, itemID string, makeIndex int32) bool {
-	for _, entry := range ch.BagItems {
-		if entry.ItemID != itemID {
-			continue
-		}
-		if makeIndex > 0 && entry.MakeIndex != makeIndex {
-			continue
-		}
-		return true
-	}
-	return false
-}
-
 func (w *World) equippedItemLocked(ch storage.Character, slot int) (storage.UserItem, bool) {
 	if slot < 0 || slot >= useSlotCount {
 		return storage.UserItem{}, false
@@ -163,6 +180,18 @@ func (w *World) equippedItemLocked(ch storage.Character, slot int) (storage.User
 	}
 	item, ok := ch.EquippedItems[slot]
 	if !ok || item.ItemID == "" {
+		return storage.UserItem{}, false
+	}
+	return item, true
+}
+
+func (w *World) activeEquippedItemLocked(ch storage.Character, slot int) (storage.UserItem, bool) {
+	item, ok := w.equippedItemLocked(ch, slot)
+	if !ok {
+		return storage.UserItem{}, false
+	}
+	standard, ok := w.data.Items[item.ItemID]
+	if !ok || (item.Dura == 0 && standard.DuraMax > 0) {
 		return storage.UserItem{}, false
 	}
 	return item, true

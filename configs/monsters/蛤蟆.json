@@ -16,7 +16,7 @@
   "max_attack": 5,
   "magic_attack": 0,
   "tao_attack": 0,
-  "speed": 13,
+  "speed": 3,
   "hit": 6,
   "walk_speed_ms": 1500,
   "walk_step": 1,

@@ -1,5 +1,6 @@
 {
   "id": "D613",
+  "light": 1,
   "name": "生死之间",
   "width": 100,
   "height": 100,
@@ -26,7 +27,8 @@
       "y": 56,
       "range": 50,
       "count": 18,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 748
     },
     {
       "monster_id": "钳虫",
@@ -34,7 +36,8 @@
       "y": 17,
       "range": 50,
       "count": 8,
-      "respawn_seconds": 7
+      "respawn_seconds": 7,
+      "reference_order": 739
     },
     {
       "monster_id": "钳虫",
@@ -42,7 +45,8 @@
       "y": 62,
       "range": 50,
       "count": 13,
-      "respawn_seconds": 7
+      "respawn_seconds": 7,
+      "reference_order": 747
     },
     {
       "monster_id": "钳虫",
@@ -50,7 +54,8 @@
       "y": 23,
       "range": 50,
       "count": 13,
-      "respawn_seconds": 8
+      "respawn_seconds": 8,
+      "reference_order": 740
     },
     {
       "monster_id": "钳虫",
@@ -58,7 +63,8 @@
       "y": 59,
       "range": 50,
       "count": 13,
-      "respawn_seconds": 9
+      "respawn_seconds": 9,
+      "reference_order": 746
     },
     {
       "monster_id": "巨型蠕虫",
@@ -66,7 +72,8 @@
       "y": 50,
       "range": 70,
       "count": 13,
-      "respawn_seconds": 7
+      "respawn_seconds": 7,
+      "reference_order": 752
     },
     {
       "monster_id": "巨型蠕虫1",
@@ -74,7 +81,8 @@
       "y": 50,
       "range": 70,
       "count": 1,
-      "respawn_seconds": 15
+      "respawn_seconds": 15,
+      "reference_order": 757
     },
     {
       "monster_id": "蜈蚣",
@@ -82,7 +90,8 @@
       "y": 50,
       "range": 70,
       "count": 15,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 751
     },
     {
       "monster_id": "蜈蚣1",
@@ -90,7 +99,8 @@
       "y": 50,
       "range": 70,
       "count": 1,
-      "respawn_seconds": 15
+      "respawn_seconds": 15,
+      "reference_order": 756
     },
     {
       "monster_id": "跳跳蜂",
@@ -98,7 +108,8 @@
       "y": 50,
       "range": 70,
       "count": 13,
-      "respawn_seconds": 7
+      "respawn_seconds": 7,
+      "reference_order": 750
     },
     {
       "monster_id": "跳跳蜂1",
@@ -106,7 +117,8 @@
       "y": 50,
       "range": 70,
       "count": 1,
-      "respawn_seconds": 15
+      "respawn_seconds": 15,
+      "reference_order": 755
     },
     {
       "monster_id": "邪恶钳虫",
@@ -114,7 +126,8 @@
       "y": 50,
       "range": 70,
       "count": 2,
-      "respawn_seconds": 60
+      "respawn_seconds": 60,
+      "reference_order": 758
     },
     {
       "monster_id": "钳虫1",
@@ -122,7 +135,8 @@
       "y": 50,
       "range": 70,
       "count": 1,
-      "respawn_seconds": 15
+      "respawn_seconds": 15,
+      "reference_order": 754
     },
     {
       "monster_id": "黑色恶蛆",
@@ -130,7 +144,8 @@
       "y": 50,
       "range": 70,
       "count": 13,
-      "respawn_seconds": 7
+      "respawn_seconds": 7,
+      "reference_order": 749
     },
     {
       "monster_id": "黑色恶蛆1",
@@ -138,7 +153,8 @@
       "y": 50,
       "range": 70,
       "count": 1,
-      "respawn_seconds": 15
+      "respawn_seconds": 15,
+      "reference_order": 753
     },
     {
       "monster_id": "钳虫",
@@ -146,7 +162,8 @@
       "y": 33,
       "range": 50,
       "count": 13,
-      "respawn_seconds": 7
+      "respawn_seconds": 7,
+      "reference_order": 741
     },
     {
       "monster_id": "钳虫",
@@ -154,7 +171,8 @@
       "y": 76,
       "range": 50,
       "count": 18,
-      "respawn_seconds": 7
+      "respawn_seconds": 7,
+      "reference_order": 745
     },
     {
       "monster_id": "钳虫",
@@ -162,7 +180,8 @@
       "y": 47,
       "range": 50,
       "count": 8,
-      "respawn_seconds": 8
+      "respawn_seconds": 8,
+      "reference_order": 742
     },
     {
       "monster_id": "钳虫",
@@ -170,7 +189,8 @@
       "y": 74,
       "range": 50,
       "count": 13,
-      "respawn_seconds": 9
+      "respawn_seconds": 9,
+      "reference_order": 744
     },
     {
       "monster_id": "钳虫",
@@ -178,7 +198,8 @@
       "y": 54,
       "range": 50,
       "count": 13,
-      "respawn_seconds": 7
+      "respawn_seconds": 7,
+      "reference_order": 743
     }
   ],
   "blocked_bits": "/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////3//z//////////////3f/z///////////8f/+P///////////9/4B/+/////////5//Y3zw/////////3/wP4CD//////////8A/gEA/P////////8PwAdA5f//////////ADgAAP//////////DwAAAPD/////////PwAAIAD//////////yMAAADw/////////38AAAAA//////////8PABAA+P//////////IQABAP//////////P0B8AOD//////////wfERwj4///////////weA8B/v////////+fH/wgwP///////////8MPCPH//////////z/+ADD////////////3TwDw/////////////wEA/v///////////x8AwP////////////8BAPz///////////+PARD///////////8/PBjw////////////4wcA/P//////////f/8AgP////////////8fAPj/////////////A4D/////////////PwbY//////////////8D9P////////////8/QP/3////////////g/B/////////////fwD+8////////////w/AH/7///////////8AuMD///////////8PAAD8////////////AACe////////////DwIA8P///x///////QEAAPz//3/w3///hx8AAID///8A/Pv/P+ABAAD4//8PwB///zEMAACA////ALjA/z8ABAgA2P//DwAA9P8BAMABAPz/PwAEQP8LACA+AID//wMAQPA/AADvAwDi/38AAAD+AQj4PwBA/P8PAADOBwCA/w+AwP//AUDwOAyA/P8fAPz/PwAADwCA////A8D//4cBAAAA/P//PwD///8AAAAAwP///wH4//8fGAAAAPj//w/g////wwMAAgD//38A////P35AAADg//8H8P////cPAAAA/v8/AP//////AQAAwP//A/H/////PwAAAPz/DwD//////weABAD/fwDw//////8AbADA/weA//////8fwAcA/D9g8P//////AzwAxv8DAP7/////f4AAAPg/AID//////w8ADID7ATDg//////8B4AAwDQAA/P////8/AA8AAwgAwP//////B8AAAMABAPj//////wAAAAAIAAD8/////x8AAAAAAADg//////9jYAgAAQAA//////9/BgEQAACA+f//////D2AACAAA/P///////xkGAAAAwP////////8DAAAAAP////////9/QAAAgPn/////////Dw8AAP7///////////kBAPD///////////8/gIH/////////////Bz78//////////////Dj/////////////59///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////8="

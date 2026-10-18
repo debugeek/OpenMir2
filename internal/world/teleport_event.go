@@ -6,6 +6,7 @@ type TeleportEvent struct {
 	From          storage.Character
 	To            storage.Character
 	SpaceMoveFire bool
+	SpaceMoveHide bool
 }
 
 func newTeleportEvent(from, to storage.Character) *TeleportEvent {

@@ -63,6 +63,9 @@ func TestLoadLibraryReadsEntitiesAndScripts(t *testing.T) {
 	if entity.Kind != KindMerchant {
 		t.Fatalf("entity kind = %q, want %q", entity.Kind, KindMerchant)
 	}
+	if entity.Light != 2 {
+		t.Fatalf("entity light = %d, want normal NPC light 2", entity.Light)
+	}
 	if entity.Merchant.PriceRate != 120 {
 		t.Fatalf("entity merchant price rate = %d, want 120", entity.Merchant.PriceRate)
 	}
@@ -79,6 +82,27 @@ func TestLoadLibraryReadsEntitiesAndScripts(t *testing.T) {
 	}
 	if !label.ExtJump || len(label.Procedures) != 1 {
 		t.Fatalf("label = %+v", label)
+	}
+}
+
+func TestLoadLibraryAssignsGuardLight(t *testing.T) {
+	dir := t.TempDir()
+	writeJSON(t, filepath.Join(dir, "0", "guard.json"), `{
+  "id": "guard",
+  "name": "Guard",
+  "kind": "guard",
+  "map_id": "0",
+  "x": 10,
+  "y": 11,
+  "dir": 2
+}`)
+
+	lib, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got := lib.Entities["guard"].Light; got != 4 {
+		t.Fatalf("guard light = %d, want 4", got)
 	}
 }
 
@@ -119,6 +143,30 @@ func TestConversationRendersDialogue(t *testing.T) {
 	}
 }
 
+func TestConversationAppendsAllMatchingProcedures(t *testing.T) {
+	lib := Library{
+		Entities: map[string]Entity{
+			"guide": {ID: "guide", Name: "Guide", ScriptID: "guide_script"},
+		},
+		Scripts: map[string]Script{
+			"guide_script": {
+				ID: "guide_script",
+				Labels: map[string]Label{
+					"@main": {Procedures: []Procedure{{Say: "First"}, {Say: "Second"}}},
+				},
+			},
+		},
+	}
+
+	conversation, ok := lib.Conversation("guide", "@main", Context{})
+	if !ok {
+		t.Fatal("Conversation() returned ok=false")
+	}
+	if conversation.Text != "FirstSecond" {
+		t.Fatalf("Conversation() text = %q, want FirstSecond", conversation.Text)
+	}
+}
+
 func TestConversationRendersLineBreakControl(t *testing.T) {
 	lib := Library{
 		Entities: map[string]Entity{
@@ -156,7 +204,7 @@ func TestConversationRendersLineBreakControl(t *testing.T) {
 	}
 }
 
-func TestConversationFallsBackToMainAlias(t *testing.T) {
+func TestConversationLeavesSuffixedLabelUnresolved(t *testing.T) {
 	lib := Library{
 		Entities: map[string]Entity{
 			"guide": {
@@ -188,8 +236,8 @@ func TestConversationFallsBackToMainAlias(t *testing.T) {
 	if !ok {
 		t.Fatal("Conversation() returned ok=false")
 	}
-	if conversation.Text != "Main" {
-		t.Fatalf("Conversation() text = %q, want Main", conversation.Text)
+	if conversation.Text != "" {
+		t.Fatalf("Conversation() text = %q, want empty", conversation.Text)
 	}
 }
 
@@ -235,8 +283,9 @@ func TestConversationLeavesMissingMainLabelUnresolved(t *testing.T) {
 
 func TestRenderDialogueTextReplacesConfirmedVariables(t *testing.T) {
 	got := renderDialogueText(
-		"owner=<$OWNERGUILD> lord=<$LORD> gold=<$CASTLEGOLD> income=<$TODAYINCOME> door=<$CASTLEDOORSTATE> repair=<$REPAIRDOORGOLD>/<$REPAIRWALLGOLD> guard=<$GUARDFEE>/<$ARCHERFEE> upgrade=<$UPGRADEWEAPONFEE> weapon=<$USERWEAPON>",
+		"user=<$USERNAME> owner=<$OWNERGUILD> lord=<$LORD> gold=<$CASTLEGOLD> income=<$TODAYINCOME> door=<$CASTLEDOORSTATE> repair=<$REPAIRDOORGOLD>/<$REPAIRWALLGOLD> guard=<$GUARDFEE>/<$ARCHERFEE> upgrade=<$UPGRADEWEAPONFEE> weapon=<$USERWEAPON>",
 		Context{
+			Username:         "玩家甲",
 			OwnerGuild:       "测试行会",
 			Lord:             "城主",
 			CastleGold:       1234,
@@ -251,7 +300,7 @@ func TestRenderDialogueTextReplacesConfirmedVariables(t *testing.T) {
 		},
 		Entity{Name: "NPC"},
 	)
-	want := "owner=测试行会 lord=城主 gold=1234 income=56 door=关闭 repair=2000/500 guard=300/400 upgrade=10000 weapon=木剑"
+	want := "user=玩家甲 owner=测试行会 lord=城主 gold=1234 income=56 door=关闭 repair=2000/500 guard=300/400 upgrade=10000 weapon=木剑"
 	if got != want {
 		t.Fatalf("renderDialogueText() = %q, want %q", got, want)
 	}

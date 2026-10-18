@@ -121,17 +121,21 @@ func (w *World) castFireWallWithEventsLocked(ch storage.Character, skill data.St
 
 func (w *World) fireGroundEventAtLocked(cell fireFieldKey) bool {
 	for _, event := range w.groundEvents {
-		if event.Type == 5 && event.MapID == cell.MapID && event.X == cell.X && event.Y == cell.Y {
+		if event.MapID == cell.MapID && event.X == cell.X && event.Y == cell.Y {
 			return true
 		}
 	}
 	return false
 }
 
-func (w *World) applyFireWallTickLocked(players map[string]storage.Character, now time.Time) ([]AttackResult, []CharacterHit, []storage.Character) {
+func (w *World) applyFireWallTickLocked(players map[string]storage.Character, now time.Time) ([]AttackResult, []CharacterHit, []storage.Character, []OrderedMonsterEvent, []NPCSpeech, []NPCStruckHit, []NPCCombatEvent) {
 	monsterHits := []AttackResult{}
 	characterHits := []CharacterHit{}
 	updated := []storage.Character{}
+	orderedEvents := []OrderedMonsterEvent{}
+	trainerSpeeches := []NPCSpeech{}
+	trainerStruckHits := []NPCStruckHit{}
+	trainerCombatEvents := []NPCCombatEvent{}
 	playerList := charactersFromMap(players)
 	fields := make([]fireField, 0, len(w.fireFields))
 	for _, field := range w.fireFields {
@@ -139,7 +143,7 @@ func (w *World) applyFireWallTickLocked(players map[string]storage.Character, no
 	}
 	sort.Slice(fields, func(i, j int) bool {
 		if fields[i].Order != fields[j].Order {
-			return fields[i].Order < fields[j].Order
+			return fields[i].Order > fields[j].Order
 		}
 		if fields[i].X != fields[j].X {
 			return fields[i].X < fields[j].X
@@ -148,11 +152,10 @@ func (w *World) applyFireWallTickLocked(players map[string]storage.Character, no
 	})
 	for _, field := range fields {
 		key := fireFieldKey{MapID: field.MapID, X: field.X, Y: field.Y}
-		if now.After(field.ExpiresAt) {
-			delete(w.fireFields, key)
-			continue
-		}
 		if !now.After(field.NextTick) {
+			if now.After(field.ExpiresAt) {
+				delete(w.fireFields, key)
+			}
 			continue
 		}
 		owner, ok := players[field.OwnerID]
@@ -161,46 +164,83 @@ func (w *World) applyFireWallTickLocked(players map[string]storage.Character, no
 			if owner.ID == "" {
 				owner = storage.Character{ID: field.OwnerID, MapID: field.MapID, X: field.X, Y: field.Y}
 			}
+			owner.Ghost = true
 		}
-		ownerDied := owner.ID != "" && owner.HP <= 0
-		if entity, ok := w.trainerAtExactPointLocked(field.MapID, field.X, field.Y); ok {
-			hit, err := w.applyNPCTrainingHitLocked(entity.ID, owner.ID, field.Damage, true, now)
-			if err == nil && hit.Damage > 0 {
-				w.pendingNPCTraining = append(w.pendingNPCTraining, hit)
-			}
-		}
-		for _, areaTarget := range w.spellAreaTargetsLocked(playerList, field.MapID, field.X, field.Y, 0) {
+		ownerDied := owner.ID != "" && w.characterDeadLocked(owner)
+		for _, areaTarget := range w.hostileSpellAreaTargetsLocked(playerList, field.MapID, field.X, field.Y, 0) {
 			if areaTarget.Monster != nil {
 				mon := areaTarget.Monster
 				if !w.isProperMonsterAreaTargetLocked(owner, playerList, mon) {
 					continue
 				}
-				attackResult, err := w.attackMonsterWithImmediateMagicDamageModeLocked(owner, mon, field.Damage, false)
+				damage := w.monsterMagicDamageAfterDefenseLocked(mon, field.Damage)
+				attackResult, err := w.applyReferenceMonsterMagicDamageAtLocked(owner, mon, damage, now)
 				if err != nil || attackResult.Damage <= 0 {
 					continue
 				}
 				monsterHits = append(monsterHits, attackResult)
+				orderedEvents = append(orderedEvents, OrderedMonsterEvent{Kind: OrderedMonsterEventHit, Hit: attackResult})
+				continue
+			}
+			if areaTarget.Trainer != nil {
 				continue
 			}
 			target := *areaTarget.Character
 			if !w.isProperCharacterAreaTargetLocked(owner, target) {
 				continue
 			}
-			updatedTarget, hit, err := w.spellCharacterDamageWithPowerLocked(owner, target, field.Damage)
-			if err != nil || hit.Damage <= 0 {
+			updatedTarget, hit, err := w.applyReferenceCharacterDamageAtLocked(owner, target, field.Damage, now, false)
+			if err != nil || hit.StruckDamage <= 0 {
 				continue
 			}
 			characterHits = append(characterHits, hit)
+			orderedEvents = append(orderedEvents, OrderedMonsterEvent{Kind: OrderedMonsterEventCharacterHit, CharacterHit: hit})
 			updated = append(updated, updatedTarget)
 		}
-		if ownerDied {
+		if ownerDied || owner.Ghost {
 			field.OwnerID = ""
 			field.Owner = storage.Character{}
 		}
 		field.NextTick = now.Add(fireWallTickInterval)
-		w.fireFields[key] = field
+		if now.After(field.ExpiresAt) {
+			delete(w.fireFields, key)
+		} else {
+			w.fireFields[key] = field
+		}
 	}
-	return monsterHits, characterHits, updated
+	return monsterHits, characterHits, updated, orderedEvents, trainerSpeeches, trainerStruckHits, trainerCombatEvents
+}
+
+func (w *World) applyReferenceCharacterDamageAtLocked(owner, target storage.Character, damage int, now time.Time, prepared bool) (storage.Character, CharacterHit, error) {
+	lastHitterID := target.LastHitterID
+	lastHitterAt := target.LastHitterAt
+	expHitterID := target.ExpHitterID
+	expHitterAt := target.ExpHitterAt
+	healthTick := target.HealthTick
+	spellTick := target.SpellTick
+	perHealth := target.PerHealth
+	perSpell := target.PerSpell
+	pkFlag := target.PKFlag
+	pkFlagUntil := target.PKFlagUntil
+	if !prepared {
+		target, damage = w.prepareCharacterMagicDamageLocked(target, damage, now)
+	}
+	updated, hit, err := w.applyPreparedCharacterMagicDamageAtLocked(owner, target, damage, now)
+	if err != nil {
+		return updated, hit, err
+	}
+	updated.LastHitterID = lastHitterID
+	updated.LastHitterAt = lastHitterAt
+	updated.ExpHitterID = expHitterID
+	updated.ExpHitterAt = expHitterAt
+	updated.HealthTick = healthTick
+	updated.SpellTick = spellTick
+	updated.PerHealth = perHealth
+	updated.PerSpell = perSpell
+	updated.PKFlag = pkFlag
+	updated.PKFlagUntil = pkFlagUntil
+	hit.Character = updated
+	return updated, hit, nil
 }
 
 func charactersFromMap(players map[string]storage.Character) []storage.Character {
@@ -208,5 +248,8 @@ func charactersFromMap(players map[string]storage.Character) []storage.Character
 	for _, ch := range players {
 		out = append(out, ch)
 	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return characterObjectOrderBefore(out[i], out[j])
+	})
 	return out
 }

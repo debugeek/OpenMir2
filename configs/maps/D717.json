@@ -1,5 +1,8 @@
 {
   "id": "D717",
+  "no_recall": true,
+  "no_reconnect": true,
+  "reconnect_map": "D71601",
   "name": "石墓七层",
   "width": 100,
   "height": 100,
@@ -29,7 +32,8 @@
       "y": 25,
       "range": 0,
       "count": 1,
-      "respawn_seconds": 120
+      "respawn_seconds": 120,
+      "reference_order": 1396
     },
     {
       "monster_id": "楔蛾",
@@ -37,7 +41,8 @@
       "y": 100,
       "range": 100,
       "count": 20,
-      "respawn_seconds": 12
+      "respawn_seconds": 12,
+      "reference_order": 1389
     },
     {
       "monster_id": "白野猪",
@@ -45,7 +50,8 @@
       "y": 100,
       "range": 100,
       "count": 10,
-      "respawn_seconds": 30
+      "respawn_seconds": 30,
+      "reference_order": 1391
     },
     {
       "monster_id": "白野猪1",
@@ -53,7 +59,8 @@
       "y": 100,
       "range": 100,
       "count": 2,
-      "respawn_seconds": 60
+      "respawn_seconds": 60,
+      "reference_order": 1390
     },
     {
       "monster_id": "红野猪",
@@ -61,7 +68,8 @@
       "y": 100,
       "range": 100,
       "count": 40,
-      "respawn_seconds": 30
+      "respawn_seconds": 30,
+      "reference_order": 1394
     },
     {
       "monster_id": "角蝇",
@@ -69,7 +77,8 @@
       "y": 100,
       "range": 100,
       "count": 30,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1393
     },
     {
       "monster_id": "邪恶毒蛇",
@@ -77,7 +86,8 @@
       "y": 100,
       "range": 100,
       "count": 1,
-      "respawn_seconds": 60
+      "respawn_seconds": 60,
+      "reference_order": 1392
     },
     {
       "monster_id": "黑色恶蛆",
@@ -85,7 +95,8 @@
       "y": 100,
       "range": 100,
       "count": 20,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1388
     },
     {
       "monster_id": "黑野猪",
@@ -93,7 +104,8 @@
       "y": 100,
       "range": 100,
       "count": 40,
-      "respawn_seconds": 20
+      "respawn_seconds": 20,
+      "reference_order": 1395
     }
   ],
   "blocked_bits": "///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////f/P//////////////gP//////////////B/j/////////////PwJf/////////////zEw4P///////////78DAPj///////////8/AAf///////+f+f/7A/z5////////GP0fP+A//v//////B4D/4AP/5///////P4P4Dw7wf/7//////wMAPnAA/+f//////z8AwAED8H/+/////38AAAwQAP/3//////8DAAAAADB///////8fAAAAAAD5w///////GQAAAADAP/j/////3wEAAAAA+AD//////x8AAAAAAADw//////8BAAAAAAAA/////88/AAAAAAA44P/////wAAAAAADAA/////8PBwAAAAAAPvj///+fMAAAAAIA8If/////gAEAACAAAP//////BxgAAAAGAPD/////fwAAAABgAADz/////wcAAAYAEgAw/////w8AAHAAAAMA4P///38AAAADADAAgP////8DAAAAABADAPj///8/AAAAAAAAAMD/////AggAAAAAAAD/////B4ABAAAAAAD4////PwAoAAAAAACA/////wcAAAAAIAAA+P////8AAMAAAAAAgP////8fAAAMAAAAAPj/////AwBgAAAAAAD+/////wIAAAAAABjA/////z8AAAAQAIAB/P////8DAAAAAAAAwP////8/AAAAAAAAAOD/////AwAAAAAAAAD4////PwAAAAAAAACA/////wAAAAAAAAAA+P///wcAAAAAAAAAgPz//38AAAAAAAAAEID///8HAAAMAAAAgAH8//9/AADgAQAAABzg////BwAAHgAAAOCB/////wEAIAAAAAAf/P///x8AgAAAAAD4w/////8BAAAAAACA/////88/AAAAAAAA+P///3/wAAAAAAAAgPn///8DBwAAAAAAAJj///8fMAAAAAAAAADw////gAEAAAAAAADA////DxgAAAAABAAA/P///wEAAAAAAAAAwP///z8AAAAAAAAAAP7///8HYAAAAAAABOD/////AAMAAAAAYAD/////D9AAAAAAAAf4/////wEfAAIAAHjg/////z/gADAAAMAH//////8HAICDAAD++P////9/AAA8mADg////////DwDggwcA/v///////wEAf/gAYP7//////38A8P8fAOb///////8fAP//AwD8////////AzD/fwDw////////fwDz/w8A/////////w8A/v8D+P////////8B+P9/wP////////8fgP//D/7/////////Af7///H/////////P/D//7///////////wf////////////////9//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////8="

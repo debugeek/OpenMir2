@@ -22,8 +22,24 @@ func (w *World) Item(itemID string) (data.StdItem, bool) {
 	return item, true
 }
 
-func (w *World) DropLooks(itemID string) int32 {
-	item, ok := w.Item(itemID)
+func (w *World) DropLooks(drop GroundDrop) int32 {
+	if drop.ItemID == "金币" {
+		looks := int32(112)
+		if drop.Count >= 30 {
+			looks = 113
+		}
+		if drop.Count >= 70 {
+			looks = 114
+		}
+		if drop.Count >= 300 {
+			looks = 115
+		}
+		if drop.Count >= 1000 {
+			looks = 116
+		}
+		return looks
+	}
+	item, ok := w.Item(drop.ItemID)
 	if !ok {
 		return 2
 	}

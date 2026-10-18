@@ -1,5 +1,6 @@
 {
   "id": "T2062",
+  "no_recall": true,
   "name": "幻境迷宫",
   "width": 40,
   "height": 40,
@@ -96,7 +97,8 @@
       "y": 24,
       "range": 5,
       "count": 1,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 2241
     },
     {
       "monster_id": "电僵王1",
@@ -104,7 +106,8 @@
       "y": 24,
       "range": 5,
       "count": 1,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 2240
     },
     {
       "monster_id": "角蝇1",
@@ -112,7 +115,8 @@
       "y": 24,
       "range": 5,
       "count": 1,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 2239
     }
   ],
   "blocked_bits": "//////////////////////////////////////////////////////////////z///8f+P///z/w/////+D/////4P/////B//P//4H/4f//Af/A//8ff+D//x8+8P//Pxz4//8/APz//z8A/P//PwD8//8/CPz//z8A/P//PwD8//8/APj//x8c8P//Axzg//8BPvD//4d/+P//z//8//////////////////////////////////////////////////////8="

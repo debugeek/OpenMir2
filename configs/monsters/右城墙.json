@@ -1,0 +1,17 @@
+{
+  "id": "右城墙",
+  "name": "右城墙",
+  "behavior": "castle_wall",
+  "race": 111,
+  "race_img": 98,
+  "appr": 0,
+  "level": 99,
+  "hp": 2000,
+  "defense": 20,
+  "magic_defense": 20,
+  "anti_poison": 200,
+  "walk_speed_ms": 1000,
+  "walk_step": 1,
+  "attack_interval_ms": 1000,
+  "drops": null
+}

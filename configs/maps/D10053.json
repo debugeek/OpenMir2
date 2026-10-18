@@ -1,5 +1,6 @@
 {
   "id": "D10053",
+  "light": 1,
   "name": "秘密通道",
   "width": 100,
   "height": 100,
@@ -19,7 +20,8 @@
       "y": 75,
       "range": 75,
       "count": 2,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1606
     },
     {
       "monster_id": "白野猪1",
@@ -27,7 +29,8 @@
       "y": 75,
       "range": 75,
       "count": 20,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1607
     },
     {
       "monster_id": "红野猪",
@@ -35,7 +38,8 @@
       "y": 75,
       "range": 75,
       "count": 20,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1605
     },
     {
       "monster_id": "红野猪2",
@@ -43,7 +47,8 @@
       "y": 75,
       "range": 75,
       "count": 10,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1608
     },
     {
       "monster_id": "虹魔猪卫",
@@ -51,7 +56,8 @@
       "y": 75,
       "range": 75,
       "count": 1,
-      "respawn_seconds": 60
+      "respawn_seconds": 60,
+      "reference_order": 1622
     },
     {
       "monster_id": "虹魔蝎卫",
@@ -59,7 +65,8 @@
       "y": 75,
       "range": 75,
       "count": 1,
-      "respawn_seconds": 60
+      "respawn_seconds": 60,
+      "reference_order": 1621
     },
     {
       "monster_id": "蝎蛇",
@@ -67,7 +74,8 @@
       "y": 75,
       "range": 75,
       "count": 20,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1603
     },
     {
       "monster_id": "蝎蛇1",
@@ -75,7 +83,8 @@
       "y": 75,
       "range": 75,
       "count": 10,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1604
     },
     {
       "monster_id": "角蝇",
@@ -83,7 +92,8 @@
       "y": 75,
       "range": 100,
       "count": 2,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1609
     },
     {
       "monster_id": "黑野猪",
@@ -91,7 +101,8 @@
       "y": 75,
       "range": 75,
       "count": 20,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1602
     },
     {
       "monster_id": "黑野猪1",
@@ -99,7 +110,8 @@
       "y": 75,
       "range": 75,
       "count": 2,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1601
     }
   ],
   "blocked_bits": "/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////P////z///z/////z////8///0//////f/D//3/k/3/w/////wP+//8D//8D/v//Pz/A//8/AP8/BP////MD/v//A/D+4/j//w8+8P//PwAOLw/+/3/Oh////wNAYODB///jePj//38AAAAe/P9/gMH///8HAACA4P//DwD8//9/AAAAAP///wHA////AwAAQPj//z9A/P//PwABAID///8H5v///wAAAAD8//9/YP7//wcAAADA////D8D//z8AAIgA/P///wH8//8DAMAdwP///38A//8vAADeAP7///8P4P//AABgAOD/////Afz8AwAADAD8////H8DPP2AAQADA/////wNk+AAHAAAA+P///z8AAgb4AAAAAP7///8DAADAXwAAAMD///9/AAAA/g8AAAb+////BwAA4P8AAPDg////fxAAAP8fAIAf/////4MDAPj/gQH8+////z8wYOD/PwDg//////8AAAf//wMA//////8HAvj4/z8A+P////9/YMDf//8HgP//////BwT+//9/APz/////P0Dg////B8D//////0AA////PwD8/////wMO+P///wPA/////39g4P///w8A/v////8HAP///38A4P//////APj///8DCPz/////H4D/////4OD//////wf8////Hw7+///////A//////Hx//////8f/P///7+/////////wf//////////////P/7//////////////+P//////////////z/8///////////////H//////////////9/8P//////////////B/7/////////////P8DP/////////////wP88P///////////x8AB/7//////////38AIOD///////////wDAAD8/////////88/YADg/////////3/wAgcA//////////8DBvgA+P////////8/AMAfgP//////////BwD+B/z//////////wDg/8D//////////x8A/x/8P/////////8B+P/B//P///////8/4P8//g/+////////A///43/Af/z/////P/j/P/xD/MP//////4f//8c/wA/8/////3/8/3/wAuTg///////H//8HAgAG/v////8//P8/AAAAzP//////w///AwAOAPz/////D/7/HwDgAQD/////f8D/f2AAHwDg/////wP8/wMA+AMA/P///3/g/38A4H9gwP////8H//8HAP8PB/D/////+P//BPj/+QD+////3////8D//x/w/////////wf8//+H//////////+A////8P////////8f////H///////////+/////v///////////////////////////////////////////////////////////////////////////////////////////////////////8="

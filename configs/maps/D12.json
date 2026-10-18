@@ -1,5 +1,9 @@
 {
   "id": "D12",
+  "fight_zone": true,
+  "no_recall": true,
+  "no_reconnect": true,
+  "reconnect_map": "0131",
   "name": "新手训练营",
   "width": 350,
   "height": 500,

@@ -1,8 +1,13 @@
 {
   "id": "T232",
+  "light": 0,
+  "no_recall": true,
+  "no_reconnect": true,
+  "reconnect_map": "1",
   "name": "钳虫巢穴",
   "width": 50,
   "height": 50,
+  "no_random_move": true,
   "connections": [],
   "monster_spawns": [
     {
@@ -11,7 +16,8 @@
       "y": 24,
       "range": 5,
       "count": 1,
-      "respawn_seconds": 120
+      "respawn_seconds": 120,
+      "reference_order": 2472
     }
   ],
   "blocked_bits": "/////////////////////////////////////////////////////////////////////////////////////////////////////////////////P//////wf//////B/7/////D/r/////X+D/////H4D/////fzD//////+H8/////8fz/////z/I//////8A/P////8DgP////8PCf7///8PAPD///8HYMD///8fgIP///8/AB//////ACD+////BwL8////HwDw/////wDw/////2vg///////D//////+P//////9/////////////////////////////////////////////////////////////////////////////////////////////////////////Dw=="

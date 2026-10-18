@@ -34,12 +34,60 @@ func TestLoadConfigsReadsRuntimeConfigs(t *testing.T) {
 	if len(b.Maps["0"].Connections) == 0 {
 		t.Fatalf("expected map 0 connections in runtime configs")
 	}
+	if len(b.Castle.WarMaps) != 6 || b.Castle.WarMaps[0] != "0151" || b.Castle.WarMaps[5] != "0156" {
+		t.Fatalf("castle war maps = %v, want 0151-0156", b.Castle.WarMaps)
+	}
 	if len(b.Maps["0"].Spawns) == 0 {
 		t.Fatalf("expected map 0 spawns in runtime configs")
+	}
+	for _, sp := range b.Maps["0"].Spawns {
+		if sp.ReferenceOrder <= 0 {
+			t.Fatalf("map 0 spawn lacks reference order: %+v", sp)
+		}
 	}
 	for _, id := range []string{"R001", "Q004", "H007", "H106"} {
 		if !b.Maps[id].NeedHole {
 			t.Fatalf("expected %s to require an active dig-out event", id)
+		}
+	}
+	for _, id := range []string{"G001", "G002", "0162", "G004", "G006", "G008", "G010", "G014", "B101", "B102"} {
+		if !b.Maps[id].Safe {
+			t.Fatalf("expected %s to be a safe map", id)
+		}
+	}
+	if !b.Maps["D2079"].NoPositionMove {
+		t.Fatalf("expected D2079 to reject position movement")
+	}
+	if b.Maps["D001"].Light != 1 || b.Maps["G001"].Light != 0 || b.Maps["T118"].Light != 0 {
+		t.Fatalf("expected reference map light values, got D001=%d G001=%d T118=%d", b.Maps["D001"].Light, b.Maps["G001"].Light, b.Maps["T118"].Light)
+	}
+	if b.MiniMaps["D001"] != 1 || b.MiniMaps["G004"] != 116 || len(b.MiniMaps) != 130 {
+		t.Fatalf("minimap mappings = D001:%d G004:%d count:%d, want 1/116/130", b.MiniMaps["D001"], b.MiniMaps["G004"], len(b.MiniMaps))
+	}
+	orders := make(map[int]string)
+	orderedNPCs := 0
+	for id, entity := range b.NPCs.Entities {
+		if entity.ReferenceOrder <= 0 {
+			continue
+		}
+		orderedNPCs++
+		if previous, exists := orders[entity.ReferenceOrder]; exists {
+			t.Fatalf("duplicate NPC reference order %d: %s and %s", entity.ReferenceOrder, previous, id)
+		}
+		orders[entity.ReferenceOrder] = id
+	}
+	if orderedNPCs != 95 || b.NPCs.Entities["比奇国王-0122"].ReferenceOrder != 142 || b.NPCs.Entities["沙城总管-0150"].ReferenceOrder != 143 {
+		t.Fatalf("ordered NPCs = %d, king order = %d, governor order = %d; want 95/142/143", orderedNPCs, b.NPCs.Entities["比奇国王-0122"].ReferenceOrder, b.NPCs.Entities["沙城总管-0150"].ReferenceOrder)
+	}
+	if !b.Maps["D001"].LightFixed || !b.Maps["G001"].LightFixed || b.Maps["0"].LightFixed {
+		t.Fatalf("map light fixed markers = D001:%t G001:%t 0:%t, want fixed/fixed/dynamic", b.Maps["D001"].LightFixed, b.Maps["G001"].LightFixed, b.Maps["0"].LightFixed)
+	}
+	if !b.Maps["0100"].FightZone || !b.Maps["F001"].Fight3Zone {
+		t.Fatalf("expected reference fight map flags, got 0100=%+v F001=%+v", b.Maps["0100"], b.Maps["F001"])
+	}
+	for _, id := range []string{"D10011", "D10012", "D10013", "D1002", "D405", "D412", "D415", "D416"} {
+		if !b.Maps[id].Mine {
+			t.Fatalf("expected %s to enable mining", id)
 		}
 	}
 	foundStartPoint := false
@@ -55,7 +103,7 @@ func TestLoadConfigsReadsRuntimeConfigs(t *testing.T) {
 		t.Fatalf("expected at least one start point in runtime configs")
 	}
 	mon := b.Monsters["半兽人"]
-	if mon.Level != 15 || mon.HP != 30 || mon.MinAttack != 4 || mon.MaxAttack != 9 || mon.Defense != 1 || mon.Experience != 20 || mon.WalkSpeedMS != 1500 || mon.AttackIntervalMS != 2500 {
+	if mon.Level != 15 || mon.HP != 30 || mon.MinAttack != 4 || mon.MaxAttack != 9 || mon.Defense != 1 || mon.Experience != 25 || mon.WalkSpeedMS != 1500 || mon.AttackIntervalMS != 2500 {
 		t.Fatalf("monster attributes were not loaded completely: %+v", mon)
 	}
 }

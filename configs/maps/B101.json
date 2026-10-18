@@ -1,8 +1,13 @@
 {
   "id": "B101",
+  "safe": true,
+  "no_recall": true,
+  "no_reconnect": true,
+  "reconnect_map": "0",
   "name": "圣域之门",
   "width": 21,
   "height": 21,
+  "no_random_move": true,
   "connections": [
     {
       "to_map": "B102",

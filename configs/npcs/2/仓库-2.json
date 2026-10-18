@@ -7,6 +7,7 @@
   "y": 466,
   "dir": 0,
   "appr": 12,
+  "reference_order": 47,
   "merchant": {
     "price_rate": 100,
     "capabilities": {
@@ -19,7 +20,7 @@
       "name": "@main",
       "procedures": [
         {
-          "say": "需要帮什么忙吗？\\n目前不收保管费，请多利用。\\n<保管/@storage>东西\\n<找回/@getback>东西\\n<捆/@mbind>各种卷书和药水\\n<关 闭/@exit>"
+          "say": "需要帮什么忙吗？\\n目前不收保管费，请多利用。\\n<保管/@storage>东西\\n<找回/@getback>东西\\n<关 闭/@exit>"
         }
       ]
     },

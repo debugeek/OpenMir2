@@ -1,5 +1,6 @@
 {
   "id": "D716",
+  "no_recall": true,
   "name": "石墓六层",
   "width": 50,
   "height": 50,
@@ -31,7 +32,8 @@
       "y": 25,
       "range": 25,
       "count": 9,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1387
     },
     {
       "monster_id": "红野猪",
@@ -39,7 +41,8 @@
       "y": 25,
       "range": 25,
       "count": 9,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1386
     },
     {
       "monster_id": "蝎蛇",
@@ -47,7 +50,8 @@
       "y": 25,
       "range": 25,
       "count": 9,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1385
     },
     {
       "monster_id": "角蝇",
@@ -55,7 +59,8 @@
       "y": 25,
       "range": 25,
       "count": 9,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1384
     },
     {
       "monster_id": "黑色恶蛆",
@@ -63,7 +68,8 @@
       "y": 25,
       "range": 25,
       "count": 9,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1383
     },
     {
       "monster_id": "黑野猪",
@@ -71,7 +77,8 @@
       "y": 25,
       "range": 25,
       "count": 9,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1382
     }
   ],
   "blocked_bits": "/////////////////////////////////////////////////////////////////////3/z//////+A//////8B/P////8D4P////8HgP////8PAP7///8/AMD///8/AAD+//9/AADQ////AAAA////AwAA/P//CwAA4P//BwAAAP//DwAAAPj/HwAAAOD/fwAAAYD//wEADwDw/wQAPAAQ/xEAwAAA/AMAAAEA+D8AAAAA8P8BAAAA4P8PAAAAwP9/AAAAwP//AwAAAP//HwAAAP///wAAAP7//wcAAPz//z8AAPj///8DAPj///8PAOD///9/AMD/////B5H/////P+D//////8H//////4//////////////////////////////////////////////////////Dw=="

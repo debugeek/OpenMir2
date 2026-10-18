@@ -1,5 +1,7 @@
 {
   "id": "DM001",
+  "fight_zone": true,
+  "light": 1,
   "name": "奸商",
   "width": 9,
   "height": 13,

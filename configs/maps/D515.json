@@ -1,8 +1,13 @@
 {
   "id": "D515",
+  "light": 1,
+  "no_recall": true,
+  "no_reconnect": true,
+  "reconnect_map": "D5071",
   "name": "祖玛教主之家",
   "width": 40,
   "height": 40,
+  "no_random_move": true,
   "connections": [
     {
       "to_map": "D5074",
@@ -19,7 +24,8 @@
       "y": 24,
       "range": 0,
       "count": 1,
-      "respawn_seconds": 180
+      "respawn_seconds": 180,
+      "reference_order": 562
     },
     {
       "monster_id": "角蝇",
@@ -27,7 +33,8 @@
       "y": 20,
       "range": 20,
       "count": 9,
-      "respawn_seconds": 16
+      "respawn_seconds": 16,
+      "reference_order": 560
     },
     {
       "monster_id": "楔蛾",
@@ -35,7 +42,8 @@
       "y": 22,
       "range": 9,
       "count": 12,
-      "respawn_seconds": 11
+      "respawn_seconds": 11,
+      "reference_order": 561
     }
   ],
   "blocked_bits": "////////////////////////////////////////////////////////z/////+H/////wP/////Af7///8g/P//fwD4//8/APD//z8AwP//HwDg//8HAID//wMAAP//AQAA/v8AIAD8fwBwAPg/APiA8D8IYADwfwAgAPj/AAAA/P8DAAD+/wcAAP//DwCA//8PAMD//x8A4P//HwDw//8fAPj///8g/P///wH+////A/////+H/////8////////////////8="

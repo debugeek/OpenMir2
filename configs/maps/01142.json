@@ -1,5 +1,9 @@
 {
   "id": "01142",
+  "fight_zone": true,
+  "no_recall": true,
+  "no_reconnect": true,
+  "reconnect_map": "0114",
   "name": "高级武士之家",
   "width": 40,
   "height": 40,

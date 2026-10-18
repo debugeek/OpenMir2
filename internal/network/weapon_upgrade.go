@@ -1,9 +1,7 @@
 package network
 
 import (
-	"math"
 	"net"
-	"strings"
 	"time"
 
 	"openmir2/internal/data"
@@ -48,11 +46,11 @@ func (s *Server) handleWeaponUpgradeStart(conn net.Conn, activeChar *storage.Cha
 		return true
 	}
 	*activeChar = updated
-	_ = s.store.SaveCharacter(updated)
-	s.sendDelItemList(conn, removed)
-	s.sendEquippedItems(conn, updated)
+	s.sendGoldChanged(conn, updated, updated.Gold)
+	s.sendWeaponUpgradeRemovedItems(conn, updated, removed)
+	s.broadcastCharacterFeatureChanged(updated)
 	s.sendAbilityOnly(conn, updated)
-	s.sendWeightChanged(conn, s.world.AbilityStats(updated))
+	_ = s.store.SaveCharacter(updated)
 	_ = state
 	s.sendNPCConversationLabel(conn, updated, entity, "~@upgradenow_ok")
 	return true
@@ -62,16 +60,16 @@ func (s *Server) handleWeaponUpgradeGetBack(conn net.Conn, activeChar *storage.C
 	if !entity.Merchant.Capabilities.GetBackWeapon {
 		return false
 	}
+	if !s.world.CanCarryBagItems(*activeChar, 1) {
+		s.sendNPCConversationLabel(conn, *activeChar, entity, "~@getbackupgnow_bagfull")
+		return true
+	}
 	if activeChar.WeaponUpgrade == nil {
 		s.sendNPCConversationLabel(conn, *activeChar, entity, "~@getbackupgnow_fail")
 		return true
 	}
 	if activeChar.WeaponUpgrade.NPCID != "" && activeChar.WeaponUpgrade.NPCID != entity.ID {
 		s.sendNPCConversationLabel(conn, *activeChar, entity, "~@getbackupgnow_fail")
-		return true
-	}
-	if !s.world.CanCarryBagItems(*activeChar, 1) {
-		s.sendNPCConversationLabel(conn, *activeChar, entity, "~@getbackupgnow_bagfull")
 		return true
 	}
 	if !s.weaponUpgradeReady(*activeChar.WeaponUpgrade) {
@@ -85,11 +83,20 @@ func (s *Server) handleWeaponUpgradeGetBack(conn net.Conn, activeChar *storage.C
 	}
 	*activeChar = updated
 	_ = s.store.SaveCharacter(updated)
-	s.sendBagAddItem(conn, updated, item.ItemID, item.MakeIndex)
-	s.sendAbilityOnly(conn, updated)
 	s.sendWeightChanged(conn, s.world.AbilityStats(updated))
+	s.sendBagAddItem(conn, updated, item.ItemID, item.MakeIndex)
 	s.sendNPCConversationLabel(conn, updated, entity, "~@getbackupgnow_ok")
 	return true
+}
+
+func (s *Server) sendWeaponUpgradeRemovedItems(conn net.Conn, ch storage.Character, removed []storage.UserItem) {
+	if len(removed) == 0 {
+		return
+	}
+	s.sendDelItem(conn, ch, removed[0])
+	if len(removed) > 1 {
+		s.sendDelItemList(conn, removed[1:])
+	}
 }
 
 func (s *Server) startWeaponUpgrade(ch storage.Character, npcID string) (storage.Character, []storage.UserItem, *storage.WeaponUpgradeState, bool) {
@@ -142,14 +149,14 @@ func (s *Server) weaponUpgradeReady(state storage.WeaponUpgradeState) bool {
 	if delay <= 0 {
 		delay = time.Hour
 	}
-	return time.Since(time.UnixMilli(state.StartedAt)) >= delay
+	return time.Since(time.UnixMilli(state.StartedAt)) > delay
 }
 
 func (s *Server) weaponUpgradeIsMaterial(entry storage.UserItem) bool {
 	if entry.ItemID == "" {
 		return false
 	}
-	if strings.EqualFold(entry.ItemID, "黑铁矿石") {
+	if s.weaponUpgradeIsBlackStone(entry) {
 		return true
 	}
 	item, ok := s.world.Item(entry.ItemID)
@@ -168,13 +175,14 @@ func (s *Server) weaponUpgradeMaterialStats(ch storage.Character) (byte, byte, b
 		removed         []storage.UserItem
 		hasStone        bool
 	)
-	for _, entry := range ch.BagItems {
+	for i := len(ch.BagItems) - 1; i >= 0; i-- {
+		entry := ch.BagItems[i]
 		if entry.ItemID == "" {
 			continue
 		}
-		if strings.EqualFold(entry.ItemID, "黑铁矿石") {
+		if s.weaponUpgradeIsBlackStone(entry) {
 			hasStone = true
-			duraList = append(duraList, int(entry.Dura/1000))
+			duraList = append(duraList, int(referenceRound(float64(entry.Dura)/1000)))
 			removed = append(removed, entry)
 			continue
 		}
@@ -201,9 +209,14 @@ func (s *Server) weaponUpgradeMaterialStats(ch storage.Character) (byte, byte, b
 	var dura byte
 	if count > 0 {
 		avg := float64(total) / float64(count)
-		dura = byte(math.Round(float64(count) + float64(count)*(avg/5.0)))
+		dura = byte(referenceRound(float64(count) + float64(count)*(avg/5.0)))
 	}
 	return byte(topDC/5 + secondDC/3), byte(topMC/5 + secondMC/3), byte(topSC/5 + secondSC/3), dura, removed, true
+}
+
+func (s *Server) weaponUpgradeIsBlackStone(entry storage.UserItem) bool {
+	item, ok := s.world.Item(entry.ItemID)
+	return ok && item.Name == "黑铁矿石"
 }
 
 func (s *Server) applyWeaponUpgradeResult(item storage.UserItem, state storage.WeaponUpgradeState, ch storage.Character) storage.UserItem {
@@ -223,13 +236,14 @@ func (s *Server) applyWeaponUpgradeResult(item storage.UserItem, state storage.W
 				item.Dura = item.DuraMax
 			}
 		}
-	} else if state.BonusDura > 18 {
-		switch s.world.RandomIntn(int(state.BonusDura - 18)) {
-		case 1, 2, 3, 4:
+	} else if state.BonusDura >= 18 {
+		roll := s.world.RandomIntn(int(state.BonusDura - 18))
+		switch {
+		case roll >= 1 && roll <= 4:
 			item.DuraMax += 1000
-		case 5, 6, 7:
+		case roll >= 5 && roll <= 7:
 			item.DuraMax += 2000
-		default:
+		case roll >= 8:
 			item.DuraMax += 4000
 		}
 	}

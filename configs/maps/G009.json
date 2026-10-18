@@ -1,5 +1,7 @@
 {
   "id": "G009",
+  "fight3_zone": true,
+  "light": 0,
   "name": "热血足球场",
   "width": 80,
   "height": 80,

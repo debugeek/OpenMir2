@@ -2,6 +2,7 @@ package network
 
 import (
 	"encoding/binary"
+	"fmt"
 	"testing"
 
 	"openmir2/internal/data"
@@ -18,6 +19,56 @@ func TestDecodeRunLogin(t *testing.T) {
 	}
 	if got.Account != "test" || got.CharName != "hero" || got.SessionID != 1 || got.Version != 176 || got.Code != 2022080300 {
 		t.Fatalf("decodeRunLogin() = %#v", got)
+	}
+}
+
+func TestValidateRunLoginMatchesCaseInsensitiveCharacterLookup(t *testing.T) {
+	s := newTestServer(t)
+	if _, err := s.world.CreateCharacterWithAppearance("account", "Hero", "warrior", 0, 0, testMapID, 10, 10); err != nil {
+		t.Fatalf("CreateCharacter() error = %v", err)
+	}
+	sessionID := s.newSessionID("account")
+
+	if !s.validateRunLogin(RunLogin{Account: "account", CharName: "hero", SessionID: sessionID}) {
+		t.Fatal("validateRunLogin() rejected case-insensitive character name")
+	}
+}
+
+func TestSessionPlayLifecycleMatchesSelectConnectionState(t *testing.T) {
+	s := &Server{sessions: map[int32]string{}, sessionPlaying: map[int32]bool{}}
+	sessionID := s.newSessionID("account")
+	if s.sessionPlayingState(sessionID) {
+		t.Fatal("new session is playing, want no-play")
+	}
+	s.closeSession(sessionID)
+	if _, ok := s.sessionAccount(sessionID); ok {
+		t.Fatal("no-play session remains after select connection closes")
+	}
+
+	sessionID = s.newSessionID("account")
+	s.setSessionPlaying(sessionID, true)
+	if !s.sessionPlayingState(sessionID) {
+		t.Fatal("selected session is no-play, want playing")
+	}
+	if account, ok := s.sessionAccount(sessionID); !ok || account != "account" {
+		t.Fatalf("playing session lookup = %q, %t", account, ok)
+	}
+}
+
+func TestPlain6ClassFromJobUsesReferenceIntegerFallback(t *testing.T) {
+	tests := []struct {
+		job  string
+		want string
+	}{
+		{job: "0", want: "warrior"},
+		{job: "1", want: "wizard"},
+		{job: "2", want: "taoist"},
+		{job: "wizard", want: "warrior"},
+	}
+	for _, tt := range tests {
+		if got := plain6ClassFromJob(tt.job); got != tt.want {
+			t.Fatalf("plain6ClassFromJob(%q) = %q, want %q", tt.job, got, tt.want)
+		}
 	}
 }
 
@@ -65,7 +116,7 @@ func TestAbilityEncodesFieldsAtReferenceOffsets(t *testing.T) {
 		offset int
 		want   uint32
 	}{
-		{"AC", 2, 0x0304}, {"MAC", 4, 0x0708}, {"DC", 6, 0x0b0c}, {"MC", 8, 0x0f10}, {"SC", 10, 0x1314},
+		{"AC", 2, 0xffff}, {"MAC", 4, 0xffff}, {"DC", 6, 0xffff}, {"MC", 8, 0xffff}, {"SC", 10, 0xffff},
 	}
 	for _, c := range checks {
 		if got := uint32(binary.LittleEndian.Uint16(body[c.offset : c.offset+2])); got != c.want {
@@ -89,6 +140,29 @@ func TestAbilityEncodesFieldsAtReferenceOffsets(t *testing.T) {
 	}
 	if got := binary.LittleEndian.Uint32(body[28:32]); got != 200 {
 		t.Fatalf("MaxExp = %d, want 200", got)
+	}
+}
+
+func TestModernAbilityEncodesReference50ByteLayout(t *testing.T) {
+	body := ModernAbility(world.AbilityStats{
+		Level: 3, AC: 0x01020304, MAC: 0x05060708, DC: 0x090a0b0c, MC: 0x0d0e0f10, SC: 0x11121314,
+		HP: 30, MP: 20, MaxHP: 35, MaxMP: 25, Exp: 100, MaxExp: 200,
+		Weight: 1, MaxWeight: 2, WearWeight: 3, MaxWearWeight: 4, HandWeight: 5, MaxHandWeight: 6,
+	})
+	if len(body) != 50 {
+		t.Fatalf("ModernAbility length = %d, want 50", len(body))
+	}
+	if got := binary.LittleEndian.Uint32(body[2:6]); got != 0x01020304 {
+		t.Fatalf("modern AC = %#x, want %#x", got, 0x01020304)
+	}
+	if got := binary.LittleEndian.Uint16(body[22:24]); got != 30 {
+		t.Fatalf("modern HP = %d, want 30", got)
+	}
+	if got := binary.LittleEndian.Uint32(body[30:34]); got != 100 {
+		t.Fatalf("modern Exp = %d, want 100", got)
+	}
+	if got := binary.LittleEndian.Uint16(body[48:50]); got != 6 {
+		t.Fatalf("modern MaxHandWeight = %d, want 6", got)
 	}
 }
 
@@ -127,6 +201,50 @@ func TestClientItemBodyUsesItemName(t *testing.T) {
 	}
 	if got := string(body[1 : 1+int(body[0])]); got != "Letter" {
 		t.Fatalf("name = %q, want %q", got, "Letter")
+	}
+}
+
+func TestClientItemBodyAppendsDurabilityForReferenceStdMode50(t *testing.T) {
+	item := data.StdItem{Name: "Timed item", StdMode: 50}
+	body := ClientItemBody(item, [14]byte{}, 7, 12, 34)
+	if got := string(body[1 : 1+int(body[0])]); got != "Timed item #12" {
+		t.Fatalf("name = %q, want %q", got, "Timed item #12")
+	}
+}
+
+func TestClientBagItemBodyMatchesReferenceModernStdMode50Branch(t *testing.T) {
+	item := data.StdItem{Name: "Timed item", StdMode: 50}
+	modern := ClientBagItemBody(item, [14]byte{}, 7, 12, 34)
+	if got := string(modern[1 : 1+int(modern[0])]); got != "Timed item" {
+		t.Fatalf("modern bag name = %q, want %q", got, "Timed item")
+	}
+	legacy := LegacyBagItemBody(item, 7, 12, 34)
+	if got := string(legacy[1 : 1+int(legacy[0])]); got != "Timed item #12" {
+		t.Fatalf("legacy bag name = %q, want %q", got, "Timed item #12")
+	}
+}
+
+func TestEquippedItemBodiesMatchReferenceStdMode50Branches(t *testing.T) {
+	item := data.StdItem{Name: "Timed item", StdMode: 50}
+	modern := ClientEquippedItemBody(item, [14]byte{}, 7, 12, 34)
+	if got := string(modern[1 : 1+int(modern[0])]); got != "Timed item" {
+		t.Fatalf("modern equipped name = %q, want %q", got, "Timed item")
+	}
+	legacy := LegacyEquippedItemBody(item, 7, 12, 34)
+	if got := string(legacy[1 : 1+int(legacy[0])]); got != "Timed item" {
+		t.Fatalf("legacy equipped name = %q, want %q", got, "Timed item")
+	}
+}
+
+func TestNonEquipmentItemListsOmitReferenceStdMode50Suffix(t *testing.T) {
+	item := data.StdItem{Name: "Timed item", StdMode: 50}
+	modern := ClientNoTimedDurabilityItemBody(item, [14]byte{}, 7, 12, 34)
+	if got := string(modern[1 : 1+int(modern[0])]); got != "Timed item" {
+		t.Fatalf("modern list name = %q, want %q", got, "Timed item")
+	}
+	legacy := LegacyNoTimedDurabilityItemBody(item, 7, 12, 34)
+	if got := string(legacy[1 : 1+int(legacy[0])]); got != "Timed item" {
+		t.Fatalf("legacy list name = %q, want %q", got, "Timed item")
 	}
 }
 
@@ -190,6 +308,13 @@ func TestItemBodyUsesCurrentLayout(t *testing.T) {
 	}
 	if got := len(itemBodyForEquipped(storage.Character{}, item, [14]byte{}, 1, 2, 3)); got != 56 {
 		t.Fatalf("ticked equipped item body length = %d, want 56", got)
+	}
+}
+
+func TestLegacyItemBodyUsesReferenceLayout(t *testing.T) {
+	item := data.StdItem{Name: "Sword", StdMode: 1, DuraMax: 40}
+	if got := len(LegacyClientItemBody(item, 1, 2, 3)); got != 50 {
+		t.Fatalf("legacy item body length = %d, want 50", got)
 	}
 }
 
@@ -298,6 +423,9 @@ func decodeMessageLikeClient(frame []byte) (mir176.Command, []byte, error) {
 		return mir176.Command{}, nil, err
 	}
 	headLen := len(mir176.EncodePlain6Command(mir176.Command{}))
+	if len(encoded) < headLen {
+		return mir176.Command{}, nil, fmt.Errorf("message shorter than command header: %d < %d", len(encoded), headLen)
+	}
 	cmd, err := mir176.DecodePlain6Command(encoded[:headLen])
 	if err != nil {
 		return mir176.Command{}, nil, err

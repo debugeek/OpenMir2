@@ -6,18 +6,31 @@ import (
 	"openmir2/internal/storage"
 )
 
+func CharacterObjectLight(ch storage.Character) int {
+	item, ok := ch.EquippedItems[SlotRightHand]
+	if ok && item.ItemID != "" && item.Dura > 0 {
+		return 3
+	}
+	return 0
+}
+
+func (w *World) CharacterObjectLight(ch storage.Character) int {
+	return CharacterObjectLight(ch)
+}
+
 func (w *World) resolvePKDeathLocked(victim, killer *storage.Character) bool {
 	if victim == nil || killer == nil || victim.ID == "" || killer.ID == "" || victim.ID == killer.ID || victim.MapID != killer.MapID {
 		return false
 	}
-	if w.gameplay.Combat.NonPKServer || victim.GuildWarArea || killer.GuildWarArea {
+	if w.gameplay.Combat.NonPKServer || victim.FreePKArea || w.guildsAtWar(*victim, *killer) {
 		return false
 	}
-	if mapData, ok := w.data.Maps[victim.MapID]; ok && mapData.Safe {
-		return false
+	if mapData, ok := w.data.Maps[victim.MapID]; ok {
+		if mapData.Safe || mapData.FightZone || mapData.Fight3Zone {
+			return false
+		}
 	}
-	levelDiffer := w.gameplay.Combat.HumanLevelDiffer
-	if levelDiffer < 0 || killer.Level-victim.Level <= levelDiffer || victim.PKFlag {
+	if characterPKLevel(*victim) >= 2 || victim.PKFlag {
 		return false
 	}
 	points := w.gameplay.Combat.KillHumanAddPKPoint
@@ -66,37 +79,69 @@ func SubAbilitySpeed(class string) byte {
 }
 
 func (w *World) CreateCharacterWithAppearanceAtRandomStartPoint(account, name, class string, hair, sex int) (storage.Character, error) {
-	mapID, x, y := w.RandomNewCharacterSpawn()
-	return w.CreateCharacterWithAppearance(account, name, class, hair, sex, mapID, x, y)
+	mapID, homeX, homeY := w.RandomNewCharacterSpawn()
+	x := homeX + w.RandomIntn(3) - 2
+	y := homeY + w.RandomIntn(3) - 2
+	starterItems := []string{"蜡烛", "金创药(小量)", "木剑"}
+	if sex == 0 {
+		starterItems = append(starterItems, "布衣(男)")
+	} else {
+		starterItems = append(starterItems, "布衣(女)")
+	}
+	items := make([]storage.UserItem, 0, len(starterItems))
+	for _, itemID := range starterItems {
+		item, err := w.NewItemInstance(itemID)
+		if err != nil {
+			return storage.Character{}, err
+		}
+		items = append(items, item)
+	}
+	return w.createCharacterWithItemsAtHome(account, name, class, hair, sex, mapID, homeX, homeY, x, y, items, 15, 15)
 }
 
 func (w *World) CreateCharacterWithAppearance(account, name, class string, hair, sex int, mapID string, x, y int) (storage.Character, error) {
+	return w.createCharacterWithItems(account, name, class, hair, sex, mapID, x, y, []storage.UserItem{{ItemID: "木剑"}}, -1, -1)
+}
+
+func (w *World) createCharacterWithItems(account, name, class string, hair, sex int, mapID string, x, y int, items []storage.UserItem, initialHP, initialMP int) (storage.Character, error) {
+	return w.createCharacterWithItemsAtHome(account, name, class, hair, sex, mapID, x, y, x, y, items, initialHP, initialMP)
+}
+
+func (w *World) createCharacterWithItemsAtHome(account, name, class string, hair, sex int, mapID string, homeX, homeY, x, y int, items []storage.UserItem, initialHP, initialMP int) (storage.Character, error) {
 	base := Base(class, 1)
-	now := time.Now().UnixMilli()
+	if initialHP < 0 {
+		initialHP = base.MaxHP
+	}
+	if initialMP < 0 {
+		initialMP = base.MaxMP
+	}
+	nowTime := time.Now()
+	now := nowTime.UnixMilli()
 	ch := storage.Character{
-		Account:          account,
-		Name:             name,
-		Class:            class,
-		Hair:             hair,
-		Sex:              sex,
-		Level:            1,
-		HomeMap:          mapID,
-		HomeX:            x,
-		HomeY:            y,
-		MapID:            mapID,
-		X:                x,
-		Y:                y,
-		MaxHP:            base.MaxHP,
-		HP:               base.MaxHP,
-		MaxMP:            base.MaxMP,
-		MP:               base.MaxMP,
-		IncHealthSpellAt: now,
-		HealthTickAt:     now,
-		SpellTickAt:      now,
-		PerHealth:        5,
-		PerSpell:         5,
-		PerHealing:       5,
-		BagItems:         []storage.UserItem{{ItemID: "木剑"}},
+		Account:            account,
+		Name:               name,
+		Class:              class,
+		Hair:               hair,
+		Sex:                sex,
+		Level:              1,
+		HomeMap:            mapID,
+		HomeX:              homeX,
+		HomeY:              homeY,
+		MapID:              mapID,
+		X:                  x,
+		Y:                  y,
+		MaxHP:              base.MaxHP,
+		HP:                 initialHP,
+		MaxMP:              base.MaxMP,
+		MP:                 initialMP,
+		IncHealthSpellAt:   now,
+		HealthTickAt:       now,
+		SpellTickAt:        now,
+		PoisonHealthTickAt: nowTime.UnixNano(),
+		PerHealth:          5,
+		PerSpell:           5,
+		PerHealing:         5,
+		BagItems:           items,
 	}
 	return w.store.InsertCharacter(ch)
 }
@@ -114,6 +159,9 @@ func (w *World) NormalizeCharacterState(ch storage.Character) (storage.Character
 	}
 	if ch.SpellTickAt == 0 {
 		ch.SpellTickAt = time.Now().UnixMilli()
+	}
+	if ch.PoisonHealthTickAt == 0 {
+		ch.PoisonHealthTickAt = time.Now().UnixNano()
 	}
 	if ch.PerHealth == 0 {
 		ch.PerHealth = 5
@@ -133,7 +181,7 @@ func (w *World) NormalizeCharacterState(ch storage.Character) (storage.Character
 	if w.normalizeEquippedItemsLocked(&ch) {
 		changed = true
 	}
-	if w.pruneStaleEquippedItemsLocked(&ch) {
+	if w.normalizeBagItemMakeIndexesLocked(&ch) {
 		changed = true
 	}
 	if changed {
@@ -192,6 +240,15 @@ func (w *World) CharacterDisplayName(ch storage.Character) string {
 	return ch.Name
 }
 
+func filterDisplayName(name string) string {
+	for i := 0; i < len(name); i++ {
+		if (name[i] >= '0' && name[i] <= '9') || name[i] == '-' {
+			return name[:i]
+		}
+	}
+	return name
+}
+
 func (w *World) CharacterNameColor(ch storage.Character) uint16 {
 	if ch.PKPoint >= 200 {
 		return 0xF9
@@ -210,16 +267,22 @@ func (w *World) CharacterNameColorFor(observer, target storage.Character) uint16
 	if target.PKPoint >= 200 {
 		return color
 	}
+	if mapData, ok := w.data.Maps[target.MapID]; ok && mapData.Fight3Zone {
+		if observer.GuildID == target.GuildID {
+			return 0xB4
+		}
+		return 0x45
+	}
 	if target.GuildID != "" && observer.GuildID == target.GuildID {
 		return 0xB4
 	}
-	if observer.GuildWarArea && target.GuildWarArea && charactersShareAlliance(observer, target) {
+	if w.guildWarArea(observer) && w.guildWarArea(target) && charactersShareAlliance(observer, target) {
 		return 0xB4
 	}
-	if observer.GuildWarArea && target.GuildWarArea && observer.FreePKArea && target.FreePKArea {
+	if w.guildWarArea(observer) && w.guildWarArea(target) && observer.FreePKArea && target.FreePKArea {
 		return 0xDD
 	}
-	if observer.GuildWarArea && target.GuildWarArea && observer.GuildID != "" && target.GuildID != "" {
+	if w.guildsAtWar(observer, target) {
 		return 0x45
 	}
 	return color
@@ -253,16 +316,55 @@ func containsAllianceID(values []string, want string) bool {
 
 func (w *World) CharacterAreaState(ch storage.Character) int32 {
 	state := int32(0)
-	if mapData, ok := w.data.Maps[ch.MapID]; ok && mapData.Safe {
-		state |= 2
-	}
-	if ch.GuildWarArea {
-		state |= 1
+	if mapData, ok := w.data.Maps[ch.MapID]; ok {
+		if mapData.FightZone {
+			state |= 1
+		}
+		if mapData.Safe {
+			state |= 2
+		}
 	}
 	if ch.FreePKArea {
 		state |= 4
 	}
 	return state
+}
+
+func (w *World) guildWarArea(ch storage.Character) bool {
+	if ch.GuildWarArea {
+		return true
+	}
+	if ch.GuildID == "" {
+		return false
+	}
+	if w.store == nil {
+		return false
+	}
+	if mapData, ok := w.data.Maps[ch.MapID]; !ok || mapData.Safe {
+		return false
+	}
+	guild, ok := w.store.Guild(ch.GuildID)
+	if !ok {
+		return false
+	}
+	for _, active := range guild.Wars {
+		if active {
+			return true
+		}
+	}
+	return false
+}
+
+func (w *World) guildsAtWar(a, b storage.Character) bool {
+	if a.GuildID == "" || b.GuildID == "" {
+		return false
+	}
+	if w.store == nil {
+		return a.GuildWarArea && b.GuildWarArea
+	}
+	first, firstOK := w.store.Guild(a.GuildID)
+	second, secondOK := w.store.Guild(b.GuildID)
+	return firstOK && secondOK && first.Wars[b.GuildID] && second.Wars[a.GuildID]
 }
 
 func (w *World) CharacterStatus(ch storage.Character) int32 {

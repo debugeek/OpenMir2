@@ -9,6 +9,7 @@ type StdBundle struct {
 	Monsters  map[string]StdMonster
 	Drops     map[string]StdDropTable
 	Maps      map[string]StdMap
+	MiniMaps  map[string]int
 	Spawns    []StdSpawn
 	MakeItems map[string][]StdMakeIngredient
 	NPCs      npc.Library
@@ -16,19 +17,22 @@ type StdBundle struct {
 }
 
 type CastleConfig struct {
-	ID        string              `json:"id"`
-	CastleMap string              `json:"castle_map"`
-	PalaceMap string              `json:"palace_map"`
-	SecretMap string              `json:"secret_map"`
-	HomeMap   string              `json:"home_map"`
-	HomeX     int                 `json:"home_x"`
-	HomeY     int                 `json:"home_y"`
-	WarRangeX int                 `json:"war_range_x"`
-	WarRangeY int                 `json:"war_range_y"`
-	MainDoor  CastleDefenseSlot   `json:"main_door"`
-	Walls     []CastleDefenseSlot `json:"walls"`
-	Guards    []CastleDefenseSlot `json:"guards"`
-	Archers   []CastleDefenseSlot `json:"archers"`
+	ID          string              `json:"id"`
+	CastleMap   string              `json:"castle_map"`
+	PalaceMap   string              `json:"palace_map"`
+	SecretMap   string              `json:"secret_map"`
+	WarMaps     []string            `json:"war_maps"`
+	HomeMap     string              `json:"home_map"`
+	HomeX       int                 `json:"home_x"`
+	HomeY       int                 `json:"home_y"`
+	WarRangeX   int                 `json:"war_range_x"`
+	WarRangeY   int                 `json:"war_range_y"`
+	PalaceDoorX int                 `json:"palace_door_x"`
+	PalaceDoorY int                 `json:"palace_door_y"`
+	MainDoor    CastleDefenseSlot   `json:"main_door"`
+	Walls       []CastleDefenseSlot `json:"walls"`
+	Guards      []CastleDefenseSlot `json:"guards"`
+	Archers     []CastleDefenseSlot `json:"archers"`
 }
 
 type CastleDefenseSlot struct {
@@ -177,6 +181,10 @@ type StdMap struct {
 	ID               string             `json:"id"`
 	Name             string             `json:"name"`
 	Safe             bool               `json:"safe,omitempty"`
+	NoThrowItem      bool               `json:"no_throw_item,omitempty"`
+	NoDropItem       bool               `json:"no_drop_item,omitempty"`
+	FightZone        bool               `json:"fight_zone,omitempty"`
+	Fight3Zone       bool               `json:"fight3_zone,omitempty"`
 	NoPositionMove   bool               `json:"no_position_move,omitempty"`
 	RunHuman         bool               `json:"run_human,omitempty"`
 	RunMon           bool               `json:"run_mon,omitempty"`
@@ -187,7 +195,12 @@ type StdMap struct {
 	ExperienceRate   int                `json:"experience_rate,omitempty"`
 	Mine             bool               `json:"mine,omitempty"`
 	NeedHole         bool               `json:"need_hole,omitempty"`
+	LightFixed       bool               `json:"-"`
 	NoRecall         bool               `json:"no_recall,omitempty"`
+	NoReconnect      bool               `json:"no_reconnect,omitempty"`
+	ReconnectMap     string             `json:"reconnect_map,omitempty"`
+	NoRandomMove     bool               `json:"no_random_move,omitempty"`
+	NoDrug           bool               `json:"no_drug,omitempty"`
 	Blocked          []StdPoint         `json:"-"`
 	BlockedBits      []byte             `json:"blocked_bits,omitempty"`
 	StartPoints      []StdStartPoint    `json:"start_points,omitempty"`
@@ -224,6 +237,7 @@ type StdMapSpawn struct {
 	Count          int    `json:"count"`
 	RespawnSeconds int    `json:"respawn_seconds"`
 	MissionGenRate int    `json:"mission_gen_rate"`
+	ReferenceOrder int    `json:"reference_order,omitempty"`
 }
 
 type StdPoint struct {
@@ -241,4 +255,5 @@ type StdSpawn struct {
 	Count          int    `json:"count"`
 	RespawnSeconds int    `json:"respawn_seconds"`
 	MissionGenRate int    `json:"mission_gen_rate"`
+	ReferenceOrder int    `json:"reference_order,omitempty"`
 }

@@ -48,6 +48,8 @@ func TestApplyQueuedRecovery(t *testing.T) {
 		IncHealth:        20,
 		IncSpell:         30,
 		IncHealing:       5,
+		PerHealth:        5,
+		PerSpell:         5,
 		PerHealing:       5,
 		IncHealthSpellAt: time.Unix(10, 0).UnixMilli(),
 	}
@@ -63,6 +65,33 @@ func TestApplyQueuedRecovery(t *testing.T) {
 	}
 }
 
+func TestApplyQueuedRecoveryResetsIdleTimer(t *testing.T) {
+	ch := storage.Character{IncHealthSpellAt: time.Unix(10, 0).UnixMilli()}
+	now := time.Unix(20, 0)
+	next, changed := ApplyQueuedRecovery(ch, now)
+	if changed {
+		t.Fatal("ApplyQueuedRecovery() changed = true, want false")
+	}
+	if next.IncHealthSpellAt != now.UnixMilli() {
+		t.Fatalf("IncHealthSpellAt = %d, want %d", next.IncHealthSpellAt, now.UnixMilli())
+	}
+}
+
+func TestApplyQueuedRecoveryAllowsUnfinalizedZeroHP(t *testing.T) {
+	ch := storage.Character{
+		Level:            1,
+		HP:               0,
+		MaxHP:            100,
+		IncHealth:        5,
+		IncHealthSpellAt: time.UnixMilli(0).UnixMilli(),
+	}
+
+	next, changed := ApplyQueuedRecovery(ch, time.Unix(1, 0))
+	if !changed || next.HP != 1 || next.IncHealth != 4 || next.PerHealth != 5 {
+		t.Fatalf("ApplyQueuedRecovery() = changed:%t character:%+v, want one-point default recovery", changed, next)
+	}
+}
+
 func TestApplyQueuedRecoveryUsesInitialReferenceAmounts(t *testing.T) {
 	ch := storage.Character{
 		Level:            20,
@@ -72,6 +101,8 @@ func TestApplyQueuedRecoveryUsesInitialReferenceAmounts(t *testing.T) {
 		MaxMP:            100,
 		IncHealth:        20,
 		IncSpell:         20,
+		PerHealth:        5,
+		PerSpell:         5,
 		IncHealthSpellAt: time.Unix(10, 0).UnixMilli(),
 	}
 
@@ -104,5 +135,16 @@ func TestApplyQueuedRecoveryUsesReferenceDefaultHealingAmount(t *testing.T) {
 	}
 	if next.HP != 2 || next.IncHealing != 4 || next.PerHealing != 5 {
 		t.Fatalf("recovery = hp:%d healing:%d perHealing:%d, want 2/4/5", next.HP, next.IncHealing, next.PerHealing)
+	}
+}
+
+func TestApplyQueuedRecoveryUsesInclusiveReferenceDueBoundary(t *testing.T) {
+	ch := storage.Character{Level: 1, HP: 1, MaxHP: 100, IncHealth: 5, PerHealth: 5, IncHealthSpellAt: time.Unix(10, 0).UnixMilli()}
+	if next, changed := ApplyQueuedRecovery(ch, time.Unix(10, 589_000_000)); changed || next.HP != ch.HP {
+		t.Fatalf("recovery before due boundary = %+v changed=%t, want unchanged", next, changed)
+	}
+	next, changed := ApplyQueuedRecovery(ch, time.Unix(10, 590_000_000))
+	if !changed || next.HP != 6 || next.IncHealth != 0 {
+		t.Fatalf("recovery at due boundary = %+v changed=%t, want HP 6 and empty queue", next, changed)
 	}
 }

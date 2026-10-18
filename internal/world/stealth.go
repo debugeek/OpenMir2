@@ -16,13 +16,10 @@ func characterTransparentActive(ch storage.Character, now time.Time) bool {
 }
 
 func characterTransparentStatePresent(ch storage.Character) bool {
-	if ch.TransparentUntil <= 0 {
-		return false
-	}
 	if ch.TransparentHideMode != nil {
 		return *ch.TransparentHideMode
 	}
-	return true
+	return ch.TransparentUntil > 0
 }
 
 func setCharacterTransparentRuntime(ch *storage.Character, active bool) {
@@ -37,12 +34,16 @@ func (w *World) applyStealthRingStateLocked(ch *storage.Character, now time.Time
 		return false
 	}
 	for slot := 0; slot < useSlotCount; slot++ {
-		entry, ok := w.equippedItemLocked(*ch, slot)
+		entry, ok := w.activeEquippedItemLocked(*ch, slot)
 		if !ok {
 			continue
 		}
 		item, ok := w.data.Items[entry.ItemID]
-		if !ok || (item.Shape != 111 && item.AniCount != 111) {
+		if !ok {
+			continue
+		}
+		if !((item.Shape == 111 && (slot == SlotRingL || slot == SlotRingR)) ||
+			(item.AniCount == 111 && (slot == SlotDress || slot == SlotWeapon || slot == SlotRightHand))) {
 			continue
 		}
 		until := now.Add(60 * time.Second).UnixNano()
@@ -98,6 +99,14 @@ func setCharacterTransparentLocked(ch *storage.Character, until time.Time) bool 
 	return true
 }
 
+func resetCharacterTransparentLocked(ch *storage.Character, until time.Time) {
+	if ch == nil {
+		return
+	}
+	setCharacterTransparentRuntime(ch, true)
+	ch.TransparentUntil = until.UnixNano()
+}
+
 func clearCharacterTransparentLocked(ch *storage.Character) bool {
 	if ch.TransparentUntil == 0 {
 		return false
@@ -110,22 +119,25 @@ func clearCharacterTransparentLocked(ch *storage.Character) bool {
 func (w *World) breakNearbyMonsterTargetsForStealthLocked(ch storage.Character) {
 	monsters := make([]*Monster, 0, len(w.monsters))
 	for _, mon := range w.monsters {
+		if mon == nil {
+			continue
+		}
 		monsters = append(monsters, mon)
 	}
 	sort.SliceStable(monsters, func(i, j int) bool {
-		if monsters[i].ObjectOrder != monsters[j].ObjectOrder {
-			if monsters[i].ObjectOrder == 0 {
-				return false
-			}
-			if monsters[j].ObjectOrder == 0 {
-				return true
-			}
-			return monsters[i].ObjectOrder < monsters[j].ObjectOrder
+		if monsters[i].X != monsters[j].X {
+			return monsters[i].X < monsters[j].X
 		}
-		return monsters[i].ID < monsters[j].ID
+		if monsters[i].Y != monsters[j].Y {
+			return monsters[i].Y < monsters[j].Y
+		}
+		return monsterSnapshotBefore(*monsters[i], *monsters[j])
 	})
 	for _, mon := range monsters {
-		if mon == nil || !mon.Alive || mon.Race < 50 || mon.MapID != ch.MapID || mon.TargetCharacterID != ch.ID {
+		if mon == nil || !mon.Alive || mon.Ghost || mon.Race < 50 || mon.MapID != ch.MapID {
+			continue
+		}
+		if mon.TargetCharacterID != ch.ID {
 			continue
 		}
 		if abs(mon.X-ch.X) > 9 || abs(mon.Y-ch.Y) > 9 {
@@ -144,42 +156,53 @@ func (w *World) breakNearbyMonsterTargetsForMonsterStealthLocked(target *Monster
 	}
 	monsters := make([]*Monster, 0, len(w.monsters))
 	for _, mon := range w.monsters {
+		if mon == nil {
+			continue
+		}
 		monsters = append(monsters, mon)
 	}
 	sort.SliceStable(monsters, func(i, j int) bool {
-		if monsters[i].ObjectOrder != monsters[j].ObjectOrder {
-			if monsters[i].ObjectOrder == 0 {
-				return false
-			}
-			if monsters[j].ObjectOrder == 0 {
-				return true
-			}
-			return monsters[i].ObjectOrder < monsters[j].ObjectOrder
+		if monsters[i].X != monsters[j].X {
+			return monsters[i].X < monsters[j].X
 		}
-		return monsters[i].ID < monsters[j].ID
+		if monsters[i].Y != monsters[j].Y {
+			return monsters[i].Y < monsters[j].Y
+		}
+		return monsterSnapshotBefore(*monsters[i], *monsters[j])
 	})
 	for _, mon := range monsters {
-		if mon == nil || !mon.Alive || mon.Race < 50 || mon.MapID != target.MapID || mon.TargetCharacterID != target.ID {
+		if mon == nil || !mon.Alive || mon.Ghost || mon.Race < 50 || mon.MapID != target.MapID {
+			continue
+		}
+		if mon.TargetMonsterID != target.ID {
 			continue
 		}
 		if abs(mon.X-target.X) > 9 || abs(mon.Y-target.Y) > 9 {
 			continue
 		}
 		if abs(mon.X-target.X) > 1 || abs(mon.Y-target.Y) > 1 || w.rand.Intn(2) == 0 {
-			mon.TargetCharacterID = ""
+			mon.TargetMonsterID = ""
 			mon.TargetFocusAt = time.Time{}
 		}
 	}
 }
 
 func (w *World) applyCharacterStealthTickLocked(ch storage.Character, now time.Time) (storage.Character, bool) {
-	if ch.TransparentUntil <= 0 || now.UnixNano() <= ch.TransparentUntil {
+	if ch.TransparentUntil <= 0 {
 		return ch, false
 	}
 	next := ch
-	setCharacterTransparentRuntime(&next, false)
-	next.TransparentUntil = 0
-	return next, true
+	until, active, clockChanged := w.advanceCharacterStatusClockLocked(ch.ID, statusClockTransparent, ch.TransparentUntil, now)
+	if !active {
+		setCharacterTransparentRuntime(&next, false)
+		next.TransparentUntil = 0
+		return next, true
+	}
+	if clockChanged {
+		next.TransparentUntil = until
+		return next, true
+	}
+	return ch, false
 }
 
 func (w *World) stealthAffectedTargetsLocked(caster storage.Character, players []storage.Character, targetX, targetY int) []spellAreaTarget {

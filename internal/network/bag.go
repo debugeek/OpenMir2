@@ -19,12 +19,11 @@ func (s *Server) sendBagAddItem(conn net.Conn, ch storage.Character, itemID stri
 		if entry.ItemID != itemID {
 			continue
 		}
-		if makeIndex > 0 && entry.MakeIndex != makeIndex {
+		if entry.MakeIndex != makeIndex {
 			continue
 		}
 		item = world.UpgradeClientItemForDisplay(item, entry, true)
-		dura, duraMax := bagItemDurability(item, entry)
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMAddItem, Recog: world.CharacterActorID(ch), Series: 1}, EncodeBuffer(itemBodyForAdd(ch, item, entry.Desc, entry.MakeIndex, dura, duraMax)))
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMAddItem, Recog: world.CharacterActorID(ch), Series: 1}, EncodeBuffer(s.itemBodyForClient(conn, item, entry.Desc, entry.MakeIndex, entry.Dura, entry.DuraMax)))
 		return true
 	}
 	return false
@@ -36,8 +35,19 @@ func (s *Server) sendDelItem(conn net.Conn, ch storage.Character, removed storag
 		return false
 	}
 	item = world.UpgradeClientItemForDisplay(item, removed, false)
-	body := ClientItemBody(item, removed.Desc, removed.MakeIndex, removed.Dura, removed.DuraMax)
+	body := s.itemBodyForStateSync(conn, item, removed.Desc, removed.MakeIndex, removed.Dura, removed.DuraMax)
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMDelItem, Recog: world.CharacterActorID(ch), Series: 1}, EncodeBuffer(body))
+	return true
+}
+
+func (s *Server) sendUpdatedItem(conn net.Conn, ch storage.Character, updated storage.UserItem) bool {
+	item, ok := s.world.Item(updated.ItemID)
+	if !ok {
+		return false
+	}
+	item = world.UpgradeClientItemForDisplay(item, updated, false)
+	body := s.itemBodyForStateSync(conn, item, updated.Desc, updated.MakeIndex, updated.Dura, updated.DuraMax)
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMUpdateItem, Recog: world.CharacterActorID(ch), Series: 1}, EncodeBuffer(body))
 	return true
 }
 
@@ -48,7 +58,7 @@ func (s *Server) sendCharacterDeletedItems(conn net.Conn, ch storage.Character, 
 }
 
 func (s *Server) sendEquippedItems(conn net.Conn, ch storage.Character) {
-	body := EquippedItemsBody(s.world, ch)
+	body := s.equippedItemsBodyForClient(conn, ch)
 	if len(body) == 0 {
 		return
 	}
@@ -56,14 +66,60 @@ func (s *Server) sendEquippedItems(conn net.Conn, ch storage.Character) {
 }
 
 func (s *Server) sendBagItems(conn net.Conn, ch storage.Character) {
-	body, count := BagItemsBodyAndCount(s.world, ch)
+	body, count := s.bagItemsBodyAndCountForClient(conn, ch)
 	if len(body) == 0 {
 		return
 	}
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMBagItems, Recog: world.CharacterActorID(ch), Param: 0, Tag: 0, Series: uint16(count)}, body)
 }
 
+func (s *Server) itemBodyForClient(conn net.Conn, item data.StdItem, desc [14]byte, makeIndex int32, dura, duraMax uint16) []byte {
+	client := s.clientForConn(conn)
+	if client != nil {
+		client.mu.Lock()
+		legacy := client.softVersion == 0
+		client.mu.Unlock()
+		if legacy {
+			return LegacyClientItemBody(item, makeIndex, dura, duraMax)
+		}
+	}
+	return ClientItemBody(item, desc, makeIndex, dura, duraMax)
+}
+
+func (s *Server) itemBodyForStateSync(conn net.Conn, item data.StdItem, desc [14]byte, makeIndex int32, dura, duraMax uint16) []byte {
+	client := s.clientForConn(conn)
+	if client != nil {
+		client.mu.Lock()
+		legacy := client.softVersion == 0 && client.clientTick == 0
+		client.mu.Unlock()
+		if legacy {
+			return LegacyClientItemBody(item, makeIndex, dura, duraMax)
+		}
+	}
+	return ClientItemBody(item, desc, makeIndex, dura, duraMax)
+}
+
+func (s *Server) equippedItemsBodyForClient(conn net.Conn, ch storage.Character) []byte {
+	client := s.clientForConn(conn)
+	legacy := false
+	if client != nil {
+		client.mu.Lock()
+		legacy = client.softVersion == 0 && client.clientTick == 0
+		client.mu.Unlock()
+	}
+	return equippedItemsBody(s.world, ch, func(item data.StdItem, desc [14]byte, makeIndex int32, dura, duraMax uint16) []byte {
+		if legacy {
+			return LegacyEquippedItemBody(item, makeIndex, dura, duraMax)
+		}
+		return ClientEquippedItemBody(item, desc, makeIndex, dura, duraMax)
+	})
+}
+
 func EquippedItemsBody(w *world.World, ch storage.Character) []byte {
+	return equippedItemsBody(w, ch, nil)
+}
+
+func equippedItemsBody(w *world.World, ch storage.Character, bodyFor func(data.StdItem, [14]byte, int32, uint16, uint16) []byte) []byte {
 	itemEntries := []byte{}
 	for slot := 0; slot < 13; slot++ {
 		equipped, ok := equippedItem(ch, slot)
@@ -76,6 +132,9 @@ func EquippedItemsBody(w *world.World, ch storage.Character) []byte {
 		}
 		item = world.UpgradeClientItemForDisplay(item, equipped, false)
 		client := itemBodyForEquipped(ch, item, equipped.Desc, equipped.MakeIndex, equipped.Dura, equipped.DuraMax)
+		if bodyFor != nil {
+			client = bodyFor(item, equipped.Desc, equipped.MakeIndex, equipped.Dura, equipped.DuraMax)
+		}
 		encoded := EncodeBuffer(client)
 		if len(encoded) == 0 {
 			continue
@@ -89,6 +148,38 @@ func EquippedItemsBody(w *world.World, ch storage.Character) []byte {
 }
 
 func BagItemsBodyAndCount(w *world.World, ch storage.Character) ([]byte, int) {
+	return bagItemsBodyAndCount(w, ch, nil)
+}
+
+func (s *Server) bagItemsBodyAndCountForClient(conn net.Conn, ch storage.Character) ([]byte, int) {
+	legacy := false
+	if client := s.clientForConn(conn); client != nil {
+		client.mu.Lock()
+		legacy = client.softVersion == 0
+		client.mu.Unlock()
+	}
+	return bagItemsBodyAndCount(s.world, ch, func(item data.StdItem, desc [14]byte, makeIndex int32, dura, duraMax uint16) []byte {
+		if legacy {
+			return LegacyBagItemBody(item, makeIndex, dura, duraMax)
+		}
+		return ClientBagItemBody(item, desc, makeIndex, dura, duraMax)
+	})
+}
+
+func (s *Server) itemBodyWithoutTimedDurabilityForClient(conn net.Conn, item data.StdItem, desc [14]byte, makeIndex int32, dura, duraMax uint16) []byte {
+	legacy := false
+	if client := s.clientForConn(conn); client != nil {
+		client.mu.Lock()
+		legacy = client.softVersion == 0 && client.clientTick == 0
+		client.mu.Unlock()
+	}
+	if legacy {
+		return LegacyNoTimedDurabilityItemBody(item, makeIndex, dura, duraMax)
+	}
+	return ClientNoTimedDurabilityItemBody(item, desc, makeIndex, dura, duraMax)
+}
+
+func bagItemsBodyAndCount(w *world.World, ch storage.Character, bodyFor func(data.StdItem, [14]byte, int32, uint16, uint16) []byte) ([]byte, int) {
 	itemEntries := []byte{}
 	for _, entry := range ch.BagItems {
 		item, ok := w.Item(entry.ItemID)
@@ -98,6 +189,9 @@ func BagItemsBodyAndCount(w *world.World, ch storage.Character) ([]byte, int) {
 		item = world.UpgradeClientItemForDisplay(item, entry, false)
 		makeIndex := entry.MakeIndex
 		client := itemBodyForBag(ch, item, entry.Desc, makeIndex, entry.Dura, entry.DuraMax)
+		if bodyFor != nil {
+			client = bodyFor(item, entry.Desc, makeIndex, entry.Dura, entry.DuraMax)
+		}
 		encoded := EncodeBuffer(client)
 		if len(encoded) == 0 {
 			continue
@@ -129,21 +223,9 @@ func itemBodyForAdd(ch storage.Character, item data.StdItem, desc [14]byte, make
 
 func itemBodyForBag(ch storage.Character, item data.StdItem, desc [14]byte, makeIndex int32, dura, duraMax uint16) []byte {
 	_ = ch
-	return ClientItemBody(item, desc, makeIndex, dura, duraMax)
+	return ClientNoTimedDurabilityItemBody(item, desc, makeIndex, dura, duraMax)
 }
 
 func itemBodyForEquipped(ch storage.Character, item data.StdItem, desc [14]byte, makeIndex int32, dura, duraMax uint16) []byte {
-	return ClientItemBody(item, desc, makeIndex, dura, duraMax)
-}
-
-func bagItemDurability(item data.StdItem, entry storage.UserItem) (uint16, uint16) {
-	duraMax := entry.DuraMax
-	if duraMax == 0 {
-		duraMax = world.ItemDuraForEquip(item)
-	}
-	dura := entry.Dura
-	if dura == 0 {
-		dura = duraMax
-	}
-	return dura, duraMax
+	return ClientEquippedItemBody(item, desc, makeIndex, dura, duraMax)
 }

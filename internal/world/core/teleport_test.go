@@ -34,7 +34,7 @@ func TestTeleportToBlockedTileFails(t *testing.T) {
 	}
 }
 
-func TestTeleportRandomInMapMovesCharacter(t *testing.T) {
+func TestTeleportRandomInMapSelectsWalkableTile(t *testing.T) {
 	ch := storage.Character{ID: "char-1", MapID: "old-map", X: 0, Y: 0}
 	mp := data.StdMap{ID: "map-1", Width: 2, Height: 2}
 
@@ -45,24 +45,32 @@ func TestTeleportRandomInMapMovesCharacter(t *testing.T) {
 	if updated.MapID != mp.ID {
 		t.Fatalf("MapID = %q, want %q", updated.MapID, mp.ID)
 	}
-	if updated.X == ch.X && updated.Y == ch.Y {
-		t.Fatalf("teleport did not move character")
-	}
 	if !mp.Walkable(updated.X, updated.Y) {
 		t.Fatalf("teleport landed on blocked tile (%d,%d)", updated.X, updated.Y)
 	}
 }
 
-func TestTeleportRandomInMapNeverReturnsCurrentTile(t *testing.T) {
-	ch := storage.Character{ID: "char-1", MapID: "old-map", X: 1, Y: 0}
-	mp := data.StdMap{ID: "map-1", Width: 3, Height: 1}
-	for seed := int64(1); seed <= 100; seed++ {
-		updated, err := TeleportRandomInMap(ch, mp, rand.New(rand.NewSource(seed)))
-		if err != nil {
-			t.Fatalf("TeleportRandomInMap(seed=%d) error = %v", seed, err)
-		}
-		if updated.X == ch.X && updated.Y == ch.Y {
-			t.Fatalf("TeleportRandomInMap(seed=%d) returned current tile", seed)
+func TestTeleportRandomInMapMayReturnCurrentTile(t *testing.T) {
+	ch := storage.Character{ID: "char-1", MapID: "old-map", X: 2, Y: 2}
+	blocked := make([]data.StdPoint, 0, 99)
+	for y := 0; y < 10; y++ {
+		for x := 0; x < 10; x++ {
+			if x != ch.X || y != ch.Y {
+				blocked = append(blocked, data.StdPoint{X: x, Y: y})
+			}
 		}
 	}
+	mp := data.StdMap{ID: "map-1", Width: 10, Height: 10, Blocked: blocked}
+	updated, err := TeleportRandomInMap(ch, mp, rand.New(zeroSource{}))
+	if err != nil {
+		t.Fatalf("TeleportRandomInMap() error = %v, want reference to accept current walkable tile", err)
+	}
+	if updated.X != ch.X || updated.Y != ch.Y {
+		t.Fatalf("TeleportRandomInMap() = (%d,%d), want current tile (%d,%d)", updated.X, updated.Y, ch.X, ch.Y)
+	}
 }
+
+type zeroSource struct{}
+
+func (zeroSource) Int63() int64 { return 0 }
+func (zeroSource) Seed(int64)   {}

@@ -37,7 +37,7 @@ func TestMonsterPacketTraceRecordsObserverAndFrame(t *testing.T) {
 		t.Fatalf("packet traces = %d, want 1", len(traces))
 	}
 	trace := traces[0]
-	if trace.Sequence != 0 || trace.Observer != "trace-observer" || trace.MonsterID != action.MonsterID || trace.Phase != "action" || trace.Command != MonsterWalkCommand(action, s.world.MapLight(action.MapID)).Ident {
+	if trace.Sequence != 0 || trace.Observer != "trace-observer" || trace.MonsterID != action.MonsterID || trace.Phase != "action" || trace.Command != MonsterWalkCommand(action, action.Light).Ident {
 		t.Fatalf("packet trace = %+v", trace)
 	}
 	if !bytes.Equal(trace.Frame, frame) {

@@ -1,5 +1,8 @@
 {
   "id": "H008",
+  "no_recall": true,
+  "no_reconnect": true,
+  "reconnect_map": "H007",
   "name": "幻境八层",
   "width": 100,
   "height": 100,
@@ -50,7 +53,8 @@
       "y": 45,
       "range": 10,
       "count": 5,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 2258
     },
     {
       "monster_id": "虹魔教主1",
@@ -58,7 +62,8 @@
       "y": 29,
       "range": 10,
       "count": 1,
-      "respawn_seconds": 360
+      "respawn_seconds": 360,
+      "reference_order": 2267
     },
     {
       "monster_id": "祖玛雕像3",
@@ -66,7 +71,8 @@
       "y": 58,
       "range": 10,
       "count": 8,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 2254
     },
     {
       "monster_id": "祖玛卫士4",
@@ -74,7 +80,8 @@
       "y": 25,
       "range": 10,
       "count": 5,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 2259
     },
     {
       "monster_id": "楔蛾1",
@@ -82,7 +89,8 @@
       "y": 45,
       "range": 60,
       "count": 20,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 2262
     },
     {
       "monster_id": "祖玛卫士4",
@@ -90,7 +98,8 @@
       "y": 45,
       "range": 20,
       "count": 10,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 2260
     },
     {
       "monster_id": "祖玛弓箭手3",
@@ -98,7 +107,8 @@
       "y": 45,
       "range": 50,
       "count": 20,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 2261
     },
     {
       "monster_id": "虹魔猪卫2",
@@ -106,7 +116,8 @@
       "y": 45,
       "range": 30,
       "count": 2,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 2266
     },
     {
       "monster_id": "虹魔猪卫2",
@@ -114,7 +125,8 @@
       "y": 45,
       "range": 30,
       "count": 1,
-      "respawn_seconds": 15
+      "respawn_seconds": 15,
+      "reference_order": 2264
     },
     {
       "monster_id": "虹魔蝎卫2",
@@ -122,7 +134,8 @@
       "y": 45,
       "range": 30,
       "count": 1,
-      "respawn_seconds": 30
+      "respawn_seconds": 30,
+      "reference_order": 2263
     },
     {
       "monster_id": "虹魔蝎卫2",
@@ -130,7 +143,8 @@
       "y": 45,
       "range": 30,
       "count": 2,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 2265
     },
     {
       "monster_id": "祖玛雕像3",
@@ -138,7 +152,8 @@
       "y": 65,
       "range": 10,
       "count": 8,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 2255
     },
     {
       "monster_id": "祖玛雕像3",
@@ -146,7 +161,8 @@
       "y": 26,
       "range": 10,
       "count": 8,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 2256
     },
     {
       "monster_id": "祖玛雕像3",
@@ -154,7 +170,8 @@
       "y": 35,
       "range": 10,
       "count": 5,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 2257
     }
   ],
   "blocked_bits": "////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////8//P////////////H/5/+P///////////8D/A////////////wf4H+D//////////z8A/wD8//////////8B4AeA//////////8PADwA8P////////9/AIABAP7/////////AwAAAMD/////////HwAAAAD4/////////wAAAAAA/////////wcAAAAM4P///////z8AAADAAPz///////8BAAAAAID///////8PAAAAAADw//////9/AAAAAAAA/v//////AQAAAAAAwP//////HwIAAAAAAPj//////wAAAAAAYAD//////wcAAAAAAA/g/////z8AAAAAAGAA/P////8BAAAAAAAG4P////8PAQAAAAAAAP////9/AAAAAAAAAPj/////AwAAYAAAAID/////HwAAAAYAAAD8/////wAAAGAAAADg/////wcAAAAAAAAA/////z8AAAAAAAAA8P////8BAAAAAAAAgP////8PAAAAAAAAAPj///9/AAAAAAAAAID/////AwAAAAAAAADw////fwAAAAAAAAAA/v///w8AABgAAAAAwP////8BAIABAAAAAPj///8fAAAY4AEAAAD/////AwAAAB4AAADg////fwAAAAAAAAAA/P///w8AAACAAAAA4P////8AAAAAAAAAAP////8fAAAAAAAAAPj/////AQAAAAAAAMD/////HwAAAAAAAAD+/////wAAAAAAAADw/////wcAAAAAAACA/////z8AAAAAAAAA/P////8BAAAAAAAA4P////8PAAAAAAAAAP7///9/gAEAAAAAAPD/////AxgAAAAAAID/////f4ABAAAAAAD8/////w8AAAAAAADA//////8BAAAAAAAA/v////8/AAAAAAAA4P//////BwAAAAAAAP7//////wAAAAAAAMD//////x8AAwAAABj4//////8DMAAAAMAD//////9/AAMAAAB+4P//////DwAAAADwD/zP/////wEAAACA/4F/+P///z8AAAAA/D/wM/////8HABgA4P8DHuP/////AMADAP9/wDD8////HwB+APj/DwCA/////wPwD8D//wEA8P///3+A/wH+/x8AAP7///8P/D/w//8DAMD/////4f+H//8/AAD+////P////P//AwDw////////////HwDA/////////////wAA/v///////////wcA8P///////////z8AgP////////////8HAPz/////////////AOD/////////////HwD//////////////wPw/////////////3+A//////////////8P/P//////////////4f//////////////P/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////8="

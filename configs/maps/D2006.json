@@ -1,8 +1,10 @@
 {
   "id": "D2006",
+  "no_recall": true,
   "name": "烈焰殿",
   "width": 100,
   "height": 100,
+  "no_random_move": true,
   "connections": [
     {
       "to_map": "D2007",
@@ -44,7 +46,8 @@
       "y": 38,
       "range": 100,
       "count": 40,
-      "respawn_seconds": 12
+      "respawn_seconds": 12,
+      "reference_order": 1713
     },
     {
       "monster_id": "白野猪",
@@ -52,7 +55,8 @@
       "y": 38,
       "range": 100,
       "count": 5,
-      "respawn_seconds": 20
+      "respawn_seconds": 20,
+      "reference_order": 1709
     },
     {
       "monster_id": "白野猪",
@@ -60,7 +64,8 @@
       "y": 38,
       "range": 40,
       "count": 5,
-      "respawn_seconds": 35
+      "respawn_seconds": 35,
+      "reference_order": 1715
     },
     {
       "monster_id": "白野猪1",
@@ -68,7 +73,8 @@
       "y": 38,
       "range": 40,
       "count": 1,
-      "respawn_seconds": 30
+      "respawn_seconds": 30,
+      "reference_order": 1716
     },
     {
       "monster_id": "红野猪",
@@ -76,7 +82,8 @@
       "y": 38,
       "range": 100,
       "count": 40,
-      "respawn_seconds": 15
+      "respawn_seconds": 15,
+      "reference_order": 1708
     },
     {
       "monster_id": "红野猪2",
@@ -84,7 +91,8 @@
       "y": 38,
       "range": 100,
       "count": 10,
-      "respawn_seconds": 16
+      "respawn_seconds": 16,
+      "reference_order": 1712
     },
     {
       "monster_id": "虹魔猪卫",
@@ -92,7 +100,8 @@
       "y": 38,
       "range": 40,
       "count": 1,
-      "respawn_seconds": 60
+      "respawn_seconds": 60,
+      "reference_order": 1717
     },
     {
       "monster_id": "角蝇",
@@ -100,7 +109,8 @@
       "y": 38,
       "range": 100,
       "count": 9,
-      "respawn_seconds": 30
+      "respawn_seconds": 30,
+      "reference_order": 1711
     },
     {
       "monster_id": "黑色恶蛆",
@@ -108,7 +118,8 @@
       "y": 38,
       "range": 100,
       "count": 40,
-      "respawn_seconds": 18
+      "respawn_seconds": 18,
+      "reference_order": 1710
     },
     {
       "monster_id": "黑野猪",
@@ -116,7 +127,8 @@
       "y": 38,
       "range": 100,
       "count": 40,
-      "respawn_seconds": 13
+      "respawn_seconds": 13,
+      "reference_order": 1707
     },
     {
       "monster_id": "黑野猪2",
@@ -124,7 +136,8 @@
       "y": 38,
       "range": 100,
       "count": 10,
-      "respawn_seconds": 19
+      "respawn_seconds": 19,
+      "reference_order": 1714
     }
   ],
   "blocked_bits": "/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////+f/n////////////z/8//D///////////+B/wf+//////////8P8D/A//////////9/AP4B+P//////////w8EPAP//////////Bzh4APD/////////fwQTA4D//////////wcAAAD8/////////z8AAADg//////////8BAAAA/v////////9PAAAA8P////////9/AAAAAP//////////AwAAAPD/////////HwAAAAD+/////////wMAAADA/////////38AAAAA+P////////8PGAAAAP//////////wAMAAOD/////////HxgAAAD8/////////4MBAACD/////////38AAAAw8P////////8HAAAAA/7/////////AAAAAMD/////////DwAAAAD4/////////wAAAAAA/////////wcAAADA4P///////z8AAAAADPz///////8BAAAAwID///////8PAAAAAADw//////9/AAAAAACA////////AwAAABgA/P//////HwAAAIAB4P///////wMwAAAAAP7//////3+ABwAAAPD///////8P/AADAID/////////4R8wAAD8////////P/8DAwDQ//////////9/AAAA////////////DwAA4P///////////wEAAP7//////////z8AgMD///////////8HABj4/+f/////////AMAD/z/8////////HwB+4P+B/////////wPwD/wP8P///////3+A/4F/GP7///////8P/D/wg8H/////////4f8DHhj4////////P/9/wAAA////////////DwAA4P///////////wEAAPz//////////x8AAIb///////////8DAPDw//////////8/AAAG/v//////////AwBgwP//////////HwAAAPz//////////wAAAOD//////////wcAAAD//////////z8AAADw//////////8BAACA//////////8PAAAA/P////////9/AAAA8P//////////DwAAwP///////////wEAAP7//////////z8AAPD///////////8HAID/////////////AAD8////////////HwDg/////////////wMA/////////////38A8P////////////8PgP//////////////Afz/////////////P+D//////////////wf////////////////4///////////////f//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////8="

@@ -8,9 +8,9 @@ import (
 
 func MonsterDisplayName(mon Monster) string {
 	if mon.MasterName == "" {
-		return mon.Name
+		return filterDisplayName(mon.Name)
 	}
-	return mon.Name + "(" + mon.MasterName + ")"
+	return filterDisplayName(mon.Name) + "(" + mon.MasterName + ")"
 }
 
 func MonsterFeature(mon Monster) int32 {
@@ -18,6 +18,12 @@ func MonsterFeature(mon Monster) int32 {
 }
 
 func MonsterNameColor(mon Monster) uint16 {
+	if mon.SlaveColorSet {
+		return mon.SlaveNameColor
+	}
+	if mon.SlaveExpLevel > 0 && mon.SlaveExpLevel < 9 {
+		return [...]uint16{0xFF, 0xFE, 0x93, 0x9A, 0xE5, 0xA8, 0xB4, 0xFC, 249}[mon.SlaveExpLevel]
+	}
 	if !mon.HolySeizeUntil.IsZero() {
 		return 0x7D
 	}
@@ -57,15 +63,33 @@ func MonsterStatus(mon Monster, now time.Time) int32 {
 }
 
 func MonsterActorID(mon Monster) int32 {
+	if mon.ActorID > 0 {
+		return mon.ActorID
+	}
 	_, suffix, ok := strings.Cut(mon.ID, "-")
 	if !ok {
+		if mon.ObjectOrder > 0 {
+			return 500000 + int32(mon.ObjectOrder)
+		}
 		return 100000
 	}
 	n, err := strconv.Atoi(suffix)
 	if err != nil {
+		if mon.ObjectOrder > 0 {
+			return 500000 + int32(mon.ObjectOrder)
+		}
 		return 100000
 	}
 	return int32(100000 + n)
+}
+
+func monsterHasNumericActorID(id string) bool {
+	_, suffix, ok := strings.Cut(id, "-")
+	if !ok {
+		return false
+	}
+	_, err := strconv.Atoi(suffix)
+	return err == nil
 }
 
 func DropActorID(drop GroundDrop) int32 {

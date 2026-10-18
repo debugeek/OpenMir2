@@ -20,14 +20,40 @@ type Listener struct {
 
 type Gameplay struct {
 	Combat      CombatSettings      `json:"combat"`
+	Bonus       BonusSettings       `json:"bonus"`
 	Recovery    RecoverySettings    `json:"recovery"`
 	Persistence PersistenceSettings `json:"persistence"`
 	Progression ProgressionSettings `json:"progression"`
 	Monster     MonsterSettings     `json:"monster"`
 	Movement    MovementSettings    `json:"movement"`
 	Item        ItemSettings        `json:"item"`
+	Deal        DealSettings        `json:"deal"`
 	Guild       GuildSettings       `json:"guild"`
 	Castle      CastleSettings      `json:"castle"`
+}
+
+type BonusSettings struct {
+	Warrior BonusAbilitySettings `json:"warrior"`
+	Wizard  BonusAbilitySettings `json:"wizard"`
+	Taoist  BonusAbilitySettings `json:"taoist"`
+}
+
+type BonusAbilitySettings struct {
+	Bonus BonusValues `json:"bonus"`
+	Naked BonusValues `json:"naked"`
+}
+
+type BonusValues struct {
+	DC    int `json:"dc"`
+	MC    int `json:"mc"`
+	SC    int `json:"sc"`
+	AC    int `json:"ac"`
+	MAC   int `json:"mac"`
+	HP    int `json:"hp"`
+	MP    int `json:"mp"`
+	Hit   int `json:"hit"`
+	Speed int `json:"speed"`
+	X2    int `json:"x2"`
 }
 
 type PersistenceSettings struct {
@@ -38,15 +64,30 @@ type RecoverySettings struct {
 	HealthFillTimeMS int `json:"health_fill_time_ms"`
 	SpellFillTimeMS  int `json:"spell_fill_time_ms"`
 	RevivalTimeMS    int `json:"revival_time_ms"`
+	MakeGhostTimeMS  int `json:"make_ghost_time_ms"`
 }
 
 type CombatSettings struct {
 	DieScatterBag              bool   `json:"die_scatter_bag"`
+	DieScatterBagRate          int    `json:"die_scatter_bag_rate"`
+	DieRedScatterBagAll        bool   `json:"die_red_scatter_bag_all"`
 	DieDropGold                bool   `json:"die_drop_gold"`
+	DieGoldDropChunkSize       int    `json:"die_gold_drop_chunk_size"`
+	DieDropUseItemRate         int    `json:"die_drop_use_item_rate"`
+	DieRedDropUseItemRate      int    `json:"die_red_drop_use_item_rate"`
+	KillHumanDropUseItem       bool   `json:"kill_human_drop_use_item"`
+	KillMonsterDropUseItem     bool   `json:"kill_monster_drop_use_item"`
+	ControlDropItem            bool   `json:"control_drop_item"`
+	InSafeDisableDrop          bool   `json:"in_safe_disable_drop"`
+	CanDropGold                int    `json:"can_drop_gold"`
+	CanDropPrice               int    `json:"can_drop_price"`
 	HitImpactDelayMS           int    `json:"hit_impact_delay_ms"`
 	KillHumanAddPKPoint        int    `json:"kill_human_add_pk_point"`
+	PKPointDecayTimeMS         int    `json:"pk_point_decay_time_ms"`
+	PKPointDecayCount          int    `json:"pk_point_decay_count"`
 	KillHumanDecLuckPoint      int    `json:"kill_human_dec_luck_point"`
 	HumanLevelDiffer           int    `json:"human_level_differ"`
+	HighLevelKillMonFixExp     bool   `json:"high_level_kill_mon_fix_exp"`
 	HighLevelGroupFixExp       bool   `json:"high_level_group_fix_exp"`
 	PoisonTickIntervalMS       int    `json:"poison_tick_interval_ms"`
 	MineHitRate                int    `json:"mine_hit_rate"`
@@ -73,6 +114,7 @@ type CombatSettings struct {
 	WalkHitIntervalMS          int    `json:"walk_hit_interval_ms"`
 	RunHitIntervalMS           int    `json:"run_hit_interval_ms"`
 	RunLongHitIntervalMS       int    `json:"run_long_hit_interval_ms"`
+	SwordLongPowerRate         int    `json:"sword_long_power_rate"`
 	RunMagicIntervalMS         int    `json:"run_magic_interval_ms"`
 	WalkIntervalMS             int    `json:"walk_interval_ms"`
 	RunIntervalMS              int    `json:"run_interval_ms"`
@@ -105,7 +147,15 @@ type ProgressionSettings struct {
 }
 
 type MonsterSettings struct {
-	TickMS int `json:"tick_ms"`
+	TickMS               int      `json:"tick_ms"`
+	MasterDieMutiny      bool     `json:"master_die_mutiny"`
+	MasterDieMutinyRate  int      `json:"master_die_mutiny_rate"`
+	MasterDieMutinyPower int      `json:"master_die_mutiny_power"`
+	MasterDieMutinySpeed int      `json:"master_die_mutiny_speed"`
+	SlaveColors          []uint16 `json:"slave_colors"`
+	SlaveExpRate         int      `json:"slave_exp_rate"`
+	SlaveExpBase         int      `json:"slave_exp_base"`
+	SlaveExpKillCounts   []int    `json:"slave_exp_kill_counts"`
 }
 
 type MovementSettings struct {
@@ -115,6 +165,7 @@ type MovementSettings struct {
 	DisableHumanRun    bool `json:"disable_human_run"`
 	RunHuman           bool `json:"run_human"`
 	RunMon             bool `json:"run_mon"`
+	RunGuard           bool `json:"run_guard"`
 	RunNPC             bool `json:"run_npc"`
 	RunWarAll          bool `json:"run_war_all"`
 }
@@ -124,6 +175,7 @@ type ItemSettings struct {
 	FloorItemCanPickUpMS          int `json:"floor_item_can_pick_up_ms"`
 	MaxBagItem                    int `json:"max_bag_item"`
 	MaxGold                       int `json:"max_gold"`
+	MonsterRandomAddValue         int `json:"monster_random_add_value"`
 	UpgradeWeaponPrice            int `json:"upgrade_weapon_price"`
 	UpgradeWeaponGetBackMS        int `json:"upgrade_weapon_get_back_ms"`
 	UpgradeWeaponExpireDays       int `json:"upgrade_weapon_expire_days"`
@@ -139,12 +191,19 @@ type ItemSettings struct {
 	UpgradeWeaponSCThreePointRate int `json:"upgrade_weapon_sc_three_point_rate"`
 }
 
+type DealSettings struct {
+	CanNotGetBackDeal bool `json:"can_not_get_back_deal"`
+	DisableDeal       bool `json:"disable_deal"`
+}
+
 type GuildSettings struct {
 	BuildGuildPrice int `json:"build_guild_price"`
 	GuildWarPrice   int `json:"guild_war_price"`
+	GuildWarTimeMS  int `json:"guild_war_time_ms"`
 }
 
 type CastleSettings struct {
+	GoldMax              int `json:"gold_max"`
 	RepairDoorPrice      int `json:"repair_door_price"`
 	RepairWallPrice      int `json:"repair_wall_price"`
 	HireGuardPrice       int `json:"hire_guard_price"`
@@ -274,6 +333,9 @@ func LoadGameplay(dir string) (Gameplay, error) {
 	if cfg.Recovery.RevivalTimeMS <= 0 {
 		return cfg, fmt.Errorf("recovery.revival_time_ms must be > 0")
 	}
+	if cfg.Recovery.MakeGhostTimeMS <= 0 {
+		return cfg, fmt.Errorf("recovery.make_ghost_time_ms must be > 0")
+	}
 	if cfg.Persistence.SaveHumanRcdTimeMS <= 0 {
 		return cfg, fmt.Errorf("persistence.save_human_rcd_time_ms must be > 0")
 	}
@@ -300,6 +362,9 @@ func LoadGameplay(dir string) (Gameplay, error) {
 	if cfg.Item.MaxGold <= 0 {
 		return cfg, fmt.Errorf("item.max_gold must be > 0")
 	}
+	if cfg.Item.MonsterRandomAddValue <= 0 {
+		return cfg, fmt.Errorf("item.monster_random_add_value must be > 0")
+	}
 	if cfg.Item.UpgradeWeaponPrice <= 0 {
 		return cfg, fmt.Errorf("item.upgrade_weapon_price must be > 0")
 	}
@@ -321,6 +386,9 @@ func LoadGameplay(dir string) (Gameplay, error) {
 	if cfg.Guild.GuildWarPrice <= 0 {
 		return cfg, fmt.Errorf("guild.guild_war_price must be > 0")
 	}
+	if cfg.Guild.GuildWarTimeMS <= 0 {
+		return cfg, fmt.Errorf("guild.guild_war_time_ms must be > 0")
+	}
 	if cfg.Castle.RepairDoorPrice <= 0 {
 		return cfg, fmt.Errorf("castle.repair_door_price must be > 0")
 	}
@@ -333,6 +401,24 @@ func LoadGameplay(dir string) (Gameplay, error) {
 	if cfg.Castle.HireArcherPrice <= 0 {
 		return cfg, fmt.Errorf("castle.hire_archer_price must be > 0")
 	}
+	if cfg.Combat.DieDropUseItemRate <= 0 {
+		return cfg, fmt.Errorf("combat.die_drop_use_item_rate must be > 0")
+	}
+	if cfg.Combat.DieRedDropUseItemRate <= 0 {
+		return cfg, fmt.Errorf("combat.die_red_drop_use_item_rate must be > 0")
+	}
+	if cfg.Combat.DieGoldDropChunkSize <= 0 {
+		return cfg, fmt.Errorf("combat.die_gold_drop_chunk_size must be > 0")
+	}
+	if cfg.Combat.DieScatterBagRate <= 0 {
+		return cfg, fmt.Errorf("combat.die_scatter_bag_rate must be > 0")
+	}
+	if cfg.Combat.CanDropGold < 0 {
+		return cfg, fmt.Errorf("combat.can_drop_gold must be >= 0")
+	}
+	if cfg.Combat.CanDropPrice < 0 {
+		return cfg, fmt.Errorf("combat.can_drop_price must be >= 0")
+	}
 	if cfg.Castle.StartWarDays <= 0 {
 		return cfg, fmt.Errorf("castle.start_war_days must be > 0")
 	}
@@ -344,57 +430,79 @@ func LoadGameplay(dir string) (Gameplay, error) {
 
 func DefaultGameplay() Gameplay {
 	return Gameplay{
+		Bonus: BonusSettings{
+			Warrior: BonusAbilitySettings{Bonus: BonusValues{DC: 17, MC: 20, SC: 20, AC: 20, MAC: 20, HP: 1, MP: 3, Hit: 20, Speed: 35}, Naked: BonusValues{DC: 512, MC: 2560, SC: 20, AC: 768, MAC: 1280}},
+			Wizard:  BonusAbilitySettings{Bonus: BonusValues{DC: 17, MC: 25, SC: 30, AC: 20, MAC: 15, HP: 2, MP: 1, Hit: 25, Speed: 35}, Naked: BonusValues{DC: 512, MC: 512, SC: 2560, AC: 1280, MAC: 768, Hit: 5}},
+			Taoist:  BonusAbilitySettings{Bonus: BonusValues{DC: 20, MC: 30, SC: 17, AC: 20, MAC: 15, HP: 2, MP: 1, Hit: 30, Speed: 30}, Naked: BonusValues{DC: 20, MC: 30, SC: 17, AC: 20, MAC: 15, HP: 2, MP: 1, Hit: 30, Speed: 30}},
+		},
 		Combat: CombatSettings{
-			DieScatterBag:         true,
-			DieDropGold:           false,
-			HitImpactDelayMS:      200,
-			KillHumanAddPKPoint:   100,
-			KillHumanDecLuckPoint: 500,
-			HumanLevelDiffer:      10,
-			HighLevelGroupFixExp:  true,
-			PoisonTickIntervalMS:  2500,
-			MineHitRate:           4,
-			MineRate:              12,
-			SendRefMsgRange:       12,
-			PKMurderMessage:       "你杀了人！",
-			PKKilledMessage:       "你被%s杀死了！",
-			HitIntervalMS:         900,
-			HitSpeedStepMS:        25,
-			HitDropOverSpeedMS:    10,
-			MaxHitMessages:        1,
-			MaxSpellMessages:      1,
-			ActionIntervalMS:      350,
-			MagicHitIntervalMS:    800,
-			StruckTimeMS:          100,
-			TurnIntervalMS:        600,
-			MaxTurnMessages:       1,
-			MaxSitDownMessages:    1,
-			ControlActionInterval: true,
-			ControlWalkHit:        true,
-			ControlRunLongHit:     true,
-			ControlRunHit:         true,
-			ControlRunMagic:       true,
-			WalkHitIntervalMS:     800,
-			RunHitIntervalMS:      800,
-			RunLongHitIntervalMS:  800,
-			RunMagicIntervalMS:    900,
-			WalkIntervalMS:        600,
-			RunIntervalMS:         600,
-			MaxWalkMessages:       1,
-			MaxRunMessages:        1,
-			PKProtectLevel:        10,
-			RedPKProtectLevel:     10,
-			SafeZoneSize:          10,
-			RedHomeMap:            "3",
-			RedHomeX:              845,
-			RedHomeY:              674,
-			MapMoveProtectMS:      3000,
+			DieScatterBag:          true,
+			DieScatterBagRate:      3,
+			DieRedScatterBagAll:    true,
+			DieDropGold:            false,
+			DieGoldDropChunkSize:   2000,
+			DieDropUseItemRate:     30,
+			DieRedDropUseItemRate:  15,
+			KillHumanDropUseItem:   false,
+			KillMonsterDropUseItem: true,
+			ControlDropItem:        false,
+			InSafeDisableDrop:      false,
+			CanDropGold:            1000,
+			CanDropPrice:           500,
+			HitImpactDelayMS:       200,
+			KillHumanAddPKPoint:    100,
+			PKPointDecayTimeMS:     120000,
+			PKPointDecayCount:      1,
+			KillHumanDecLuckPoint:  500,
+			HumanLevelDiffer:       10,
+			HighLevelKillMonFixExp: false,
+			HighLevelGroupFixExp:   true,
+			PoisonTickIntervalMS:   2500,
+			MineHitRate:            4,
+			MineRate:               12,
+			SendRefMsgRange:        12,
+			PKMurderMessage:        "你杀了人！",
+			PKKilledMessage:        "你被%s杀死了！",
+			HitIntervalMS:          900,
+			HitSpeedStepMS:         25,
+			HitDropOverSpeedMS:     10,
+			MaxHitMessages:         1,
+			MaxSpellMessages:       1,
+			ActionIntervalMS:       350,
+			MagicHitIntervalMS:     800,
+			StruckTimeMS:           100,
+			TurnIntervalMS:         600,
+			MaxTurnMessages:        1,
+			MaxSitDownMessages:     1,
+			ControlActionInterval:  true,
+			ControlWalkHit:         true,
+			ControlRunLongHit:      true,
+			ControlRunHit:          true,
+			ControlRunMagic:        true,
+			WalkHitIntervalMS:      800,
+			RunHitIntervalMS:       800,
+			RunLongHitIntervalMS:   800,
+			SwordLongPowerRate:     100,
+			RunMagicIntervalMS:     900,
+			WalkIntervalMS:         600,
+			RunIntervalMS:          600,
+			MaxWalkMessages:        1,
+			MaxRunMessages:         1,
+			PKProtectLevel:         10,
+			RedPKProtectLevel:      10,
+			SafeZoneSize:           10,
+			RedHomeMap:             "3",
+			RedHomeX:               845,
+			RedHomeY:               674,
+			MapMoveProtectMS:       3000,
 		},
 		Recovery: RecoverySettings{
 			HealthFillTimeMS: 300,
 			SpellFillTimeMS:  800,
 			RevivalTimeMS:    60 * 1000,
+			MakeGhostTimeMS:  3 * 60 * 1000,
 		},
+		Deal: DealSettings{CanNotGetBackDeal: true, DisableDeal: false},
 		Persistence: PersistenceSettings{
 			SaveHumanRcdTimeMS: 10 * 60 * 1000,
 		},
@@ -411,12 +519,21 @@ func DefaultGameplay() Gameplay {
 			},
 		},
 		Monster: MonsterSettings{
-			TickMS: 100,
+			TickMS:               100,
+			MasterDieMutiny:      false,
+			MasterDieMutinyRate:  5,
+			MasterDieMutinyPower: 10,
+			MasterDieMutinySpeed: 5,
+			SlaveColors:          []uint16{0xFF, 0xFE, 0x93, 0x9A, 0xE5, 0xA8, 0xB4, 0xFC, 249},
+			SlaveExpRate:         16,
+			SlaveExpBase:         100,
+			SlaveExpKillCounts:   []int{0, 0, 50, 100, 200, 300, 600, 1200},
 		},
 		Movement: MovementSettings{
 			UserMoveCanDupObj:  false,
 			UserMoveCanOnItem:  true,
 			UserMoveCooldownMS: 10000,
+			RunGuard:           false,
 			RunNPC:             false,
 			RunWarAll:          false,
 		},
@@ -425,6 +542,7 @@ func DefaultGameplay() Gameplay {
 			FloorItemCanPickUpMS:     2 * 60 * 1000,
 			MaxBagItem:               46,
 			MaxGold:                  10000000,
+			MonsterRandomAddValue:    10,
 			UpgradeWeaponPrice:       10000,
 			UpgradeWeaponGetBackMS:   60 * 60 * 1000,
 			UpgradeWeaponExpireDays:  8,
@@ -436,8 +554,10 @@ func DefaultGameplay() Gameplay {
 		Guild: GuildSettings{
 			BuildGuildPrice: 1000000,
 			GuildWarPrice:   30000,
+			GuildWarTimeMS:  3 * 60 * 60 * 1000,
 		},
 		Castle: CastleSettings{
+			GoldMax:              10000000,
 			RepairDoorPrice:      2000000,
 			RepairWallPrice:      500000,
 			HireGuardPrice:       300000,

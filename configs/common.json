@@ -1,10 +1,38 @@
 {
-  "combat": {
+	"bonus": {
+		"warrior": {
+			"bonus": {"dc": 17, "mc": 20, "sc": 20, "ac": 20, "mac": 20, "hp": 1, "mp": 3, "hit": 20, "speed": 35, "x2": 0},
+			"naked": {"dc": 512, "mc": 2560, "sc": 20, "ac": 768, "mac": 1280, "hp": 0, "mp": 0, "hit": 0, "speed": 0, "x2": 0}
+		},
+		"wizard": {
+			"bonus": {"dc": 17, "mc": 25, "sc": 30, "ac": 20, "mac": 15, "hp": 2, "mp": 1, "hit": 25, "speed": 35, "x2": 0},
+			"naked": {"dc": 512, "mc": 512, "sc": 2560, "ac": 1280, "mac": 768, "hp": 0, "mp": 0, "hit": 5, "speed": 0, "x2": 0}
+		},
+		"taoist": {
+			"bonus": {"dc": 20, "mc": 30, "sc": 17, "ac": 20, "mac": 15, "hp": 2, "mp": 1, "hit": 30, "speed": 30, "x2": 0},
+			"naked": {"dc": 20, "mc": 30, "sc": 17, "ac": 20, "mac": 15, "hp": 2, "mp": 1, "hit": 30, "speed": 30, "x2": 0}
+		}
+	},
+	"combat": {
     "die_scatter_bag": true,
+    "die_scatter_bag_rate": 3,
+    "die_red_scatter_bag_all": true,
     "die_drop_gold": false,
+    "die_gold_drop_chunk_size": 2000,
+    "die_drop_use_item_rate": 30,
+    "die_red_drop_use_item_rate": 15,
+    "kill_human_drop_use_item": false,
+    "kill_monster_drop_use_item": true,
+    "control_drop_item": false,
+    "in_safe_disable_drop": false,
+    "can_drop_gold": 1000,
+    "can_drop_price": 500,
     "hit_impact_delay_ms": 200,
     "kill_human_add_pk_point": 100,
+    "pk_point_decay_time_ms": 120000,
+    "pk_point_decay_count": 1,
     "human_level_differ": 10,
+    "high_level_kill_mon_fix_exp": false,
     "high_level_group_fix_exp": true,
     "poison_tick_interval_ms": 2500,
     "mine_hit_rate": 4,
@@ -19,8 +47,16 @@
     "experience_multiple": 1,
     "experience_rate": 100
   },
-  "monster": {
-    "tick_ms": 100
+	"monster": {
+      "tick_ms": 40,
+      "master_die_mutiny": false,
+      "master_die_mutiny_rate": 5,
+      "master_die_mutiny_power": 10,
+      "master_die_mutiny_speed": 5,
+      "slave_colors": [255, 254, 147, 154, 229, 168, 180, 252, 249],
+      "slave_exp_rate": 16,
+      "slave_exp_base": 100,
+      "slave_exp_kill_counts": [0, 0, 50, 100, 200, 300, 600, 1200]
   },
   "movement": {
     "run_npc": false,
@@ -29,12 +65,22 @@
   "persistence": {
     "save_human_rcd_time_ms": 600000
   },
-  "item": {
+	"item": {
     "floor_drop_max_stack_per_tile": 5,
     "floor_item_can_pick_up_ms": 120000,
-    "max_bag_item": 46
-  },
-  "castle": {
+		"max_bag_item": 46,
+		"monster_random_add_value": 10
+	},
+	"deal": {
+		"can_not_get_back_deal": true,
+		"disable_deal": false
+	},
+	"guild": {
+		"guild_war_price": 30000,
+		"guild_war_time_ms": 10800000
+	},
+	"castle": {
+    "gold_max": 10000000,
     "start_war_days": 4
   }
 }

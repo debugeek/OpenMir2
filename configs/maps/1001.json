@@ -1,5 +1,6 @@
 {
   "id": "1001",
+  "fight_zone": true,
   "name": "武器店",
   "width": 22,
   "height": 22,

@@ -23,46 +23,62 @@ func (w *World) monsterTemplateByIDLocked(id string) (data.StdMonster, bool) {
 
 func newMonster(w *World, id string, tpl data.StdMonster, mapID string, x, y int, spawn data.StdSpawn) *Monster {
 	now := time.Now()
+	nextRunAt := now
+	if w.rand != nil {
+		nextRunAt = now.Add(time.Duration(w.rand.Intn(1500)) * time.Millisecond)
+	}
 	mon := &Monster{
 		ID: id, TemplateID: tpl.ID, Name: tpl.Name, Behavior: tpl.Behavior, Race: tpl.Race, RaceImg: tpl.RaceImg, MonsterWeapon: tpl.MP & 0xFF, Appr: tpl.Appr,
-		Level: tpl.Level, Undead: tpl.Undead, MapID: mapID, X: x, Y: y, Dir: w.rand.Intn(8), TargetX: -1, TargetY: -1, CoolEye: tpl.CoolEye,
+		Level: tpl.Level, Undead: tpl.Undead, MapID: mapID, X: x, Y: y, Dir: w.rand.Intn(8), TargetX: -1, TargetY: -1, GuardDirection: -1,
 		NoTame:           tpl.NoTame,
+		WantRefMsg:       tpl.Race == 112,
 		ViewRange:        tpl.ViewRange,
 		LeashRange:       tpl.LeashRange,
 		SearchNoTargetMS: tpl.SearchNoTargetMS, SearchHasTargetMS: tpl.SearchHasTargetMS,
-		HP: tpl.HP, MaxHP: tpl.HP, MP: tpl.MP, MaxMP: tpl.MP, MinAttack: tpl.MinAttack,
+		HP: tpl.HP, MaxHP: tpl.HP, MP: 0, MaxMP: tpl.MP, MinAttack: tpl.MinAttack,
 		MaxAttack: tpl.MaxAttack, Defense: tpl.Defense, MagicDefense: tpl.MagicDefense, MagicDefenseMax: tpl.MagicDefenseMax, AntiMagic: tpl.AntiMagic, AntiPoison: tpl.AntiPoison,
 		MagicAttack: tpl.MagicAttack, MagicAttackMax: tpl.MagicAttackMax, TaoAttack: tpl.TaoAttack, Speed: tpl.Speed, Hit: tpl.Hit,
 		WalkSpeedMS: tpl.WalkSpeedMS, WalkStep: tpl.WalkStep, WalkWait: tpl.WalkWait,
 		RunIntervalMS:    250,
 		AttackIntervalMS: tpl.AttackIntervalMS, Experience: tpl.Experience,
-		Alive: true, Spawn: spawn, PerHealing: 5, PerHealth: 5, PerSpell: 5, IncHealthSpellAt: now.UnixMilli(),
+		Alive: true, Spawn: spawn, PerHealing: 5, PerHealth: 5, PerSpell: 5, IncHealthSpellAt: now.UnixMilli(), HealthTickAt: now.UnixMilli(), SpellTickAt: now.UnixMilli(), PoisonHealthTickAt: now, NextRunAt: nextRunAt,
 		ThinkAt: now,
 	}
-	mon.MeatQuality = initialMonsterMeatQuality(w, tpl, id)
-	if tpl.Race == 51 {
-		mon.BodyLeathery = 50
-	} else if tpl.Race == 52 {
-		mon.BodyLeathery = 150
-	}
-	if tpl.Race == 52 && w.rand.Intn(30) == 0 {
-		mon.FleeOnSight = true
-		mon.MeatQuality = 10000 + w.rand.Intn(20000)
-	}
-	if tpl.Race == 96 && w.rand.Intn(3) == 0 {
-		mon.ZilkinKillCount = w.rand.Intn(3) + 1
-	}
+	mon.CastleDoor = tpl.Behavior == "castle_door"
+	mon.CastleWall = tpl.Behavior == "castle_wall"
+	w.initializeMonsterGenerationStateLocked(mon, tpl, true)
 	if w.nextObjectOrder > 0 {
 		mon.ObjectOrder = w.nextObjectOrder
 		w.nextObjectOrder++
 	}
+	if !monsterHasNumericActorID(mon.ID) {
+		if w.nextMonsterActorID <= 0 {
+			w.nextMonsterActorID = 500000
+		}
+		mon.ActorID = w.nextMonsterActorID
+		w.nextMonsterActorID++
+	}
 	if _, ok := w.data.Drops[tpl.ID]; ok {
 		mon.DropTable = tpl.ID
 	}
+	w.initializeMonsterDropItemsLocked(mon)
 	applyMonsterTemplateState(mon, tpl)
+	if tpl.Race == 117 {
+		mon.ExplosionStartAt = now
+	}
+	mon.NextSearchAt = now.Add(time.Duration(w.monsterInitialSearchDelayMSLocked(mon)) * time.Millisecond)
+	mon.VisibleSearchIntervalMS = w.monsterVisibleSearchDelayMSLocked(mon)
+	if !monsterVisibleSearchStartsImmediately(mon) {
+		mon.NextVisibleSearchAt = now.Add(time.Duration(mon.VisibleSearchIntervalMS) * time.Millisecond)
+	}
+	mon.BaseMaxHP = mon.MaxHP
+	mon.BaseMinAttack = mon.MinAttack
+	mon.BaseMaxAttack = mon.MaxAttack
+	mon.BaseWalkSpeedMS = mon.WalkSpeedMS
 	if mon.AttackMax > 0 {
 		mon.AttackCount = 0
 	}
+	mon.LastAttackAt = now.Add(-time.Duration(w.rand.Intn(3000)) * time.Millisecond)
 	mon.LastWalkAt = now.Add(-time.Duration(w.rand.Intn(3000)) * time.Millisecond)
 	mon.LastTargetSearchAt = now
 	if tpl.Race == 92 {
@@ -87,6 +103,51 @@ func newMonster(w *World, id string, tpl data.StdMonster, mapID string, x, y int
 	return mon
 }
 
+func (w *World) initializeMonsterSchedulingLocked(mon *Monster, now time.Time) {
+	mon.NextRunAt = now
+	if w.rand != nil {
+		mon.NextRunAt = now.Add(time.Duration(w.rand.Intn(1500)) * time.Millisecond)
+	}
+	mon.NextSearchAt = now.Add(time.Duration(w.monsterInitialSearchDelayMSLocked(mon)) * time.Millisecond)
+	if mon.VisibleSearchIntervalMS <= 0 {
+		mon.VisibleSearchIntervalMS = w.monsterVisibleSearchDelayMSLocked(mon)
+	}
+	if monsterVisibleSearchStartsImmediately(mon) {
+		mon.NextVisibleSearchAt = time.Time{}
+	} else {
+		mon.NextVisibleSearchAt = now.Add(time.Duration(mon.VisibleSearchIntervalMS) * time.Millisecond)
+	}
+}
+
+func (w *World) initializeMonsterGenerationStateLocked(mon *Monster, tpl data.StdMonster, resetZilkinKillCount bool) {
+	mon.MeatQuality = initialMonsterMeatQuality(w, tpl, mon.ID)
+	mon.CoolEye = 0
+	if tpl.CoolEye > 0 && w.rand.Intn(100) < tpl.CoolEye {
+		mon.CoolEye = 1
+	}
+	if tpl.Race == 51 {
+		mon.BodyLeathery = 50
+	} else if tpl.Race == 52 {
+		mon.BodyLeathery = 150
+		if w.rand.Intn(30) == 0 {
+			mon.FleeOnSight = true
+			mon.ViewRange = 5
+			mon.MeatQuality = 10000 + w.rand.Intn(20000)
+		} else {
+			mon.MeatQuality = 8000 + w.rand.Intn(8000)
+		}
+	} else if tpl.Race == 53 {
+		mon.BodyLeathery = 150
+		mon.MeatQuality = 8000 + w.rand.Intn(8000)
+	}
+	if tpl.Race == 96 && resetZilkinKillCount {
+		mon.ZilkinKillCount = 0
+		if w.rand.Intn(3) == 0 {
+			mon.ZilkinKillCount = w.rand.Intn(3) + 1
+		}
+	}
+}
+
 func applyWhiteSkeletonTiming(mon *Monster) {
 	mon.AttackIntervalMS = 3000 - int(mon.SlaveMakeLevel)*600
 	mon.WalkSpeedMS = 1200 - int(mon.SlaveMakeLevel)*250
@@ -96,10 +157,6 @@ func initialMonsterMeatQuality(w *World, tpl data.StdMonster, id string) int {
 	switch tpl.Race {
 	case 51:
 		return 3000 + w.rand.Intn(3500)
-	case 52:
-		return 8000 + w.rand.Intn(8000)
-	case 53:
-		return 8000 + w.rand.Intn(8000)
 	}
 	return 0
 }
@@ -112,7 +169,7 @@ func boostSummonedMonsterLocked(mon *Monster) {
 }
 
 func applyMonsterTemplateState(mon *Monster, tpl data.StdMonster) {
-	if tpl.Animal || tpl.Race == 51 || tpl.Race == 52 || tpl.Race == 53 || tpl.Race == 82 || tpl.Race == 84 {
+	if tpl.Animal || tpl.Race == 51 || tpl.Race == 52 || tpl.Race == 53 || tpl.Race == 82 || tpl.Race == 84 || tpl.Race == 85 || tpl.Race == 90 || tpl.Race == 105 || tpl.Race == 106 {
 		mon.Animal = true
 	}
 	if tpl.FleeOnSight {
@@ -136,7 +193,14 @@ func applyMonsterTemplateState(mon *Monster, tpl data.StdMonster) {
 		mon.FixedHideMode = true
 		mon.FirstRevealPending = true
 	}
+	if tpl.Race == 107 || tpl.Behavior == "centipede_king" {
+		mon.Hidden = true
+		mon.FixedHideMode = true
+	}
 	if tpl.StoneMode {
+		mon.StoneMode = true
+	}
+	if tpl.Race == 101 || tpl.Race == 102 {
 		mon.StoneMode = true
 	}
 	if tpl.FirstRevealPending {
@@ -144,16 +208,23 @@ func applyMonsterTemplateState(mon *Monster, tpl data.StdMonster) {
 	}
 	if tpl.AttackMax > 0 {
 		mon.AttackMax = tpl.AttackMax
+	} else {
+		switch tpl.Race {
+		case 87:
+			mon.AttackMax = 2
+		case 93:
+			mon.AttackMax = 3
+		case 104:
+			mon.AttackMax = 6
+		}
 	}
 	switch {
 	case tpl.Race == 107 || tpl.Behavior == "centipede_king":
 		mon.Dir = 5
+	case tpl.Race == 102:
+		mon.Dir = 5
 	}
 	switch tpl.Race {
-	case 112:
-		mon.GuardDirection = mon.Dir
-	case 117:
-		mon.ExplosionStartAt = time.Now()
 	case 132:
 		mon.Hidden = true
 		mon.FixedHideMode = true
@@ -209,7 +280,7 @@ func (w *World) SpawnMonsterByNameAt(mapID string, x, y int, name string, count 
 			RespawnSeconds: 0,
 		}
 		mon := newMonster(w, id, tpl, mapID, x, y, spawn)
-		w.monsters[id] = mon
+		w.registerMonsterLocked(mon, nil)
 		if count == 1 {
 			w.occupyMonsterLocked(mon)
 		}
@@ -255,7 +326,7 @@ func (w *World) spawnMonsterByName(mapID string, x, y int, name string, count, a
 			RespawnSeconds: 0,
 		}
 		mon := newMonster(w, id, tpl, mapID, spawnX, spawnY, spawn)
-		w.monsters[id] = mon
+		w.registerMonsterLocked(mon, nil)
 		w.occupyMonsterLocked(mon)
 		result.Monsters = append(result.Monsters, *mon)
 	}
@@ -265,7 +336,7 @@ func (w *World) spawnMonsterByName(mapID string, x, y int, name string, count, a
 	return result, nil
 }
 
-func (w *World) summonMonsterNearCharacterLocked(master storage.Character, players []storage.Character, name string, duration time.Duration, slaveLevel byte) (*Monster, error) {
+func (w *World) summonMonsterNearCharacterLocked(master storage.Character, players []storage.Character, name string, duration time.Duration, slaveLevel, slaveExpLevel byte) (*Monster, error) {
 	mp, ok := w.data.Maps[master.MapID]
 	if !ok {
 		return nil, fmt.Errorf("map %s not found", master.MapID)
@@ -307,6 +378,7 @@ func (w *World) summonMonsterNearCharacterLocked(master storage.Character, playe
 	mon.MasterID = master.ID
 	mon.MasterName = master.Name
 	mon.SlaveMakeLevel = slaveLevel
+	w.applySummonedMonsterExpLevelLocked(mon, slaveExpLevel)
 	if mon.Race == 100 {
 		applyWhiteSkeletonTiming(mon)
 	}
@@ -314,7 +386,31 @@ func (w *World) summonMonsterNearCharacterLocked(master storage.Character, playe
 		mon.MasterExpiresAt = now.Add(duration)
 	}
 	boostSummonedMonsterLocked(mon)
-	w.monsters[id] = mon
+	w.registerMonsterLocked(mon, nil)
 	w.occupyMonsterLocked(mon)
 	return mon, nil
+}
+
+func (w *World) applySummonedMonsterExpLevelLocked(mon *Monster, level byte) {
+	mon.SlaveExpLevel = level
+	if level < byte(len(w.gameplay.Monster.SlaveColors)) {
+		mon.SlaveNameColor = w.gameplay.Monster.SlaveColors[level]
+		mon.SlaveColorSet = true
+	}
+	if level == 0 {
+		return
+	}
+	if mon.Race == 100 || mon.Race == 113 || mon.Race == 114 {
+		bonus := referenceRound((float64(level)*0.1 + 0.3) * 3 * float64(level))
+		mon.MaxHP = mon.BaseMaxHP + referenceRound((float64(level)*0.1+0.3)*float64(mon.BaseMaxHP))*int(level)
+		mon.MaxAttack = mon.BaseMaxAttack + bonus
+		return
+	}
+	maxHP := mon.BaseMaxHP + referenceRound(float64(mon.BaseMaxHP)*0.15)*int(level)
+	limit := mon.BaseMaxHP + int(level)*60
+	if maxHP > limit {
+		maxHP = limit
+	}
+	mon.MaxHP = maxHP
+	mon.MaxAttack = mon.BaseMaxAttack + int(level)*2
 }

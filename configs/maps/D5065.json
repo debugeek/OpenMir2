@@ -1,8 +1,11 @@
 {
   "id": "D5065",
+  "light": 1,
+  "no_recall": true,
   "name": "祖玛阁",
   "width": 100,
   "height": 100,
+  "no_random_move": true,
   "connections": [
     {
       "to_map": "D5067",

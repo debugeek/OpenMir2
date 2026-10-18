@@ -2,13 +2,24 @@ package world
 
 import (
 	"fmt"
-	"math"
 	"time"
 
 	"openmir2/internal/storage"
 )
 
-func (w *World) mineWithHeavyHitLocked(ch storage.Character, dir int) (AttackResult, bool, error) {
+func blockerMap(blockers []storage.Character) map[string]storage.Character {
+	players := make(map[string]storage.Character, len(blockers))
+	for index, blocker := range blockers {
+		key := blocker.ID
+		if key == "" {
+			key = fmt.Sprintf("#%d", index)
+		}
+		players[key] = blocker
+	}
+	return players
+}
+
+func (w *World) mineWithHeavyHitLocked(ch storage.Character, dir int, blockers ...storage.Character) (AttackResult, bool, error) {
 	mapData, ok := w.data.Maps[ch.MapID]
 	if !ok || !mapData.Mine {
 		return AttackResult{}, false, nil
@@ -25,10 +36,10 @@ func (w *World) mineWithHeavyHitLocked(ch storage.Character, dir int) (AttackRes
 	frontX, frontY := ch.X+offset[0], ch.Y+offset[1]
 	mapData = w.data.Maps[ch.MapID]
 	if frontX < 0 || frontY < 0 || frontX >= mapData.Width || frontY >= mapData.Height {
-		return AttackResult{Character: ch, HeavyHitMining: true}, true, nil
+		return AttackResult{}, false, nil
 	}
-	if mapData.Walkable(frontX, frontY) {
-		return AttackResult{Character: ch, HeavyHitMining: true}, true, nil
+	if mapData.Walkable(frontX, frontY) && !w.monsterAtLocked(ch.MapID, frontX, frontY, "") && !w.playerAtLocked(blockerMap(blockers), ch.MapID, frontX, frontY) && !w.npcAtLockedWithRun(ch.MapID, frontX, frontY, false) {
+		return AttackResult{}, false, nil
 	}
 	if w.mineCounts == nil {
 		w.mineCounts = map[monsterPosition]int{}
@@ -57,7 +68,7 @@ func (w *World) mineWithHeavyHitLocked(ch storage.Character, dir int) (AttackRes
 			w.mineCounts[position] = count
 			w.mineDepletedAt[position] = time.Now()
 		}
-		return result, true, nil
+		return AttackResult{Character: ch, HeavyHitMining: true}, true, nil
 	}
 	w.mineCounts[position] = count - 1
 	if count == 1 {
@@ -68,7 +79,7 @@ func (w *World) mineWithHeavyHitLocked(ch storage.Character, dir int) (AttackRes
 		hitRate = 4
 	}
 	if w.rand.Intn(hitRate) != 0 {
-		return result, true, nil
+		return AttackResult{Character: ch, HeavyHitMining: true}, true, nil
 	}
 	pile := SpellGroundEvent{}
 	pileAt := false
@@ -88,23 +99,13 @@ func (w *World) mineWithHeavyHitLocked(ch storage.Character, dir int) (AttackRes
 		w.addGroundEventLocked(pile)
 	}
 	result.HeavyHitFragment = true
-	mineRate := w.gameplay.Combat.MineRate
-	if mineRate <= 0 {
-		mineRate = 12
-	}
-	if w.rand.Intn(mineRate) != 0 {
-		result.Character = ch
-		return result, true, nil
-	}
-	canCarry := w.canCarryBagItemsLocked(ch, 1)
 	damageWeapon := func() {
-		oldDisplayDura := int(math.Round(float64(weapon.Dura) / 1.03))
+		oldDisplayDura := referenceRound(float64(weapon.Dura) / 1.03)
 		loss := w.rand.Intn(15) + 5
-		if loss > 0 {
-			weapon.Dura -= uint16(loss)
-		}
-		if weapon.Dura > weapon.DuraMax {
+		if int(weapon.Dura) <= loss {
 			weapon.Dura = 0
+		} else {
+			weapon.Dura -= uint16(loss)
 		}
 		if weapon.Dura == 0 {
 			delete(ch.EquippedItems, SlotWeapon)
@@ -113,18 +114,28 @@ func (w *World) mineWithHeavyHitLocked(ch storage.Character, dir int) (AttackRes
 		} else {
 			ch.EquippedItems[SlotWeapon] = weapon
 		}
-		newDisplayDura := int(math.Round(float64(weapon.Dura) / 1.03))
+		newDisplayDura := referenceRound(float64(weapon.Dura) / 1.03)
 		if newDisplayDura != oldDisplayDura {
 			result.Durability = append(result.Durability, SpellDurability{Slot: SlotWeapon, Dura: weapon.Dura, DuraMax: weapon.DuraMax})
 		}
 	}
+	mineRate := w.gameplay.Combat.MineRate
+	if mineRate <= 0 {
+		mineRate = 12
+	}
+	if w.rand.Intn(mineRate) != 0 {
+		damageWeapon()
+		result.Character = ch
+		return result, true, nil
+	}
+	canCarry := w.canCarryBagItemsLocked(ch, 1)
 	if !canCarry {
 		damageWeapon()
 		result.Character = ch
-		return result, true, w.store.SaveCharacter(ch)
+		return result, true, nil
 	}
-	roll := w.rand.Intn(120) + 1
 	itemID := "铜矿"
+	roll := w.rand.Intn(120) + 1
 	switch {
 	case roll <= 2:
 		itemID = "金矿"
@@ -137,7 +148,9 @@ func (w *World) mineWithHeavyHitLocked(ch storage.Character, dir int) (AttackRes
 	}
 	item, ok = w.data.Items[itemID]
 	if !ok {
-		return AttackResult{}, true, fmt.Errorf("mine item %s not found", itemID)
+		damageWeapon()
+		result.Character = ch
+		return result, true, nil
 	}
 	entry := w.createUserItemFromStd(item, 0, [14]byte{})
 	dura := w.rand.Intn(13000) + 3000
@@ -149,5 +162,5 @@ func (w *World) mineWithHeavyHitLocked(ch storage.Character, dir int) (AttackRes
 	result.AddedItems = append(result.AddedItems, entry)
 	damageWeapon()
 	result.Character = ch
-	return result, true, w.store.SaveCharacter(ch)
+	return result, true, nil
 }

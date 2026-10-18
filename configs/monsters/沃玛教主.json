@@ -16,7 +16,7 @@
   "max_attack": 60,
   "magic_attack": 0,
   "tao_attack": 0,
-  "speed": 30,
+  "speed": 20,
   "hit": 20,
   "walk_speed_ms": 800,
   "walk_step": 1,
@@ -108,32 +108,32 @@
       "max_count": 1
     },
     {
-      "item_id": "强效金创药",
-      "chance": "1/2",
-      "min_count": 1,
-      "max_count": 1
-    },
-    {
-      "item_id": "强效魔法药",
-      "chance": "1/2",
-      "min_count": 1,
-      "max_count": 1
-    },
-    {
-      "item_id": "强效金创药",
-      "chance": "1/2",
-      "min_count": 1,
-      "max_count": 1
-    },
-    {
-      "item_id": "强效魔法药",
-      "chance": "1/2",
-      "min_count": 1,
-      "max_count": 1
-    },
-    {
       "item_id": "狂风戒指",
       "chance": "1/11",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效金创药",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效魔法药",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效金创药",
+      "chance": "1/2",
+      "min_count": 1,
+      "max_count": 1
+    },
+    {
+      "item_id": "强效魔法药",
+      "chance": "1/2",
       "min_count": 1,
       "max_count": 1
     },

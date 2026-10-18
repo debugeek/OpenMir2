@@ -1,5 +1,6 @@
 {
   "id": "D10061",
+  "light": 1,
   "name": "恶魔祭坛",
   "width": 30,
   "height": 30,
@@ -23,7 +24,8 @@
       "y": 21,
       "range": 75,
       "count": 1,
-      "respawn_seconds": 360
+      "respawn_seconds": 360,
+      "reference_order": 1632
     },
     {
       "monster_id": "双头金刚",
@@ -31,7 +33,8 @@
       "y": 21,
       "range": 75,
       "count": 1,
-      "respawn_seconds": 360
+      "respawn_seconds": 360,
+      "reference_order": 1631
     },
     {
       "monster_id": "血僵尸",
@@ -39,7 +42,8 @@
       "y": 21,
       "range": 75,
       "count": 5,
-      "respawn_seconds": 45
+      "respawn_seconds": 45,
+      "reference_order": 1630
     },
     {
       "monster_id": "血巨人",
@@ -47,7 +51,8 @@
       "y": 21,
       "range": 21,
       "count": 5,
-      "respawn_seconds": 25
+      "respawn_seconds": 25,
+      "reference_order": 1637
     },
     {
       "monster_id": "月魔蜘蛛",
@@ -55,7 +60,8 @@
       "y": 30,
       "range": 75,
       "count": 5,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1634
     },
     {
       "monster_id": "血巨人",
@@ -63,7 +69,8 @@
       "y": 30,
       "range": 75,
       "count": 5,
-      "respawn_seconds": 8
+      "respawn_seconds": 8,
+      "reference_order": 1635
     },
     {
       "monster_id": "黑锷蜘蛛",
@@ -71,7 +78,8 @@
       "y": 30,
       "range": 75,
       "count": 5,
-      "respawn_seconds": 9
+      "respawn_seconds": 9,
+      "reference_order": 1636
     },
     {
       "monster_id": "幻影蜘蛛",
@@ -79,7 +87,8 @@
       "y": 150,
       "range": 100,
       "count": 5,
-      "respawn_seconds": 5
+      "respawn_seconds": 5,
+      "reference_order": 1633
     }
   ],
   "blocked_bits": "//////////////////////////////////////////////+f////5/////D//wf5/38A///fB///w4P//+CB/x8w4P+AA/g/AQDgXwAg/c8ACP+DAeD/gAD/f+DA/z988P+PH/3/9+///////////w8="

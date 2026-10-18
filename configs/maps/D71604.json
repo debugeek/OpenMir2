@@ -1,5 +1,6 @@
 {
   "id": "D71604",
+  "no_recall": true,
   "name": "石墓阵",
   "width": 50,
   "height": 50,
@@ -45,7 +46,8 @@
       "y": 25,
       "range": 25,
       "count": 10,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1166
     },
     {
       "monster_id": "红野猪",
@@ -53,7 +55,8 @@
       "y": 25,
       "range": 25,
       "count": 7,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1165
     },
     {
       "monster_id": "红野猪2",
@@ -61,7 +64,8 @@
       "y": 25,
       "range": 25,
       "count": 1,
-      "respawn_seconds": 30
+      "respawn_seconds": 30,
+      "reference_order": 1171
     },
     {
       "monster_id": "蝎蛇",
@@ -69,7 +73,8 @@
       "y": 25,
       "range": 25,
       "count": 7,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1163
     },
     {
       "monster_id": "蝎蛇1",
@@ -77,7 +82,8 @@
       "y": 25,
       "range": 25,
       "count": 1,
-      "respawn_seconds": 120
+      "respawn_seconds": 120,
+      "reference_order": 1168
     },
     {
       "monster_id": "蝎蛇2",
@@ -85,7 +91,8 @@
       "y": 25,
       "range": 25,
       "count": 1,
-      "respawn_seconds": 30
+      "respawn_seconds": 30,
+      "reference_order": 1170
     },
     {
       "monster_id": "角蝇",
@@ -93,7 +100,8 @@
       "y": 25,
       "range": 25,
       "count": 5,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1167
     },
     {
       "monster_id": "黑色恶蛆",
@@ -101,7 +109,8 @@
       "y": 25,
       "range": 25,
       "count": 10,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1164
     },
     {
       "monster_id": "黑野猪",
@@ -109,7 +118,8 @@
       "y": 25,
       "range": 25,
       "count": 7,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1162
     },
     {
       "monster_id": "黑野猪2",
@@ -117,7 +127,8 @@
       "y": 25,
       "range": 25,
       "count": 1,
-      "respawn_seconds": 30
+      "respawn_seconds": 30,
+      "reference_order": 1169
     }
   ],
   "blocked_bits": "/////////////////////////////////////////////////////////////////////3/z//////+A//////8B/P////8D4P////8FgP////8HAP7///8fAMD///8/AAD+//9/AADQ////AAAA////AwAA/P//C8AB4P//B8AfAP//D4D/APj/HwD/B+D/fwD8H4D//wHwfwDw/wTA/wEQ/xEA/wcA/AMAzB8A+D8AkD8A8P8BAP8A4P8PAPgAwP9/AAAAgP//AwAAAP//HwAAAP7//wAAAPz//wcAAPT//x8AAPj//38BAPD///8PAOD///9/AMD/////B4H/////P4D//////wH//////w/+///////8////////////////////////////////////////////Dw=="

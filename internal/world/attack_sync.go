@@ -19,7 +19,6 @@ type AttackSyncer interface {
 	BroadcastHitImpact(AttackResult)
 	SendAttackItemChanges(storage.Character, []SpellDurability, []storage.UserItem)
 	SendWeaponBroken()
-	BroadcastNPCTraining([]NPCTrainingHit)
 	SendSkillExp(uint16, byte, int, time.Duration)
 }
 
@@ -32,25 +31,57 @@ type AttackItemSyncer interface {
 	SendWeightChanged(storage.Character)
 }
 
+type AttackItemUpdateSyncer interface {
+	SendUpdatedItem(storage.Character, storage.UserItem)
+}
+
+type AttackAbilitySyncer interface {
+	SendAbilityOnly(storage.Character)
+	SendSubAbility(storage.Character)
+}
+
+type AttackFeatureSyncer interface {
+	SendFeatureChanged(storage.Character)
+}
+
 func ApplyAttackSync(syncer AttackSyncer, result AttackResult, attackIdent uint16) {
 	syncer.UpdateClient(result.Character)
-	for _, hit := range result.CharacterHits {
-		syncer.SendCharacterHitChanges(hit)
+	if result.HeavyHitMining {
+		if itemSyncer, ok := syncer.(AttackItemSyncer); ok && len(result.AddedItems) > 0 {
+			itemSyncer.SendWeightChanged(result.Character)
+			for _, item := range result.AddedItems {
+				itemSyncer.SendBagAddItem(result.Character, item)
+			}
+		}
 	}
-	if len(result.Durability) > 0 || len(result.DeletedItems) > 0 {
+	if itemSyncer, ok := syncer.(AttackItemUpdateSyncer); ok {
+		for _, item := range result.UpdatedItems {
+			itemSyncer.SendUpdatedItem(result.Character, item)
+		}
+	}
+	if result.WeaponBroken && (len(result.Durability) > 0 || len(result.DeletedItems) > 0) {
 		syncer.SendAttackItemChanges(result.Character, result.Durability, result.DeletedItems)
+	}
+	if result.AbilityChanged {
+		if abilitySyncer, ok := syncer.(AttackAbilitySyncer); ok {
+			abilitySyncer.SendAbilityOnly(result.Character)
+			if result.SubAbilityChanged {
+				abilitySyncer.SendSubAbility(result.Character)
+			}
+		}
 	}
 	if result.WeaponBroken {
 		syncer.SendWeaponBroken()
 	}
-	if result.HeavyHitFragment {
-		if mining, ok := syncer.(MiningFeedbackSyncer); ok {
-			mining.SendMiningFeedback()
-		} else {
-			syncer.BroadcastCharacterHit(result.Character, attackIdent)
+	if result.FeatureChanged {
+		if result.WeaponBroken {
+			if featureSyncer, ok := syncer.(AttackFeatureSyncer); ok {
+				featureSyncer.SendFeatureChanged(result.Character)
+			}
 		}
-	} else {
-		syncer.BroadcastCharacterHit(result.Character, attackIdent)
+	}
+	for _, hit := range result.CharacterHits {
+		syncer.SendCharacterHitChanges(hit)
 	}
 	for _, hit := range result.CharacterHits {
 		struckDamage := hit.Damage
@@ -59,6 +90,25 @@ func ApplyAttackSync(syncer AttackSyncer, result AttackResult, attackIdent uint1
 		}
 		if struckDamage > 0 {
 			syncer.BroadcastCharacterStruck(hit)
+		}
+	}
+	if !result.WeaponBroken && (len(result.Durability) > 0 || len(result.DeletedItems) > 0) {
+		syncer.SendAttackItemChanges(result.Character, result.Durability, result.DeletedItems)
+	}
+	if result.FeatureChanged && !result.WeaponBroken {
+		if featureSyncer, ok := syncer.(AttackFeatureSyncer); ok {
+			featureSyncer.SendFeatureChanged(result.Character)
+		}
+	}
+	if result.Character.ID != "" {
+		if result.HeavyHitMining || result.HeavyHitFragment {
+			if mining, ok := syncer.(MiningFeedbackSyncer); ok {
+				mining.SendMiningFeedback()
+			} else {
+				syncer.BroadcastCharacterHit(result.Character, attackIdent)
+			}
+		} else {
+			syncer.BroadcastCharacterHit(result.Character, attackIdent)
 		}
 	}
 	if len(result.MonsterHits) > 0 {
@@ -70,11 +120,8 @@ func ApplyAttackSync(syncer AttackSyncer, result AttackResult, attackIdent uint1
 	} else if result.MonsterID != "" && result.Damage > 0 {
 		syncer.BroadcastHitImpact(result)
 	}
-	if len(result.NPCTrainingHits) > 0 {
-		syncer.BroadcastNPCTraining(result.NPCTrainingHits)
-	}
 	syncer.SendActionOK()
-	if itemSyncer, ok := syncer.(AttackItemSyncer); ok {
+	if itemSyncer, ok := syncer.(AttackItemSyncer); ok && !result.HeavyHitMining {
 		if len(result.AddedItems) > 0 {
 			itemSyncer.SendWeightChanged(result.Character)
 			for _, item := range result.AddedItems {

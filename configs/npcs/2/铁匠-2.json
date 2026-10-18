@@ -7,6 +7,7 @@
   "y": 492,
   "dir": 0,
   "appr": 0,
+  "reference_order": 42,
   "merchant": {
     "price_rate": 100,
     "capabilities": {

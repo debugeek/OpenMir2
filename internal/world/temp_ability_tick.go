@@ -11,7 +11,7 @@ func (w *World) applyCharacterTemporaryAbilityTickLocked(ch storage.Character, n
 	changed := false
 	expires := now.UnixNano()
 	for i := 0; i < tempAbilityCount && i < len(next.ExtraAbil); i++ {
-		if next.ExtraAbilTimes[i] <= 0 || next.ExtraAbilTimes[i] > expires {
+		if next.ExtraAbilTimes[i] <= 0 || next.ExtraAbilTimes[i] >= expires {
 			continue
 		}
 		next.ExtraAbil[i] = 0

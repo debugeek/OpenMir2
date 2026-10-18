@@ -18,7 +18,22 @@ type UserCommandResult struct {
 	CharacterUpdates []storage.Character
 	Teleports        []TeleportEvent
 	Notices          []string
+	SystemNotices    []SystemNotice
 }
+
+type SystemNotice struct {
+	Message    string
+	Foreground byte
+	Background byte
+}
+
+const (
+	attackModeAll = iota
+	attackModePeaceful
+	attackModeGroup
+	attackModeGuild
+	attackModePK
+)
 
 type ChatResult struct {
 	Message    string
@@ -55,35 +70,91 @@ func (w *World) handleUserCommand(activeChar storage.Character, line string, pla
 	case "move":
 		return w.handleMoveCommand(activeChar, params, players), true
 	case "allowgrouprecall":
-		return w.handleAllowGroupRecallCommand(activeChar), true
+		return w.handleAllowGroupRecallCommand(activeChar, params), true
 	case "grouprecall":
 		return w.handleGroupRecallCommand(activeChar, players), true
+	case "attackmode":
+		return w.handleAttackModeCommand(activeChar, params), true
+	case "rest":
+		return w.handleRestCommand(activeChar), true
+	case "diary":
+		return UserCommandResult{}, true
 	default:
-		return UserCommandResult{Message: "unknown command: @" + name}, true
+		return UserCommandResult{SystemNotices: []SystemNotice{{
+			Message:    "@" + name + " 此命令不正确，或没有足够的权限！！！",
+			Foreground: 0xFF,
+			Background: 0x38,
+		}}}, true
+	}
+}
+
+func (w *World) handleRestCommand(ch storage.Character) UserCommandResult {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for _, mon := range w.monsters {
+		if mon != nil && mon.MasterID == ch.ID {
+			ch.SlaveRelax = !ch.SlaveRelax
+			message := "宝宝行动：攻击"
+			if ch.SlaveRelax {
+				message = "宝宝行动：休息"
+			}
+			return UserCommandResult{
+				Character: ch,
+				SystemNotices: []SystemNotice{{
+					Message: message, Foreground: 0xDB, Background: 0xFF,
+				}},
+			}
+		}
+	}
+	return UserCommandResult{}
+}
+
+func (w *World) handleAttackModeCommand(ch storage.Character, params []string) UserCommandResult {
+	mode := -1
+	if len(params) > 0 {
+		mode, _ = strconv.Atoi(params[0])
+	}
+	if mode < attackModeAll || mode > attackModePK {
+		mode = ch.AttackMode + 1
+		if mode > attackModePK {
+			mode = attackModeAll
+		}
+	}
+	ch.AttackMode = mode
+	messages := [...]string{
+		"[攻击模式: 全体攻击]",
+		"[攻击模式: 和平攻击]",
+		"[攻击模式: 编组攻击]",
+		"[攻击模式: 行会攻击]",
+		"[攻击模式: 红名攻击]",
+	}
+	foreground, background := byte(0xDB), byte(0xFF)
+	if mode == attackModeAll {
+		foreground, background = 0xFF, 0xFC
+	}
+	return UserCommandResult{
+		Character: ch,
+		SystemNotices: []SystemNotice{{
+			Message: messages[mode], Foreground: foreground, Background: background,
+		}},
 	}
 }
 
 func (w *World) HandleChat(activeChar storage.Character, line string) (ChatResult, bool) {
-	if strings.TrimSpace(line) == "" || strings.HasPrefix(line, "@") {
+	if line == "" || strings.HasPrefix(line, "@") {
 		return ChatResult{}, false
 	}
 	if strings.HasPrefix(line, "/") {
-		parts := strings.SplitN(strings.TrimSpace(strings.TrimPrefix(line, "/")), " ", 2)
-		if len(parts) != 2 || parts[0] == "" || strings.TrimSpace(parts[1]) == "" {
-			return ChatResult{}, false
-		}
-		return ChatResult{Message: activeChar.Name + "=> " + strings.TrimSpace(parts[1]), Private: true, TargetName: parts[0]}, true
+		targetName, message := referenceChatPrivateParts(strings.TrimPrefix(line, "/"))
+		return ChatResult{Message: activeChar.Name + "=> " + message, Private: true, TargetName: targetName}, true
 	}
 	if strings.HasPrefix(line, "!!") {
-		message := strings.TrimSpace(strings.TrimPrefix(line, "!!"))
-		if message == "" {
-			return ChatResult{}, false
-		}
+		message := strings.TrimPrefix(line, "!!")
 		return ChatResult{Message: activeChar.Name + ": " + message, Group: true}, true
 	}
 	if strings.HasPrefix(line, "!~") {
-		message := strings.TrimSpace(strings.TrimPrefix(line, "!~"))
-		if message == "" || activeChar.GuildID == "" {
+		message := strings.TrimPrefix(line, "!~")
+		if activeChar.GuildID == "" {
 			return ChatResult{}, false
 		}
 		return ChatResult{Message: activeChar.Name + ": " + message, Guild: true}, true
@@ -97,6 +168,20 @@ func (w *World) HandleChat(activeChar storage.Character, line string) (ChatResul
 	return ChatResult{Message: activeChar.Name + ":" + line}, true
 }
 
+func referenceChatPrivateParts(raw string) (string, string) {
+	separator := strings.IndexByte(raw, ' ')
+	if separator < 0 {
+		return raw, ""
+	}
+	if separator > 0 {
+		return raw[:separator], raw[separator+1:]
+	}
+	if next := strings.IndexByte(raw[1:], ' '); next >= 0 {
+		return raw[:next+1], raw[next+2:]
+	}
+	return raw, ""
+}
+
 func (w *World) HandleSay(activeChar storage.Character, line string) (SayResult, bool) {
 	return w.handleSay(activeChar, line, nil)
 }
@@ -106,7 +191,7 @@ func (w *World) HandleSayWithPlayers(activeChar storage.Character, line string, 
 }
 
 func (w *World) handleSay(activeChar storage.Character, line string, players []storage.Character) (SayResult, bool) {
-	if strings.TrimSpace(line) == "" {
+	if line == "" {
 		return SayResult{}, false
 	}
 	if strings.HasPrefix(line, "@") {
@@ -124,19 +209,14 @@ func (w *World) handleSay(activeChar storage.Character, line string, players []s
 }
 
 func parseUserCommand(line string) (string, []string, bool) {
-	line = strings.TrimSpace(line)
 	if line == "" || line[0] != '@' {
 		return "", nil, false
 	}
-	line = strings.TrimSpace(line[1:])
-	if line == "" {
-		return "", nil, false
-	}
-	parts := strings.FieldsFunc(line, func(r rune) bool {
+	parts := strings.FieldsFunc(line[1:], func(r rune) bool {
 		return r == ' ' || r == ':' || r == ',' || r == '\t'
 	})
 	if len(parts) == 0 {
-		return "", nil, false
+		return "", nil, true
 	}
 	return parts[0], parts[1:], true
 }
@@ -231,77 +311,10 @@ func (w *World) handleMakeCommand(activeChar storage.Character, params []string)
 }
 
 func (w *World) handleMoveCommand(activeChar storage.Character, params []string, players []storage.Character) UserCommandResult {
-	if len(params) == 2 {
-		if result, handled := w.handleTeleportRingMove(activeChar, params, players); handled {
-			return result
-		}
+	if result, handled := w.handleTeleportRingMove(activeChar, params, players); handled {
+		return result
 	}
-	switch len(params) {
-	case 0:
-		if activeChar.MapID == "" {
-			return UserCommandResult{Message: "character has no current map"}
-		}
-		updated, err := w.TeleportRandomInCurrentMap(activeChar)
-		if err != nil {
-			return UserCommandResult{Message: err.Error()}
-		}
-		return UserCommandResult{
-			Message:   fmt.Sprintf("moved to %s %d %d", updated.MapID, updated.X, updated.Y),
-			Character: updated,
-			Teleport:  newTeleportEvent(activeChar, updated),
-		}
-	case 1:
-		updated, err := w.TeleportRandomInMap(activeChar, params[0])
-		if err != nil {
-			return UserCommandResult{Message: err.Error()}
-		}
-		return UserCommandResult{
-			Message:   fmt.Sprintf("moved to %s %d %d", updated.MapID, updated.X, updated.Y),
-			Character: updated,
-			Teleport:  newTeleportEvent(activeChar, updated),
-		}
-	case 2:
-		if activeChar.MapID == "" {
-			return UserCommandResult{Message: "character has no current map"}
-		}
-		x, err := strconv.Atoi(params[0])
-		if err != nil {
-			return UserCommandResult{Message: "usage: @Move [map] x y"}
-		}
-		y, err := strconv.Atoi(params[1])
-		if err != nil {
-			return UserCommandResult{Message: "usage: @Move [map] x y"}
-		}
-		updated, err := w.Teleport(activeChar, activeChar.MapID, x, y)
-		if err != nil {
-			return UserCommandResult{Message: err.Error()}
-		}
-		return UserCommandResult{
-			Message:   fmt.Sprintf("moved to %s %d %d", updated.MapID, updated.X, updated.Y),
-			Character: updated,
-			Teleport:  newTeleportEvent(activeChar, updated),
-		}
-	case 3:
-		x, err := strconv.Atoi(params[1])
-		if err != nil {
-			return UserCommandResult{Message: "usage: @Move [map] x y"}
-		}
-		y, err := strconv.Atoi(params[2])
-		if err != nil {
-			return UserCommandResult{Message: "usage: @Move [map] x y"}
-		}
-		updated, err := w.Teleport(activeChar, params[0], x, y)
-		if err != nil {
-			return UserCommandResult{Message: err.Error()}
-		}
-		return UserCommandResult{
-			Message:   fmt.Sprintf("moved to %s %d %d", updated.MapID, updated.X, updated.Y),
-			Character: updated,
-			Teleport:  newTeleportEvent(activeChar, updated),
-		}
-	default:
-		return UserCommandResult{Message: "usage: @Move [map] x y"}
-	}
+	return moveSystemNotice("您现在还无法使用此功能！！！", 0xFF, 0x38)
 }
 
 func (w *World) handleTeleportRingMove(activeChar storage.Character, params []string, players []storage.Character) (UserCommandResult, bool) {
@@ -310,51 +323,65 @@ func (w *World) handleTeleportRingMove(activeChar storage.Character, params []st
 	if !w.hasTeleportRingLocked(activeChar) {
 		return UserCommandResult{}, false
 	}
-	x, err := strconv.Atoi(params[0])
-	if err != nil {
-		return UserCommandResult{Message: "usage: @Move x y"}, true
+	x, y := -1, -1
+	rawX, rawY := "", ""
+	if len(params) > 0 {
+		rawX = params[0]
+		x, _ = strconv.Atoi(params[0])
 	}
-	y, err := strconv.Atoi(params[1])
-	if err != nil {
-		return UserCommandResult{Message: "usage: @Move x y"}, true
+	if len(params) > 1 {
+		rawY = params[1]
+		y, _ = strconv.Atoi(params[1])
 	}
 	if activeChar.MapID == "" {
 		return UserCommandResult{Message: "character has no current map"}, true
 	}
 	mp, ok := w.data.Maps[activeChar.MapID]
-	if !ok || mp.NoPositionMove || !mp.Walkable(x, y) {
-		return UserCommandResult{Message: "target coordinate is blocked"}, true
+	if !ok {
+		return UserCommandResult{Message: "character has no current map"}, true
 	}
-	now := time.Now()
-	cooldown := time.Duration(w.gameplay.Movement.UserMoveCooldownMS) * time.Millisecond
-	if activeChar.TeleportRingAt != 0 && now.Sub(time.Unix(0, activeChar.TeleportRingAt)) <= cooldown {
-		return UserCommandResult{Message: "teleport ring is cooling down"}, true
+	if mp.NoPositionMove {
+		return moveSystemNotice("此地图禁止使用此命令！！！", 0xFF, 0x38), true
+	}
+	if !mp.Walkable(x, y) {
+		return moveSystemNotice(fmt.Sprintf("无法移动到地图: %s X:%s Y:%s", activeChar.MapID, rawX, rawY), 0xDB, 0xFF), true
 	}
 	if !w.gameplay.Movement.UserMoveCanDupObj && w.monsterAtLocked(activeChar.MapID, x, y, "") {
-		return UserCommandResult{Message: "target coordinate is occupied"}, true
+		return moveSystemNotice(fmt.Sprintf("无法移动到地图: %s X:%s Y:%s", activeChar.MapID, rawX, rawY), 0xDB, 0xFF), true
 	}
 	if !w.gameplay.Movement.UserMoveCanDupObj {
 		for _, player := range players {
-			if player.ID != activeChar.ID && player.HP > 0 && player.MapID == activeChar.MapID && player.X == x && player.Y == y {
-				return UserCommandResult{Message: "target coordinate is occupied"}, true
+			if player.ID != activeChar.ID && !w.characterDeadLocked(player) && !player.Ghost && player.MapID == activeChar.MapID && player.X == x && player.Y == y {
+				return moveSystemNotice(fmt.Sprintf("无法移动到地图: %s X:%s Y:%s", activeChar.MapID, rawX, rawY), 0xDB, 0xFF), true
 			}
 		}
 	}
 	if !w.gameplay.Movement.UserMoveCanOnItem && w.groundDropAtLocked(activeChar.MapID, x, y) {
-		return UserCommandResult{Message: "target coordinate is occupied"}, true
+		return moveSystemNotice(fmt.Sprintf("无法移动到地图: %s X:%s Y:%s", activeChar.MapID, rawX, rawY), 0xDB, 0xFF), true
+	}
+	now := time.Now()
+	cooldown := time.Duration(w.gameplay.Movement.UserMoveCooldownMS) * time.Millisecond
+	if activeChar.TeleportRingAt != 0 && now.Sub(time.Unix(0, activeChar.TeleportRingAt)) <= cooldown {
+		remaining := int(cooldown/time.Second) - int(now.Sub(time.Unix(0, activeChar.TeleportRingAt))/time.Second)
+		if remaining < 1 {
+			remaining = 1
+		}
+		return moveSystemNotice(fmt.Sprintf("%d秒之后才可以再使用此功能！！！", remaining), 0xFF, 0x38), true
 	}
 	from := activeChar
 	activeChar.X, activeChar.Y = x, y
 	activeChar.TeleportRingAt = now.UnixNano()
 	w.refreshCharacterObjectOrderLocked(&activeChar)
-	if err := w.store.SaveCharacter(activeChar); err != nil {
-		return UserCommandResult{Message: err.Error()}, true
-	}
 	return UserCommandResult{
-		Message:   fmt.Sprintf("moved to %s %d %d", activeChar.MapID, activeChar.X, activeChar.Y),
 		Character: activeChar,
 		Teleport:  &TeleportEvent{From: from, To: activeChar, SpaceMoveFire: true},
 	}, true
+}
+
+func moveSystemNotice(message string, foreground, background byte) UserCommandResult {
+	return UserCommandResult{SystemNotices: []SystemNotice{{
+		Message: message, Foreground: foreground, Background: background,
+	}}}
 }
 
 func (w *World) groundDropAtLocked(mapID string, x, y int) bool {
@@ -367,9 +394,22 @@ func (w *World) groundDropAtLocked(mapID string, x, y int) bool {
 }
 
 func (w *World) hasTeleportRingLocked(ch storage.Character) bool {
-	for _, item := range ch.EquippedItems {
+	for slot := 0; slot < useSlotCount; slot++ {
+		item, ok := w.activeEquippedItemLocked(ch, slot)
+		if !ok {
+			continue
+		}
 		std, ok := w.data.Items[item.ItemID]
-		if ok && std.Shape == 112 {
+		if !ok {
+			continue
+		}
+		if (slot == SlotRingL || slot == SlotRingR) && std.Shape == 112 {
+			return true
+		}
+		if slot != SlotDress && slot != SlotWeapon && slot != SlotRightHand && (std.Shape == 157 || std.Shape == 158 || std.Shape == 159 || std.Shape == 160) {
+			return true
+		}
+		if (slot == SlotDress || slot == SlotWeapon || slot == SlotRightHand) && (std.AniCount == 112 || (std.AniCount >= 157 && std.AniCount <= 160)) {
 			return true
 		}
 	}

@@ -1,7 +1,6 @@
 package world
 
 import (
-	"math"
 	"strings"
 	"time"
 
@@ -39,12 +38,8 @@ func Base(class string, level int) LevelAbilities {
 		a.MaxHP = 14 + iround((l/levelValueOfTaosHP+levelValueOfTaosHPRate)*l)
 		a.MaxMP = 13 + iround(l/levelValueOfTaosMP*2.2*l)
 		a.MaxWeight = 50 + iround(l/4*l)
-		a.MaxWearWeight = minInt(255, 15+iround(l/50*l))
-		if uncapped := 12 + iround(l/13*l); uncapped > 255 {
-			a.MaxHandWeight = 255
-		} else {
-			a.MaxHandWeight = 12 + iround(l/42*l)
-		}
+		a.MaxWearWeight = 15 + iround(l/50*l)
+		a.MaxHandWeight = 12 + iround(l/42*l)
 		n := level / 7
 		a.DC, a.DCMax = clampByte(maxInt(n-1, 0)), clampByte(maxInt(1, n))
 		a.SC, a.SCMax = a.DC, a.DCMax
@@ -54,7 +49,7 @@ func Base(class string, level int) LevelAbilities {
 		a.MaxHP = 14 + iround((l/levelValueOfWizardHP+levelValueOfWizardHPRate)*l)
 		a.MaxMP = 13 + iround((l/5+2)*2.2*l)
 		a.MaxWeight = 50 + iround(l/5*l)
-		a.MaxWearWeight = minInt(255, 15+iround(l/100*l))
+		a.MaxWearWeight = 15 + iround(l/100*l)
 		a.MaxHandWeight = 12 + iround(l/90*l)
 		n := level / 7
 		a.DC, a.DCMax = clampByte(maxInt(n-1, 0)), clampByte(maxInt(1, n))
@@ -63,7 +58,7 @@ func Base(class string, level int) LevelAbilities {
 		a.MaxHP = 14 + iround((l/levelValueOfWarrHP+levelValueOfWarrHPRate+l/20)*l)
 		a.MaxMP = 11 + iround(l*3.5)
 		a.MaxWeight = 50 + iround(l/3*l)
-		a.MaxWearWeight = minInt(255, 15+iround(l/20*l))
+		a.MaxWearWeight = 15 + iround(l/20*l)
 		a.MaxHandWeight = 12 + iround(l/13*l)
 		n5 := level / 5
 		a.DC, a.DCMax = clampByte(maxInt(n5-1, 1)), clampByte(maxInt(1, n5))
@@ -86,7 +81,7 @@ func NormalizeClass(class string) string {
 }
 
 func iround(v float64) int {
-	return int(math.Round(v))
+	return referenceRound(v)
 }
 
 func clampByte(v int) int {
@@ -149,13 +144,13 @@ type SubAbilityStats struct {
 func (w *World) SubAbilityStats(ch storage.Character) SubAbilityStats {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.normalizeEquippedItemsLocked(&ch)
 	combat := w.combatStatsLocked(ch)
-	hitPoint := 5 + combat.Hit + ch.BonusAbil.Hit
+	bonusHit, bonusSpeed := w.bonusHitSpeedLocked(ch)
+	hitPoint := 5 + combat.Hit + bonusHit
 	if ch.ExtraAbil[3] > 0 {
 		hitPoint += int(ch.ExtraAbil[3])
 	}
-	speedPoint := int(SubAbilitySpeed(ch.Class)) + combat.Speed + ch.BonusAbil.Speed
+	speedPoint := int(SubAbilitySpeed(ch.Class)) + combat.Speed + bonusSpeed
 	if ch.ExtraAbil[3] > 0 {
 		speedPoint += int(ch.ExtraAbil[3])
 	}
@@ -168,15 +163,23 @@ func (w *World) SubAbilityStats(ch storage.Character) SubAbilityStats {
 	healthRecover := 0
 	spellRecover := 0
 	for slot := 0; slot < useSlotCount; slot++ {
-		entry, ok := w.equippedItemLocked(ch, slot)
+		entry, ok := w.activeEquippedItemLocked(ch, slot)
 		if !ok {
 			continue
 		}
 		if item, ok := w.data.Items[entry.ItemID]; ok {
 			display := UpgradeClientItemForDisplay(item, entry, false)
+			if display.StdMode == 25 {
+				continue
+			}
 			antiMagic += display.MgAvoid
 			antiPoison += display.ToxAvoid
 			switch display.StdMode {
+			case 19:
+				antiMagic += display.Stats.AcMax
+			case 20, 24:
+				hitPoint += display.Stats.AcMax
+				speedPoint += display.Stats.MacMax
 			case 21:
 				healthRecover += display.Stats.AcMax
 				spellRecover += display.Stats.MacMax
@@ -197,6 +200,24 @@ func (w *World) SubAbilityStats(ch storage.Character) SubAbilityStats {
 	}
 }
 
+func (w *World) bonusHitSpeedLocked(ch storage.Character) (int, int) {
+	settings := w.gameplay.Bonus.Warrior
+	switch NormalizeClass(ch.Class) {
+	case "wizard":
+		settings = w.gameplay.Bonus.Wizard
+	case "taoist":
+		settings = w.gameplay.Bonus.Taoist
+	}
+	hitTick, speedTick := settings.Bonus.Hit, settings.Bonus.Speed
+	if hitTick <= 0 {
+		hitTick = 1
+	}
+	if speedTick <= 0 {
+		speedTick = 1
+	}
+	return ch.BonusAbil.Hit / hitTick, ch.BonusAbil.Speed / speedTick
+}
+
 func addHighByte(word, add int) int {
 	low := word & 0xFF
 	high := (word >> 8) & 0xFF
@@ -214,19 +235,21 @@ func temporaryCombatBonus(value uint16) int {
 func (w *World) Abilities(ch storage.Character) Abilities {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.normalizeEquippedItemsLocked(&ch)
 	level := ch.Level
 	if level <= 0 {
 		level = 1
 	}
 	base := Base(ch.Class, level)
-	if w.characterHasEquipmentShapeLocked(ch, 119) {
+	if w.characterHasMuscleRingLocked(ch) {
 		base.MaxWeight *= 2
 		base.MaxWearWeight *= 2
 		base.MaxHandWeight *= 2
 	}
+	_, _, bonusHP, bonusMP := w.bonusCombatValuesLocked(ch)
+	base.MaxHP = minInt(65535, base.MaxHP+bonusHP)
+	base.MaxMP = minInt(65535, base.MaxMP+bonusMP)
 	item := w.combatStatsLocked(ch)
-	extra := activeTemporaryAbilities(ch, time.Now())
+	extra := activeTemporaryAbilities(ch)
 	ac := PackWord(base.AC, base.ACMax, item.AC, item.ACMax)
 	mac := PackWord(base.MAC, base.MACMax, item.MAC, item.MACMax)
 	dc := PackWord(base.DC, base.DCMax, item.DC, item.DCMax)
@@ -245,6 +268,7 @@ func (w *World) Abilities(ch storage.Character) Abilities {
 	if extra[5] > 0 {
 		base.MaxMP = minInt(65535, base.MaxMP+int(extra[5]))
 	}
+	base.MaxHP, base.MaxMP = w.applyMagicBloodSuiteLocked(ch, base.MaxHP, base.MaxMP)
 	wear, hand := w.equippedWeightTotalsLocked(ch)
 	bagWeight := 0
 	for _, entry := range ch.BagItems {
@@ -284,8 +308,12 @@ type CombatStats struct {
 }
 
 func (w *World) equippedWeightTotalsLocked(ch storage.Character) (wear, hand int) {
-	for slot, itemID := range w.equippedSlotMapLocked(ch) {
-		item, ok := w.data.Items[itemID]
+	for slot := 0; slot < useSlotCount; slot++ {
+		entry, ok := w.activeEquippedItemLocked(ch, slot)
+		if !ok {
+			continue
+		}
+		item, ok := w.data.Items[entry.ItemID]
 		if !ok {
 			continue
 		}
@@ -301,26 +329,27 @@ func (w *World) equippedWeightTotalsLocked(ch storage.Character) (wear, hand int
 func (w *World) CombatStats(ch storage.Character) CombatStats {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.normalizeEquippedItemsLocked(&ch)
 	return w.combatStatsLocked(ch)
 }
 
 func (w *World) AbilityStats(ch storage.Character) AbilityStats {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.normalizeEquippedItemsLocked(&ch)
 	level := ch.Level
 	if level <= 0 {
 		level = 1
 	}
 	base := Base(ch.Class, level)
-	if w.characterHasEquipmentShapeLocked(ch, 119) {
+	if w.characterHasMuscleRingLocked(ch) {
 		base.MaxWeight *= 2
 		base.MaxWearWeight *= 2
 		base.MaxHandWeight *= 2
 	}
+	_, _, bonusHP, bonusMP := w.bonusCombatValuesLocked(ch)
+	base.MaxHP = minInt(65535, base.MaxHP+bonusHP)
+	base.MaxMP = minInt(65535, base.MaxMP+bonusMP)
 	item := w.combatStatsLocked(ch)
-	extra := activeTemporaryAbilities(ch, time.Now())
+	extra := activeTemporaryAbilities(ch)
 	ac := PackWord(base.AC, base.ACMax, item.AC, item.ACMax)
 	mac := PackWord(base.MAC, base.MACMax, item.MAC, item.MACMax)
 	dc := PackWord(base.DC, base.DCMax, item.DC, item.DCMax)
@@ -339,6 +368,7 @@ func (w *World) AbilityStats(ch storage.Character) AbilityStats {
 	if extra[5] > 0 {
 		base.MaxMP = minInt(65535, base.MaxMP+int(extra[5]))
 	}
+	base.MaxHP, base.MaxMP = w.applyMagicBloodSuiteLocked(ch, base.MaxHP, base.MaxMP)
 	wear, hand := w.equippedWeightTotalsLocked(ch)
 	bagWeight := 0
 	for _, entry := range ch.BagItems {
@@ -347,7 +377,7 @@ func (w *World) AbilityStats(ch storage.Character) AbilityStats {
 		}
 	}
 	hp := ch.HP
-	if hp <= 0 || hp > base.MaxHP {
+	if hp < 0 || hp > base.MaxHP {
 		hp = base.MaxHP
 	}
 	mp := ch.MP
@@ -378,12 +408,131 @@ func (w *World) AbilityStats(ch storage.Character) AbilityStats {
 
 func (w *World) characterHasEquipmentShapeLocked(ch storage.Character, shape int) bool {
 	for slot := 0; slot < useSlotCount; slot++ {
-		entry, ok := w.equippedItemLocked(ch, slot)
+		entry, ok := w.activeEquippedItemLocked(ch, slot)
 		if !ok {
 			continue
 		}
 		item, ok := w.data.Items[entry.ItemID]
-		if ok && (item.Shape == shape || item.AniCount == shape) {
+		if !ok {
+			continue
+		}
+		if item.Shape == shape && slot == SlotNecklace {
+			return true
+		}
+		if item.AniCount == shape && (slot == SlotDress || slot == SlotWeapon || slot == SlotRightHand) {
+			return true
+		}
+	}
+	return false
+}
+
+func (w *World) characterHasMuscleRingLocked(ch storage.Character) bool {
+	for slot := 0; slot < useSlotCount; slot++ {
+		entry, ok := w.activeEquippedItemLocked(ch, slot)
+		if !ok {
+			continue
+		}
+		item, ok := w.data.Items[entry.ItemID]
+		if !ok {
+			continue
+		}
+		if (item.Shape == 119 && (slot == SlotRingL || slot == SlotRingR)) ||
+			(item.AniCount == 119 && (slot == SlotDress || slot == SlotWeapon || slot == SlotRightHand)) ||
+			(item.Shape == 153 || item.Shape == 156) && (slot != SlotDress && slot != SlotWeapon && slot != SlotRightHand) ||
+			(slot == SlotDress || slot == SlotWeapon || slot == SlotRightHand) && (item.AniCount == 153 || item.AniCount == 156) {
+			return true
+		}
+	}
+	return false
+}
+
+func (w *World) magicBloodSuiteValueLocked(ch storage.Character) int {
+	value := 0
+	haveNecklace, haveRing, haveArmRing := false, false, false
+	for slot, shape := range map[int]int{
+		SlotNecklace: 135,
+		SlotRingL:    133,
+		SlotRingR:    133,
+		SlotArmRingL: 134,
+		SlotArmRingR: 134,
+	} {
+		entry, ok := w.activeEquippedItemLocked(ch, slot)
+		if !ok {
+			continue
+		}
+		item, ok := w.data.Items[entry.ItemID]
+		if !ok || item.Shape != shape {
+			continue
+		}
+		value += item.AniCount
+		switch shape {
+		case 135:
+			haveNecklace = true
+		case 133:
+			haveRing = true
+		case 134:
+			haveArmRing = true
+		}
+	}
+	if haveNecklace && haveRing && haveArmRing {
+		value += 50
+	}
+	return value
+}
+
+func (w *World) applyMagicBloodSuiteLocked(ch storage.Character, maxHP, maxMP int) (int, int) {
+	value := w.magicBloodSuiteValueLocked(ch)
+	if value <= 0 {
+		return maxHP, maxMP
+	}
+	if maxMP <= value {
+		value = maxMP - 1
+		if value < 0 {
+			value = 0
+		}
+	}
+	maxMP -= value
+	maxHP = minInt(65535, maxHP+value)
+	return maxHP, maxMP
+}
+
+func (w *World) hasRainbowSuiteLocked(ch storage.Character) bool {
+	if w.data.Items == nil || ch.EquippedItems == nil {
+		return false
+	}
+	hasShape := func(slot int, shape int) bool {
+		entry, ok := w.activeEquippedItemLocked(ch, slot)
+		if !ok {
+			return false
+		}
+		item, ok := w.data.Items[entry.ItemID]
+		return ok && item.Shape == shape
+	}
+	return hasShape(SlotNecklace, 138) &&
+		(hasShape(SlotRingL, 136) || hasShape(SlotRingR, 136)) &&
+		(hasShape(SlotArmRingL, 137) || hasShape(SlotArmRingR, 137))
+}
+
+func (w *World) HasProbeNecklace(ch storage.Character) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for slot := 0; slot < useSlotCount; slot++ {
+		entry, ok := w.activeEquippedItemLocked(ch, slot)
+		if !ok {
+			continue
+		}
+		item, ok := w.data.Items[entry.ItemID]
+		if !ok {
+			continue
+		}
+		if (item.AniCount == 121 || item.AniCount == 159) &&
+			(slot == SlotDress || slot == SlotWeapon || slot == SlotRightHand) {
+			return true
+		}
+		if slot == SlotNecklace && item.Shape == 121 {
+			return true
+		}
+		if slot != SlotDress && slot != SlotWeapon && slot != SlotRightHand && item.Shape == 159 {
 			return true
 		}
 	}
@@ -400,7 +549,7 @@ func (w *World) skillTrainingMultiplierLocked(ch storage.Character) int {
 func (w *World) combatStatsLocked(ch storage.Character) CombatStats {
 	var stats CombatStats
 	for slot := 0; slot < useSlotCount; slot++ {
-		itemEntry, ok := w.equippedItemLocked(ch, slot)
+		itemEntry, ok := w.activeEquippedItemLocked(ch, slot)
 		if !ok {
 			continue
 		}
@@ -409,10 +558,15 @@ func (w *World) combatStatsLocked(ch storage.Character) CombatStats {
 			continue
 		}
 		item = UpgradeClientItemForDisplay(item, itemEntry, false)
-		stats.AC += int(byte(item.Stats.AcMin))
-		stats.ACMax += int(byte(item.Stats.AcMin >> 8))
-		stats.MAC += int(byte(item.Stats.MacMin))
-		stats.MACMax += int(byte(item.Stats.MacMin >> 8))
+		if item.StdMode == 25 || item.StdMode == 30 {
+			continue
+		}
+		if item.StdMode != 5 && item.StdMode != 6 && item.StdMode != 15 && item.StdMode != 19 && item.StdMode != 20 && item.StdMode != 21 && item.StdMode != 22 && item.StdMode != 23 && item.StdMode != 24 && item.StdMode != 26 {
+			stats.AC += int(byte(item.Stats.AcMin))
+			stats.ACMax += int(byte(item.Stats.AcMin >> 8))
+			stats.MAC += int(byte(item.Stats.MacMin))
+			stats.MACMax += int(byte(item.Stats.MacMin >> 8))
+		}
 		stats.DC += int(byte(item.Stats.DcMin))
 		stats.DCMax += int(byte(item.Stats.DcMin >> 8))
 		stats.MC += int(byte(item.Stats.McMin))
@@ -424,12 +578,48 @@ func (w *World) combatStatsLocked(ch storage.Character) CombatStats {
 		stats.Speed += item.Agility
 		stats.Undead += item.Undead
 		if item.StdMode == 5 || item.StdMode == 6 {
-			stats.Luck += int(byte(item.Stats.AcMin >> 8))
-			stats.UnLuck += int(byte(item.Stats.MacMin >> 8))
+			stats.Hit += int(byte(item.Stats.AcMin >> 8))
+			weaponSpeed := int(byte(item.Stats.MacMin >> 8))
+			if weaponSpeed > 10 {
+				stats.HitSpeed += weaponSpeed - 10
+			} else {
+				stats.HitSpeed -= weaponSpeed
+			}
+		}
+		if item.StdMode == 5 || item.StdMode == 6 {
+			stats.Luck += int(byte(item.Stats.AcMin))
+			stats.UnLuck += int(byte(item.Stats.MacMin))
+		}
+		if item.StdMode == 19 {
+			stats.Luck += int(byte(item.Stats.MacMin >> 8))
+			stats.UnLuck += int(byte(item.Stats.MacMin))
+		}
+		if item.StdMode == 21 || item.StdMode == 23 {
+			stats.HitSpeed += int(byte(item.Stats.AcMin))
+			stats.HitSpeed -= int(byte(item.Stats.MacMin))
 		}
 	}
 	stats.Luck -= stats.UnLuck
-	extra := activeTemporaryAbilities(ch, time.Now())
+	bonusLow, bonusHigh, _, _ := w.bonusCombatValuesLocked(ch)
+	stats.DC += bonusLow[0]
+	stats.DCMax += bonusHigh[0]
+	stats.MC += bonusLow[1]
+	stats.MCMax += bonusHigh[1]
+	stats.SC += bonusLow[2]
+	stats.SCMax += bonusHigh[2]
+	stats.AC += bonusLow[3]
+	stats.ACMax += bonusHigh[3]
+	stats.MAC += bonusLow[4]
+	stats.MACMax += bonusHigh[4]
+	if w.hasSpiritSuiteLocked(ch) {
+		stats.DC += 2
+		stats.DCMax += 7
+		stats.HitSpeed += 2
+	}
+	if w.hasRainbowSuiteLocked(ch) {
+		stats.Hit += 2
+	}
+	extra := activeTemporaryAbilities(ch)
 	stats.DCMax += temporaryCombatBonus(extra[0])
 	stats.MCMax += temporaryCombatBonus(extra[1])
 	stats.SCMax += temporaryCombatBonus(extra[2])
@@ -443,18 +633,56 @@ func (w *World) combatStatsLocked(ch storage.Character) CombatStats {
 	return stats
 }
 
+func (w *World) bonusCombatValuesLocked(ch storage.Character) ([5]int, [5]int, int, int) {
+	settings := w.gameplay.Bonus.Warrior
+	switch NormalizeClass(ch.Class) {
+	case "wizard":
+		settings = w.gameplay.Bonus.Wizard
+	case "taoist":
+		settings = w.gameplay.Bonus.Taoist
+	}
+	allocated := [5]int{ch.BonusAbil.DC, ch.BonusAbil.MC, ch.BonusAbil.SC, ch.BonusAbil.AC, ch.BonusAbil.MAC}
+	ticks := [5]int{settings.Bonus.DC, settings.Bonus.MC, settings.Bonus.SC, settings.Bonus.AC, settings.Bonus.MAC}
+	naked := [5]int{settings.Naked.DC, settings.Naked.MC, settings.Naked.SC, settings.Naked.AC, settings.Naked.MAC}
+	low, high := [5]int{}, [5]int{}
+	for index := range allocated {
+		if ticks[index] <= 0 {
+			ticks[index] = 1
+		}
+		value := allocated[index] / ticks[index]
+		lo, hi := naked[index]&0xFF, (naked[index]>>8)&0xFF
+		for step := 0; step < value; step++ {
+			if lo+1 < hi {
+				lo++
+				low[index]++
+			} else {
+				hi++
+				high[index]++
+			}
+		}
+	}
+	hpTick, mpTick := settings.Bonus.HP, settings.Bonus.MP
+	if hpTick <= 0 {
+		hpTick = 1
+	}
+	if mpTick <= 0 {
+		mpTick = 1
+	}
+	return low, high, ch.BonusAbil.HP / hpTick, ch.BonusAbil.MP / mpTick
+}
+
 type tempAbility struct {
-	DC       byte
-	MC       byte
-	SC       byte
-	HitSpeed byte
-	HP       byte
-	MP       byte
+	DC       uint16
+	MC       uint16
+	SC       uint16
+	HitSpeed uint16
+	HP       uint16
+	MP       uint16
 	Duration time.Duration
 	Now      time.Time
 }
 
-const tempAbilityCount = 7
+const tempAbilityCount = 6
 
 func applyTemporaryAbilityLocked(ch *storage.Character, bonus tempAbility) bool {
 	if bonus.Now.IsZero() {
@@ -462,18 +690,13 @@ func applyTemporaryAbilityLocked(ch *storage.Character, bonus tempAbility) bool 
 	}
 	expires := bonus.Now.Add(bonus.Duration).UnixNano()
 	changed := false
-	apply := func(slot int, value byte) {
+	apply := func(slot int, value uint16) {
 		if value == 0 {
 			return
 		}
-		if ch.ExtraAbil[slot] < uint16(value) {
-			ch.ExtraAbil[slot] = uint16(value)
-			changed = true
-		}
-		if ch.ExtraAbilTimes[slot] < expires {
-			ch.ExtraAbilTimes[slot] = expires
-			changed = true
-		}
+		ch.ExtraAbil[slot] = value
+		ch.ExtraAbilTimes[slot] = expires
+		changed = true
 	}
 	apply(0, bonus.DC)
 	apply(1, bonus.MC)
@@ -484,17 +707,10 @@ func applyTemporaryAbilityLocked(ch *storage.Character, bonus tempAbility) bool 
 	return changed
 }
 
-func activeTemporaryAbilities(ch storage.Character, now time.Time) [tempAbilityCount]uint16 {
+func activeTemporaryAbilities(ch storage.Character) [tempAbilityCount]uint16 {
 	var out [tempAbilityCount]uint16
-	if now.IsZero() {
-		now = time.Now()
-	}
-	expires := now.UnixNano()
 	for i := 0; i < tempAbilityCount && i < len(ch.ExtraAbil); i++ {
 		if ch.ExtraAbil[i] == 0 {
-			continue
-		}
-		if ch.ExtraAbilTimes[i] > 0 && ch.ExtraAbilTimes[i] < expires {
 			continue
 		}
 		out[i] = ch.ExtraAbil[i]

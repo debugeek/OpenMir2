@@ -1,5 +1,7 @@
 {
   "id": "G002",
+  "light": 0,
+  "safe": true,
   "name": "OX质询屋",
   "width": 100,
   "height": 100,

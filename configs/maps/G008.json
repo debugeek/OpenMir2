@@ -1,5 +1,7 @@
 {
   "id": "G008",
+  "light": 0,
+  "safe": true,
   "name": "热血足球场",
   "width": 80,
   "height": 80,

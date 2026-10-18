@@ -1,8 +1,10 @@
 package world
 
 import (
+	"fmt"
 	"sort"
 	"strconv"
+	"time"
 
 	"openmir2/internal/data"
 	"openmir2/internal/storage"
@@ -28,6 +30,47 @@ func (w *World) SyncCharacterHomeFromStartPoint(ch storage.Character) (storage.C
 		return ch, false, err
 	}
 	return ch, true, nil
+}
+
+func (w *World) SyncCharacterHomeForLogin(ch storage.Character) (storage.Character, bool, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	changed := w.syncCharacterHomeFromStartPointLocked(&ch)
+	if characterPKLevel(ch) >= 2 && w.gameplay.Combat.RedHomeMap != "" {
+		if ch.HomeMap != w.gameplay.Combat.RedHomeMap || ch.HomeX != w.gameplay.Combat.RedHomeX || ch.HomeY != w.gameplay.Combat.RedHomeY {
+			ch.HomeMap = w.gameplay.Combat.RedHomeMap
+			ch.HomeX = w.gameplay.Combat.RedHomeX
+			ch.HomeY = w.gameplay.Combat.RedHomeY
+			changed = true
+		}
+	}
+	if !changed {
+		return ch, false, nil
+	}
+	if err := w.store.SaveCharacter(ch); err != nil {
+		return ch, false, err
+	}
+	return ch, true, nil
+}
+
+func (w *World) ApplyReconnectMapForLogin(ch storage.Character) (storage.Character, bool, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	mp, ok := w.data.Maps[ch.MapID]
+	if !ok || !mp.NoReconnect || mp.ReconnectMap == "" {
+		return ch, false, nil
+	}
+	target, ok := w.data.Maps[mp.ReconnectMap]
+	if !ok {
+		return ch, false, fmt.Errorf("map %s not found", mp.ReconnectMap)
+	}
+	next, err := randomMoveToMap(ch, target, w.rand)
+	if err != nil {
+		return ch, false, err
+	}
+	w.refreshCharacterObjectOrderLocked(&next)
+	next.MapMoveAt = time.Now().UnixNano()
+	return next, true, nil
 }
 
 func (w *World) randomNewCharacterStartPointLocked() (data.StdStartPoint, bool) {

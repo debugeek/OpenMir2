@@ -7,7 +7,7 @@
   "level": 60,
   "undead": 1,
   "cool_eye": 0,
-  "experience": 3000,
+  "experience": 1000,
   "hp": 5000,
   "mp": 0,
   "defense": 30,
@@ -16,11 +16,11 @@
   "max_attack": 80,
   "magic_attack": 0,
   "tao_attack": 0,
-  "speed": 15,
+  "speed": 5,
   "hit": 30,
-  "walk_speed_ms": 400,
+  "walk_speed_ms": 600,
   "walk_step": 1,
-  "walk_wait": 1200,
+  "walk_wait": 0,
   "attack_interval_ms": 2000,
   "drops": [
     {

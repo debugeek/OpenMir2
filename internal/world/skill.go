@@ -23,7 +23,7 @@ var skillIDs = map[string]uint16{
 	"灵魂火符":  13,
 	"幽灵盾":   14,
 	"神圣战甲术": 15,
-	"困魔咒":   50,
+	"困魔咒":   16,
 	"召唤骷髅":  17,
 	"隐身术":   18,
 	"集体隐身术": 19,
@@ -71,10 +71,21 @@ func (w *World) Skill(skillID string) (data.StdSkill, bool) {
 }
 
 func itemGrantedSkillID(item data.StdItem) string {
+	return itemGrantedSkillIDAtSlot(item, -1)
+}
+
+func itemGrantedSkillIDAtSlot(item data.StdItem, slot int) string {
 	switch {
-	case item.Shape == 115 || item.AniCount == 115:
+	case (item.Shape == 115 && (slot < 0 || slot == SlotRingL || slot == SlotRingR)) ||
+		(item.AniCount == 115 && (slot < 0 || slot == SlotDress || slot == SlotWeapon || slot == SlotRightHand)) ||
+		item.Shape == 154 ||
+		(item.Shape == 151 && (slot < 0 || (slot != SlotDress && slot != SlotWeapon && slot != SlotRightHand))) ||
+		(item.AniCount == 151 || item.AniCount == 154) && (slot < 0 || slot == SlotDress || slot == SlotWeapon || slot == SlotRightHand):
 		return "火球术"
-	case item.Shape == 116 || item.AniCount == 116:
+	case (item.Shape == 116 && (slot < 0 || slot == SlotRingL || slot == SlotRingR)) ||
+		(item.AniCount == 116 && (slot < 0 || slot == SlotDress || slot == SlotWeapon || slot == SlotRightHand)) ||
+		(item.Shape == 152 || item.Shape == 155) && (slot < 0 || (slot != SlotDress && slot != SlotWeapon && slot != SlotRightHand)) ||
+		(item.AniCount == 152 || item.AniCount == 155) && (slot < 0 || slot == SlotDress || slot == SlotWeapon || slot == SlotRightHand):
 		return "治愈术"
 	default:
 		return ""
@@ -105,15 +116,15 @@ func (w *World) skillStateLocked(ch storage.Character, skillID string) (storage.
 		return state, idx, true
 	}
 	for slot := 0; slot < useSlotCount; slot++ {
-		entry, ok := w.equippedItemLocked(ch, slot)
+		entry, ok := w.activeEquippedItemLocked(ch, slot)
 		if !ok {
 			continue
 		}
 		item, ok := w.data.Items[entry.ItemID]
-		if !ok || itemGrantedSkillID(item) != skillID {
+		if !ok || itemGrantedSkillIDAtSlot(item, slot) != skillID {
 			continue
 		}
-		return storage.SkillState{ID: skillID}, -1, true
+		return storage.SkillState{ID: skillID, Level: 1, Hotkey: ch.ItemSkillHotkeys[skillID]}, -1, true
 	}
 	return storage.SkillState{}, -1, false
 }
@@ -127,7 +138,7 @@ func (w *World) EffectiveSkillStates(ch storage.Character) []storage.SkillState 
 		seen[state.ID] = struct{}{}
 	}
 	for slot := 0; slot < useSlotCount; slot++ {
-		entry, ok := w.equippedItemLocked(ch, slot)
+		entry, ok := w.activeEquippedItemLocked(ch, slot)
 		if !ok {
 			continue
 		}
@@ -135,17 +146,24 @@ func (w *World) EffectiveSkillStates(ch storage.Character) []storage.SkillState 
 		if !ok {
 			continue
 		}
-		skillID := itemGrantedSkillID(item)
+		skillID := itemGrantedSkillIDAtSlot(item, slot)
 		if skillID == "" {
 			continue
 		}
 		if _, ok := seen[skillID]; ok {
 			continue
 		}
-		states = append(states, storage.SkillState{ID: skillID})
+		states = append(states, storage.SkillState{ID: skillID, Level: 1, Hotkey: ch.ItemSkillHotkeys[skillID]})
 		seen[skillID] = struct{}{}
 	}
 	return states
+}
+
+func (w *World) EffectiveSkillState(ch storage.Character, skillID string) (storage.SkillState, bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	state, _, ok := w.skillStateLocked(ch, skillID)
+	return state, ok
 }
 
 func (w *World) MagicIDByName(name string) (uint16, bool) {
@@ -156,6 +174,17 @@ func (w *World) MagicIDByName(name string) (uint16, bool) {
 func (w *World) SkillIDByMagicID(magicID uint16) (string, bool) {
 	name, ok := magicNames[magicID]
 	return name, ok
+}
+
+func (w *World) ItemGrantedSkillID(itemID string) (string, bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	item, ok := w.data.Items[itemID]
+	if !ok {
+		return "", false
+	}
+	skillID := itemGrantedSkillID(item)
+	return skillID, skillID != ""
 }
 
 func (w *World) SetSkillHotkey(ch storage.Character, skillID string, hotkey byte) (storage.Character, bool, error) {
@@ -169,9 +198,16 @@ func (w *World) SetSkillHotkey(ch storage.Character, skillID string, hotkey byte
 			return ch, false, nil
 		}
 		ch.Skills[i].Hotkey = hotkey
-		if err := w.store.SaveCharacter(ch); err != nil {
-			return ch, false, err
+		return ch, true, nil
+	}
+	if _, index, ok := w.skillStateLocked(ch, skillID); ok && index < 0 {
+		if ch.ItemSkillHotkeys == nil {
+			ch.ItemSkillHotkeys = make(map[string]byte)
 		}
+		if ch.ItemSkillHotkeys[skillID] == hotkey {
+			return ch, false, nil
+		}
+		ch.ItemSkillHotkeys[skillID] = hotkey
 		return ch, true, nil
 	}
 	return ch, false, fmt.Errorf("skill %s not learned", skillID)

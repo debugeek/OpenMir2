@@ -7,6 +7,8 @@
   "y": 26,
   "dir": 0,
   "appr": 8,
+  "reference_order": 142,
+  "guild_official": true,
   "labels": {
     "@main": {
       "name": "@main",

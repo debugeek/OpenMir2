@@ -1,8 +1,10 @@
 {
   "id": "0137",
+  "fight_zone": true,
   "name": "竞技之地",
   "width": 30,
   "height": 33,
+  "no_drug": true,
   "connections": [
     {
       "to_map": "0139",

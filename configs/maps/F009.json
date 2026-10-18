@@ -1,5 +1,7 @@
 {
   "id": "F009",
+  "fight3_zone": true,
+  "light": 1,
   "name": "行会战争地图",
   "width": 200,
   "height": 200,

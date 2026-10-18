@@ -6,14 +6,12 @@ import (
 	"time"
 
 	"openmir2/internal/data"
+	"openmir2/internal/npc"
 	"openmir2/internal/storage"
 	"openmir2/internal/world/core"
 )
 
 func (w *World) magCanHitTargetLocked(mapID string, x, y, targetX, targetY int) bool {
-	if x == targetX && y == targetY {
-		return true
-	}
 	mapData, ok := w.data.Maps[mapID]
 	if !ok {
 		return false
@@ -38,14 +36,14 @@ func (w *World) magCanHitTargetLocked(mapID string, x, y, targetX, targetY int) 
 }
 
 const (
-	skillExplosionRadius      = 1
-	skillElectricBlizzardSize = 2
-	skillLightningRange       = 8
+	skillExplosionRadius = 1
+	skillLightningRange  = 8
 )
 
 type spellAreaTarget struct {
 	Character *storage.Character
 	Monster   *Monster
+	Trainer   *npc.Entity
 }
 
 func playersWithCaster(players []storage.Character, caster storage.Character) []storage.Character {
@@ -92,27 +90,49 @@ func (w *World) spellAreaTargetsLocked(players []storage.Character, mapID string
 	return w.spellAreaTargetsWithLifeFilterLocked(players, mapID, x, y, radius, true)
 }
 
+func (w *World) hostileSpellAreaTargetsLocked(players []storage.Character, mapID string, x, y, radius int) []spellAreaTarget {
+	targets := w.spellAreaTargetsLocked(players, mapID, x, y, radius)
+	for _, entity := range w.npcEntitiesInMapOrdered(mapID, true) {
+		if !npc.IsTrainer(entity) || entity.Hidden || abs(entity.X-x) > radius || abs(entity.Y-y) > radius {
+			continue
+		}
+		targets = append(targets, spellAreaTarget{Trainer: &entity})
+	}
+	sort.SliceStable(targets, func(i, j int) bool {
+		ix, iy, _ := targets[i].CharacterOrMonster()
+		jx, jy, _ := targets[j].CharacterOrMonster()
+		if ix != jx {
+			return ix < jx
+		}
+		if iy != jy {
+			return iy < jy
+		}
+		return spellAreaTargetBefore(targets[i], targets[j])
+	})
+	return targets
+}
+
 func (w *World) spellAreaTargetsWithLifeFilterLocked(players []storage.Character, mapID string, x, y, radius int, requireAlive bool) []spellAreaTarget {
+	if radius < 0 {
+		return nil
+	}
 	targets := make([]spellAreaTarget, 0, len(players)+len(w.monsters))
 	for i := range players {
 		target := players[i]
-		if target.ID == "" || target.MapID != mapID || (requireAlive && target.HP <= 0) || abs(target.X-x) > radius || abs(target.Y-y) > radius {
+		if target.ID == "" || target.MapID != mapID || target.Ghost || (requireAlive && w.characterDeadLocked(target)) || abs(target.X-x) > radius || abs(target.Y-y) > radius {
 			continue
 		}
 		targets = append(targets, spellAreaTarget{Character: &target})
 	}
 	monsters := make([]*Monster, 0, len(w.monsters))
 	for _, target := range w.monsters {
-		if target == nil || (requireAlive && !target.Alive) || target.MapID != mapID || abs(target.X-x) > radius || abs(target.Y-y) > radius {
+		if target == nil || target.ID == "" || (requireAlive && !target.Alive) || target.Ghost || target.MapID != mapID || abs(target.X-x) > radius || abs(target.Y-y) > radius {
 			continue
 		}
 		monsters = append(monsters, target)
 	}
 	sort.SliceStable(monsters, func(i, j int) bool {
-		if monsters[i].ObjectOrder == 0 || monsters[j].ObjectOrder == 0 {
-			return idSeq(monsters[i].ID) < idSeq(monsters[j].ID)
-		}
-		return monsters[i].ObjectOrder < monsters[j].ObjectOrder
+		return monsterSnapshotBefore(*monsters[i], *monsters[j])
 	})
 	for _, target := range monsters {
 		targets = append(targets, spellAreaTarget{Monster: target})
@@ -135,6 +155,9 @@ func (target spellAreaTarget) CharacterOrMonster() (int, int, string) {
 	if target.Character != nil {
 		return target.Character.X, target.Character.Y, target.Character.ID
 	}
+	if target.Trainer != nil {
+		return target.Trainer.X, target.Trainer.Y, target.Trainer.ID
+	}
 	return target.Monster.X, target.Monster.Y, target.Monster.ID
 }
 
@@ -142,25 +165,38 @@ func (target spellAreaTarget) ObjectOrder() uint64 {
 	if target.Character != nil {
 		return target.Character.ObjectOrder
 	}
+	if target.Trainer != nil {
+		return uint64(target.Trainer.ReferenceOrder)
+	}
 	return target.Monster.ObjectOrder
 }
 
 func spellAreaTargetBefore(a, b spellAreaTarget) bool {
 	aOrder, bOrder := a.ObjectOrder(), b.ObjectOrder()
-	if aOrder == 0 || bOrder == 0 {
-		return false
+	if aOrder != 0 || bOrder != 0 {
+		if aOrder == 0 {
+			return false
+		}
+		if bOrder == 0 {
+			return true
+		}
+		if aOrder != bOrder {
+			return aOrder < bOrder
+		}
 	}
-	return aOrder < bOrder
+	_, _, aID := a.CharacterOrMonster()
+	_, _, bID := b.CharacterOrMonster()
+	return aID < bID
 }
 
 func (w *World) charactersInRadiusLocked(players []storage.Character, mapID string, x, y, radius int) []storage.Character {
 	if radius < 0 {
-		radius = 0
+		return nil
 	}
 	affected := make([]storage.Character, 0, 8)
 	seen := map[string]struct{}{}
 	for _, target := range players {
-		if target.ID == "" || target.MapID != mapID || target.HP <= 0 {
+		if target.ID == "" || target.MapID != mapID || w.characterDeadLocked(target) || target.Ghost {
 			continue
 		}
 		if abs(target.X-x) > radius || abs(target.Y-y) > radius {
@@ -172,50 +208,68 @@ func (w *World) charactersInRadiusLocked(players []storage.Character, mapID stri
 		seen[target.ID] = struct{}{}
 		affected = append(affected, target)
 	}
+	sort.SliceStable(affected, func(i, j int) bool {
+		if affected[i].X != affected[j].X {
+			return affected[i].X < affected[j].X
+		}
+		if affected[i].Y != affected[j].Y {
+			return affected[i].Y < affected[j].Y
+		}
+		return characterObjectOrderBefore(affected[i], affected[j])
+	})
 	return affected
 }
 
-func characterAtExactPointLocked(players []storage.Character, mapID string, x, y int) (storage.Character, bool) {
-	for _, target := range players {
-		if target.ID == "" || target.MapID != mapID || target.HP <= 0 || target.X != x || target.Y != y {
-			continue
-		}
-		return target, true
-	}
-	return storage.Character{}, false
+func (w *World) movingObjectAtPointLocked(players []storage.Character, mapID string, x, y int) spellAreaTarget {
+	return w.movingObjectAtPointWithTrainerLocked(players, mapID, x, y, true)
 }
 
-func (w *World) movingObjectAtPointLocked(players []storage.Character, mapID string, x, y int) spellAreaTarget {
+func (w *World) movingObjectAtPointForMonsterLocked(players []storage.Character, mapID string, x, y int) spellAreaTarget {
+	return w.movingObjectAtPointWithTrainerLocked(players, mapID, x, y, false)
+}
+
+func (w *World) movingObjectAtPointWithTrainerLocked(players []storage.Character, mapID string, x, y int, includeTrainer bool) spellAreaTarget {
 	var selected spellAreaTarget
-	selectedOrder := uint64(0)
 	for i := range players {
 		target := players[i]
-		if target.ID == "" || target.MapID != mapID || target.HP <= 0 || target.X != x || target.Y != y {
+		if target.ID == "" || target.MapID != mapID || w.characterDeadLocked(target) || target.Ghost || target.ObserverMode || target.X != x || target.Y != y {
 			continue
 		}
 		candidate := spellAreaTarget{Character: &target}
-		order := candidate.ObjectOrder()
-		if selected.Character == nil && selected.Monster == nil || order != 0 && selectedOrder != 0 && order < selectedOrder {
+		if selected.Character == nil && selected.Monster == nil || movingObjectBefore(candidate, selected) {
 			selected = candidate
-			selectedOrder = order
 		}
 	}
 	for _, target := range w.monsters {
-		if target == nil || !target.Alive || target.MapID != mapID || target.X != x || target.Y != y {
+		if target == nil || target.ID == "" || !target.Alive || target.Ghost || target.MapID != mapID || target.X != x || target.Y != y {
 			continue
 		}
 		candidate := spellAreaTarget{Monster: target}
-		order := candidate.ObjectOrder()
-		if selected.Character == nil && selected.Monster == nil || order != 0 && selectedOrder != 0 && order < selectedOrder {
+		if selected.Character == nil && selected.Monster == nil || movingObjectBefore(candidate, selected) {
 			selected = candidate
-			selectedOrder = order
+		}
+	}
+	if includeTrainer {
+		for _, target := range w.npcEntitiesInMapOrdered(mapID, true) {
+			if !npc.IsTrainer(target) || target.Hidden || target.X != x || target.Y != y {
+				continue
+			}
+			candidate := spellAreaTarget{Trainer: &target}
+			if selected.Character == nil && selected.Monster == nil && selected.Trainer == nil || movingObjectBefore(candidate, selected) {
+				selected = candidate
+			}
 		}
 	}
 	return selected
 }
 
+func movingObjectBefore(a, b spellAreaTarget) bool {
+	aOrder, bOrder := a.ObjectOrder(), b.ObjectOrder()
+	return aOrder != 0 && bOrder != 0 && aOrder < bOrder
+}
+
 func (w *World) isProperMonsterTargetLocked(caster storage.Character, players []storage.Character, mon *Monster) bool {
-	if mon == nil || !mon.Alive || mon.AdminMode || mon.StoneMode {
+	if mon == nil || !mon.Alive || mon.Ghost || mon.AdminMode || mon.StoneMode {
 		return false
 	}
 	if mon.MasterID == "" {
@@ -225,14 +279,14 @@ func (w *World) isProperMonsterTargetLocked(caster storage.Character, players []
 		return caster.AttackMode == 0
 	}
 	master, ok := w.characterByIDLocked(players, mon.MasterID)
-	if !ok || w.isSafeZoneLocked(caster) || w.isSafeZoneLocked(storage.Character{MapID: mon.MapID}) {
+	if !ok || w.isSafeZoneLocked(caster) || w.isSafeZoneLocked(storage.Character{MapID: mon.MapID, X: mon.X, Y: mon.Y}) {
 		return false
 	}
 	return w.isAttackCharacterTargetLocked(caster, master)
 }
 
 func (w *World) isProperDelayedMonsterPoisonTargetLocked(caster storage.Character, players []storage.Character, mon *Monster) bool {
-	if mon == nil || !mon.Alive || mon.AdminMode || mon.StoneMode {
+	if mon == nil || !mon.Alive || mon.Ghost || mon.AdminMode || mon.StoneMode {
 		return false
 	}
 	if mon.MasterID == "" {
@@ -242,7 +296,7 @@ func (w *World) isProperDelayedMonsterPoisonTargetLocked(caster storage.Characte
 		return false
 	}
 	master, ok := w.characterByIDLocked(players, mon.MasterID)
-	if !ok || w.isSafeZoneLocked(caster) || w.isSafeZoneLocked(storage.Character{MapID: mon.MapID}) {
+	if !ok || w.isSafeZoneLocked(caster) || w.isSafeZoneLocked(storage.Character{MapID: mon.MapID, X: mon.X, Y: mon.Y}) {
 		return false
 	}
 	return master.TargetID == caster.ID || caster.TargetID == master.ID
@@ -253,7 +307,7 @@ func (w *World) isProperMonsterAreaTargetLocked(caster storage.Character, player
 }
 
 func (w *World) isProperCharacterTargetLocked(caster, target storage.Character) bool {
-	if caster.ID == "" || target.ID == "" || caster.ID == target.ID || caster.MapID != target.MapID || target.HP <= 0 || target.AdminMode || target.StoneMode {
+	if caster.ID == "" || target.ID == "" || caster.ID == target.ID || caster.MapID != target.MapID || w.characterDeadLocked(target) || target.AdminMode || target.Ghost || target.StoneMode {
 		return false
 	}
 	if !w.isAttackCharacterTargetLocked(caster, target) {
@@ -278,7 +332,7 @@ func (w *World) isAttackCharacterTargetLocked(caster, target storage.Character) 
 		if !w.gameplay.Combat.NonPKServer && caster.GuildID != "" && caster.GuildID == target.GuildID {
 			return false
 		}
-		if !w.gameplay.Combat.NonPKServer && caster.GuildWarArea && target.GuildWarArea && charactersShareAlliance(caster, target) {
+		if !w.gameplay.Combat.NonPKServer && w.guildWarArea(caster) && w.guildWarArea(target) && charactersShareAlliance(caster, target) {
 			return false
 		}
 	case 4:
@@ -323,12 +377,12 @@ func (w *World) isProtectedCharacterTargetLocked(caster, target storage.Characte
 		if caster.Level <= combat.RedPKProtectLevel && casterPK < 2 && targetPK >= 2 && target.Level > combat.RedPKProtectLevel {
 			return false
 		}
-	}
-	if combat := w.gameplay.Combat.MapMoveProtectMS; combat > 0 {
-		now := time.Now()
-		protect := time.Duration(combat) * time.Millisecond
-		if recentCharacterMove(caster, now, protect) || recentCharacterMove(target, now, protect) {
-			return false
+		if combat.MapMoveProtectMS > 0 {
+			now := time.Now()
+			protect := time.Duration(combat.MapMoveProtectMS) * time.Millisecond
+			if recentCharacterMove(caster, now, protect) || recentCharacterMove(target, now, protect) {
+				return false
+			}
 		}
 	}
 	return true
@@ -354,6 +408,11 @@ func (w *World) isSafeZoneLocked(ch storage.Character) bool {
 	if ch.MapID == combat.RedHomeMap && abs(ch.X-combat.RedHomeX) <= combat.SafeZoneSize && abs(ch.Y-combat.RedHomeY) <= combat.SafeZoneSize {
 		return true
 	}
+	for _, startPoint := range mapData.StartPoints {
+		if abs(ch.X-startPoint.X) <= combat.SafeZoneSize && abs(ch.Y-startPoint.Y) <= combat.SafeZoneSize {
+			return true
+		}
+	}
 	return false
 }
 
@@ -367,7 +426,7 @@ func (w *World) monsterMagicHitAllowedLocked(mon *Monster) bool {
 func (w *World) characterMagicHitAllowedLocked(target storage.Character) bool {
 	antiMagic := 1
 	for slot := 0; slot < useSlotCount; slot++ {
-		itemEntry, ok := w.equippedItemLocked(target, slot)
+		itemEntry, ok := w.activeEquippedItemLocked(target, slot)
 		if !ok {
 			continue
 		}
@@ -382,12 +441,18 @@ func (w *World) characterMagicHitAllowedLocked(target storage.Character) bool {
 
 func (w *World) characterCannotParalyzeLocked(target storage.Character) bool {
 	for slot := 0; slot < useSlotCount; slot++ {
-		itemEntry, ok := w.equippedItemLocked(target, slot)
+		itemEntry, ok := w.activeEquippedItemLocked(target, slot)
 		if !ok {
 			continue
 		}
 		item, ok := w.data.Items[itemEntry.ItemID]
-		if ok && (item.AniCount == 139 || item.Shape == 139) {
+		if !ok {
+			continue
+		}
+		if (slot == SlotDress || slot == SlotWeapon || slot == SlotRightHand) && item.AniCount == 139 {
+			return true
+		}
+		if slot != SlotDress && slot != SlotWeapon && slot != SlotRightHand && item.Shape == 139 {
 			return true
 		}
 	}
@@ -396,12 +461,25 @@ func (w *World) characterCannotParalyzeLocked(target storage.Character) bool {
 
 func (w *World) characterHasParalysisRingLocked(ch storage.Character) bool {
 	for slot := 0; slot < useSlotCount; slot++ {
-		entry, ok := w.equippedItemLocked(ch, slot)
+		entry, ok := w.activeEquippedItemLocked(ch, slot)
 		if !ok {
 			continue
 		}
 		item, ok := w.data.Items[entry.ItemID]
-		if ok && (item.AniCount == 113 || item.Shape == 113) {
+		if !ok {
+			continue
+		}
+		if item.AniCount == 113 && (slot == SlotDress || slot == SlotWeapon || slot == SlotRightHand) {
+			return true
+		}
+		if item.Shape == 113 && slot != SlotDress && slot != SlotWeapon && slot != SlotRightHand {
+			return true
+		}
+		if (slot == SlotDress || slot == SlotWeapon || slot == SlotRightHand) &&
+			(item.AniCount == 150 || item.AniCount == 151 || item.AniCount == 152 || item.AniCount == 153 || item.AniCount == 157 || item.AniCount == 161) {
+			return true
+		}
+		if slot != SlotDress && slot != SlotWeapon && slot != SlotRightHand && (item.Shape == 150 || item.Shape == 151 || item.Shape == 152 || item.Shape == 153 || item.Shape == 157 || item.Shape == 161) {
 			return true
 		}
 	}
@@ -411,7 +489,7 @@ func (w *World) characterHasParalysisRingLocked(ch storage.Character) bool {
 func (w *World) characterAntiPoisonLocked(ch storage.Character) int {
 	antiPoison := ch.AntiPoison
 	for slot := 0; slot < useSlotCount; slot++ {
-		entry, ok := w.equippedItemLocked(ch, slot)
+		entry, ok := w.activeEquippedItemLocked(ch, slot)
 		if !ok {
 			continue
 		}
@@ -432,13 +510,18 @@ func (w *World) characterAntiPoisonLocked(ch storage.Character) int {
 }
 
 func (w *World) tryApplyParalysisRingToCharacterLocked(attacker storage.Character, target *storage.Character) bool {
+	return w.tryApplyParalysisRingToCharacterAtLocked(attacker, target, time.Now())
+}
+
+func (w *World) tryApplyParalysisRingToCharacterAtLocked(attacker storage.Character, target *storage.Character, now time.Time) bool {
 	if target == nil || !w.characterHasParalysisRingLocked(attacker) || w.characterCannotParalyzeLocked(*target) {
 		return false
 	}
 	if w.rand.Intn(w.characterAntiPoisonLocked(*target)+5) != 0 {
 		return false
 	}
-	target.ParalyzedUntil = time.Now().Add(5 * time.Second).UnixNano()
+	target.ParalyzedUntil = now.Add(5 * time.Second).UnixNano()
+	w.resetCharacterStatusClockLocked(target.ID, statusClockParalyzed, target.ParalyzedUntil, now)
 	return true
 }
 
@@ -455,29 +538,29 @@ func (w *World) prepareCharacterMagicDamageLocked(target storage.Character, dama
 }
 
 func (w *World) applyPreparedCharacterMagicDamageLocked(caster storage.Character, target storage.Character, damage int) (storage.Character, CharacterHit, error) {
-	now := time.Now()
+	return w.applyPreparedCharacterMagicDamageAtLocked(caster, target, damage, time.Now())
+}
+
+func (w *World) applyPreparedCharacterMagicDamageAtLocked(caster storage.Character, target storage.Character, damage int, now time.Time) (storage.Character, CharacterHit, error) {
 	canMarkCasterPK := w.isProperCharacterTargetLocked(caster, target)
-	magicShield := w.characterHasMagicShieldLocked(target)
-	target, damage, durability, deletedItems, featureChanged := w.applyCharacterStruckLocked(target, damage)
+	canSetCasterPK := canMarkCasterPK && w.canSetCharacterPKFlagLocked(target, caster)
+	magicShield := w.characterHasMagicShieldLocked(target) && !w.characterMagicShieldBlockedLocked(target)
+	target, damage, durability, deletedItems, featureChanged := w.applyCharacterStruckAtLocked(target, damage, now)
 	hpDamage := w.applyCharacterMagicShieldStateLocked(&target, damage, magicShield)
 	change := core.ApplyVitalDelta(target, -hpDamage, 0)
 	target = change.Character
 	if change.Dead {
 		w.deferCharacterDeathLocked(target)
 	}
-	if hpDamage > 0 {
+	if damage > 0 {
 		target.HealthTick = 0
 		target.SpellTick = 0
 		if canMarkCasterPK {
-			target.LastHitterID = caster.ID
-			target.LastHitterAt = now.UnixNano()
+			w.setCharacterLastHitterAtLocked(&target, caster.ID, now)
 		}
-		if canMarkCasterPK {
+		if canSetCasterPK {
 			caster.PKFlag = true
 			caster.PKFlagUntil = now.Add(60 * time.Second).UnixNano()
-			if err := w.store.SaveCharacter(caster); err != nil {
-				return target, CharacterHit{}, err
-			}
 		}
 	}
 	hit := CharacterHit{
@@ -495,7 +578,7 @@ func (w *World) applyPreparedCharacterMagicDamageLocked(caster storage.Character
 		Dead:           change.Dead,
 		DeathDeferred:  change.Dead,
 	}
-	return target, hit, w.store.SaveCharacter(target)
+	return target, hit, nil
 }
 
 func applyCharacterMagicBubbleLocked(target *storage.Character, damage int, now time.Time) int {
@@ -524,7 +607,8 @@ func (w *World) applyCharacterMagicShieldLocked(target *storage.Character, damag
 	if target == nil {
 		return maxInt(damage, 0)
 	}
-	return w.applyCharacterMagicShieldStateLocked(target, damage, w.characterHasMagicShieldLocked(*target))
+	active := w.characterHasMagicShieldLocked(*target) && !w.characterMagicShieldBlockedLocked(*target)
+	return w.applyCharacterMagicShieldStateLocked(target, damage, active)
 }
 
 func (w *World) applyCharacterMagicShieldStateLocked(target *storage.Character, damage int, active bool) int {
@@ -543,15 +627,47 @@ func (w *World) applyCharacterMagicShieldStateLocked(target *storage.Character, 
 
 func (w *World) characterHasMagicShieldLocked(target storage.Character) bool {
 	for slot := 0; slot < useSlotCount; slot++ {
-		entry, ok := w.equippedItemLocked(target, slot)
+		entry, ok := w.activeEquippedItemLocked(target, slot)
 		if !ok {
 			continue
 		}
 		item, ok := w.data.Items[entry.ItemID]
-		if !ok || (item.Shape != 118 && item.AniCount != 118) {
+		if !ok {
 			continue
 		}
-		return true
+		if item.AniCount == 118 && (slot == SlotDress || slot == SlotWeapon || slot == SlotRightHand) {
+			return true
+		}
+		if item.Shape == 118 && slot != SlotDress && slot != SlotWeapon && slot != SlotRightHand {
+			return true
+		}
+		if (slot == SlotDress || slot == SlotWeapon || slot == SlotRightHand) &&
+			(item.AniCount == 150 || item.AniCount == 154 || item.AniCount == 155 || item.AniCount == 156 || item.AniCount == 158 || item.AniCount == 162) {
+			return true
+		}
+		if slot != SlotDress && slot != SlotWeapon && slot != SlotRightHand && (item.Shape == 150 || item.Shape == 154 || item.Shape == 155 || item.Shape == 156 || item.Shape == 158 || item.Shape == 162) {
+			return true
+		}
+	}
+	return false
+}
+
+func (w *World) characterMagicShieldBlockedLocked(target storage.Character) bool {
+	for slot := 0; slot < useSlotCount; slot++ {
+		entry, ok := w.activeEquippedItemLocked(target, slot)
+		if !ok {
+			continue
+		}
+		item, ok := w.data.Items[entry.ItemID]
+		if !ok {
+			continue
+		}
+		if (slot == SlotDress || slot == SlotWeapon || slot == SlotRightHand) && item.AniCount == 143 {
+			return true
+		}
+		if slot != SlotDress && slot != SlotWeapon && slot != SlotRightHand && item.Shape == 143 {
+			return true
+		}
 	}
 	return false
 }
@@ -561,13 +677,9 @@ func (w *World) characterMagicDamageAfterDefenseLocked(target storage.Character,
 		damage = 0
 	}
 	stats := w.combatStatsLocked(target)
-	_, magicDefenceBonus, _, _ := activeProtectionBuffs(target, now)
 	armor := stats.MAC
 	low := armor & 0xFF
 	high := (armor >> 8) & 0xFF
-	if magicDefenceBonus > 0 {
-		high = minInt(255, high+magicDefenceBonus)
-	}
 	if high < low {
 		high = low
 	}
@@ -592,14 +704,14 @@ func (w *World) castLightningLineSkillLocked(result *SkillCastResult, ch storage
 	if _, ok := w.data.Maps[ch.MapID]; !ok {
 		return ch, false, fmt.Errorf("map %s not found", ch.MapID)
 	}
-	damage := w.spellMonsterDamageLocked(ch, skill, state)
-	lineDamage := damage
 	dir := direction(ch.X, ch.Y, int(targetX), int(targetY))
 	mapData := w.data.Maps[ch.MapID]
 	firstX, firstY, ok := spellLineNextPosition(mapData, ch.X, ch.Y, dir, 1)
 	if !ok {
 		return ch, false, nil
 	}
+	damage := w.spellMonsterDamageLocked(ch, skill, state)
+	lineDamage := damage
 	endX, endY, _ := spellLineNextPosition(mapData, ch.X, ch.Y, dir, steps)
 	result.MagicFireTargetX = endX
 	result.MagicFireTargetY = endY
@@ -609,10 +721,6 @@ func (w *World) castLightningLineSkillLocked(result *SkillCastResult, ch storage
 	hitMonsters := map[string]struct{}{}
 	hitCharacters := map[string]struct{}{}
 	for i := 0; i < 13; i++ {
-		if entity, ok := w.trainerAtExactPointLocked(ch.MapID, sx, sy); ok {
-			w.pendingSpells = append(w.pendingSpells, pendingSpell{DueAt: now.Add(spellDelayMagic), CasterID: ch.ID, TargetNPCID: entity.ID, TargetX: sx, TargetY: sy, TargetRange: 1, Damage: damage})
-			hitCount++
-		}
 		areaTarget := w.movingObjectAtPointLocked(players, ch.MapID, sx, sy)
 		if areaTarget.Monster != nil {
 			mon := areaTarget.Monster
@@ -622,7 +730,7 @@ func (w *World) castLightningLineSkillLocked(result *SkillCastResult, ch storage
 					lineDamage = referenceRound(float64(lineDamage) * 1.5)
 					appliedDamage = lineDamage
 				}
-				w.pendingSpells = append(w.pendingSpells, pendingSpell{DueAt: now.Add(spellDelayMagic), CasterID: ch.ID, TargetMonsterID: mon.ID, SingleMagicStrike: true, TargetX: sx, TargetY: sy, TargetRange: 1, Damage: appliedDamage})
+				w.enqueuePendingSpellLocked(pendingSpell{DueAt: now.Add(spellDelayMagic), CasterID: ch.ID, TargetMonsterID: mon.ID, SingleMagicStrike: true, TargetX: sx, TargetY: sy, TargetRange: 1, Damage: appliedDamage})
 				hitCount++
 				hitMonsters[mon.ID] = struct{}{}
 			}
@@ -635,11 +743,14 @@ func (w *World) castLightningLineSkillLocked(result *SkillCastResult, ch storage
 						lineDamage = referenceRound(float64(lineDamage) * 1.5)
 						appliedDamage = lineDamage
 					}
-					w.pendingSpells = append(w.pendingSpells, pendingSpell{DueAt: now.Add(spellDelayMagic), CasterID: ch.ID, TargetCharacterID: target.ID, CharacterDamage: true, SingleMagicStrike: true, TargetX: sx, TargetY: sy, TargetRange: 1, Damage: appliedDamage})
+					w.enqueuePendingSpellLocked(pendingSpell{DueAt: now.Add(spellDelayMagic), CasterID: ch.ID, TargetCharacterID: target.ID, CharacterDamage: true, SingleMagicStrike: true, TargetX: sx, TargetY: sy, TargetRange: 1, Damage: appliedDamage})
 					hitCount++
 					hitCharacters[target.ID] = struct{}{}
 				}
 			}
+		} else if areaTarget.Trainer != nil && w.canPlayerTargetTrainerLocked(*areaTarget.Trainer) {
+			w.enqueuePendingSpellLocked(pendingSpell{DueAt: now.Add(spellDelayMagic), CasterID: ch.ID, TargetTrainerID: areaTarget.Trainer.ID, TargetX: sx, TargetY: sy, TargetRange: 1, Damage: lineDamage})
+			hitCount++
 		}
 		if sx == endX && sy == endY {
 			break
@@ -667,7 +778,7 @@ func spellLineNextPosition(mapData data.StdMap, x, y, dir, steps int) (int, int,
 	return nextX, nextY, true
 }
 
-func (w *World) castExplosionSkillLocked(result *SkillCastResult, ch storage.Character, skill data.StdSkill, state storage.SkillState, targetX, targetY int, players []storage.Character) (storage.Character, bool, error) {
+func (w *World) castExplosionSkillLocked(result *SkillCastResult, ch storage.Character, skill data.StdSkill, state storage.SkillState, targetX, targetY int, players []storage.Character, now time.Time) (storage.Character, bool, error) {
 	if _, ok := w.data.Maps[ch.MapID]; !ok {
 		return ch, false, fmt.Errorf("map %s not found", ch.MapID)
 	}
@@ -675,7 +786,7 @@ func (w *World) castExplosionSkillLocked(result *SkillCastResult, ch storage.Cha
 	validTarget := false
 	hitMonsters := map[string]struct{}{}
 	hitCharacters := map[string]struct{}{}
-	for _, areaTarget := range w.spellAreaTargetsLocked(players, ch.MapID, targetX, targetY, skillExplosionRadius) {
+	for _, areaTarget := range w.hostileSpellAreaTargetsLocked(players, ch.MapID, targetX, targetY, skillExplosionRadius) {
 		if areaTarget.Monster != nil {
 			mon := areaTarget.Monster
 			if !w.isProperMonsterAreaTargetLocked(ch, players, mon) {
@@ -685,15 +796,14 @@ func (w *World) castExplosionSkillLocked(result *SkillCastResult, ch storage.Cha
 			if _, seen := hitMonsters[mon.ID]; seen {
 				continue
 			}
-			ch.TargetID = mon.ID
-			hit, err := w.attackMonsterWithImmediateMagicDamageLocked(ch, mon, damage, players...)
-			if err != nil {
-				return ch, false, err
-			}
-			if hit.Damage > 0 {
-				result.Impacts = append(result.Impacts, SpellImpact{MonsterHit: &hit})
-			}
+			setCharacterTargetLocked(&ch, mon.ID, now)
+			w.enqueuePendingSpellLocked(pendingSpell{DueAt: now, CasterID: ch.ID, TargetMonsterID: mon.ID, SingleMagicStrike: true, Damage: damage})
 			hitMonsters[mon.ID] = struct{}{}
+			continue
+		}
+		if areaTarget.Trainer != nil && w.canPlayerTargetTrainerLocked(*areaTarget.Trainer) {
+			w.enqueuePendingSpellLocked(pendingSpell{DueAt: now, CasterID: ch.ID, TargetTrainerID: areaTarget.Trainer.ID, Damage: damage})
+			validTarget = true
 			continue
 		}
 		target := *areaTarget.Character
@@ -704,57 +814,35 @@ func (w *World) castExplosionSkillLocked(result *SkillCastResult, ch storage.Cha
 		if _, seen := hitCharacters[target.ID]; seen {
 			continue
 		}
-		ch.TargetID = target.ID
-		updated, hit, err := w.spellCharacterDamageWithPowerLocked(ch, target, damage)
-		if err != nil {
-			return ch, false, err
-		}
-		if updated.ID != "" && hit.Damage > 0 {
-			result.Impacts = append(result.Impacts, SpellImpact{CharacterHit: &hit})
-		}
+		setCharacterTargetLocked(&ch, target.ID, now)
+		w.enqueuePendingSpellLocked(pendingSpell{DueAt: now, CasterID: ch.ID, TargetCharacterID: target.ID, CharacterDamage: true, SingleMagicStrike: true, Damage: damage})
 		hitCharacters[target.ID] = struct{}{}
-	}
-	for _, entity := range w.trainersInRadiusLocked(ch.MapID, targetX, targetY, skillExplosionRadius) {
-		validTarget = true
-		hit, err := w.applyNPCTrainingHitLocked(entity.ID, ch.ID, damage, true, time.Now())
-		if err != nil {
-			return ch, false, err
-		}
-		if hit.Damage > 0 {
-			result.NPCTrainingHits = append(result.NPCTrainingHits, hit)
-		}
 	}
 	result.Character = ch
 	return ch, validTarget, nil
 }
 
-func (w *World) castElectricBlizzardSkillLocked(result *SkillCastResult, ch storage.Character, skill data.StdSkill, state storage.SkillState, players []storage.Character) (storage.Character, bool, error) {
-	damage := w.spellMonsterDamageLocked(ch, skill, state)
+func (w *World) castElectricBlizzardSkillLocked(result *SkillCastResult, ch storage.Character, skill data.StdSkill, state storage.SkillState, targetX, targetY int, players []storage.Character, now time.Time) (storage.Character, bool, error) {
+	const radius = 2
 	validTarget := false
-	hitMonsters := map[string]struct{}{}
-	hitCharacters := map[string]struct{}{}
-	for _, areaTarget := range w.spellAreaTargetsLocked(players, ch.MapID, ch.X, ch.Y, skillElectricBlizzardSize) {
+	damage := w.spellMonsterDamageLocked(ch, skill, state)
+	for _, areaTarget := range w.hostileSpellAreaTargetsLocked(players, ch.MapID, ch.X, ch.Y, radius) {
 		if areaTarget.Monster != nil {
 			mon := areaTarget.Monster
 			if !w.isProperMonsterAreaTargetLocked(ch, players, mon) {
 				continue
 			}
-			validTarget = true
-			if _, seen := hitMonsters[mon.ID]; seen {
-				continue
-			}
-			applied := damage
+			pendingDamage := damage
 			if mon.Undead <= 0 {
-				applied = damage / 10
+				pendingDamage /= 10
 			}
-			hit, err := w.attackMonsterWithImmediateMagicDamageLocked(ch, mon, applied, players...)
-			if err != nil {
-				return ch, false, err
-			}
-			if hit.Damage > 0 {
-				result.Impacts = append(result.Impacts, SpellImpact{MonsterHit: &hit})
-			}
-			hitMonsters[mon.ID] = struct{}{}
+			w.enqueuePendingSpellLocked(pendingSpell{DueAt: now, CasterID: ch.ID, TargetMonsterID: mon.ID, SingleMagicStrike: true, TargetX: mon.X, TargetY: mon.Y, TargetRange: -1, Damage: pendingDamage})
+			validTarget = true
+			continue
+		}
+		if areaTarget.Trainer != nil && w.canPlayerTargetTrainerLocked(*areaTarget.Trainer) {
+			w.enqueuePendingSpellLocked(pendingSpell{DueAt: now, CasterID: ch.ID, TargetTrainerID: areaTarget.Trainer.ID, Damage: damage})
+			validTarget = true
 			continue
 		}
 		target := *areaTarget.Character
@@ -762,35 +850,7 @@ func (w *World) castElectricBlizzardSkillLocked(result *SkillCastResult, ch stor
 			continue
 		}
 		validTarget = true
-		if _, seen := hitCharacters[target.ID]; seen {
-			continue
-		}
-		applied := damage / 10
-		if applied <= 0 {
-			continue
-		}
-		_, hit, err := w.spellCharacterDamageWithPowerLocked(ch, target, applied)
-		if err != nil {
-			return ch, false, err
-		}
-		if hit.Damage > 0 {
-			result.Impacts = append(result.Impacts, SpellImpact{CharacterHit: &hit})
-		}
-		hitCharacters[target.ID] = struct{}{}
-	}
-	for _, entity := range w.trainersInRadiusLocked(ch.MapID, ch.X, ch.Y, skillElectricBlizzardSize) {
-		validTarget = true
-		applied := damage / 10
-		if applied <= 0 {
-			continue
-		}
-		hit, err := w.applyNPCTrainingHitLocked(entity.ID, ch.ID, applied, true, time.Now())
-		if err != nil {
-			return ch, false, err
-		}
-		if hit.Damage > 0 {
-			result.NPCTrainingHits = append(result.NPCTrainingHits, hit)
-		}
+		w.enqueuePendingSpellLocked(pendingSpell{DueAt: now, CasterID: ch.ID, TargetCharacterID: target.ID, SingleMagicStrike: true, CharacterDamage: true, TargetX: target.X, TargetY: target.Y, TargetRange: -1, Damage: damage / 10})
 	}
 	result.Character = ch
 	return ch, validTarget, nil

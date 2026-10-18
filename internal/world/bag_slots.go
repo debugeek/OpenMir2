@@ -1,11 +1,33 @@
 package world
 
 import (
+	"errors"
 	"fmt"
 
 	"openmir2/internal/data"
 	"openmir2/internal/storage"
 )
+
+type equipFailureMessageError struct {
+	err     error
+	message string
+}
+
+func (e *equipFailureMessageError) Error() string { return e.err.Error() }
+
+func (e *equipFailureMessageError) Unwrap() error { return e.err }
+
+func EquipFailureMessage(err error) (string, bool) {
+	var messageErr *equipFailureMessageError
+	if !errors.As(err, &messageErr) {
+		return "", false
+	}
+	return messageErr.message, true
+}
+
+func equipFailure(err error, message string) error {
+	return &equipFailureMessageError{err: err, message: message}
+}
 
 func (w *World) canWearInSlotLocked(item data.StdItem, slot int) bool {
 	switch slot {
@@ -37,11 +59,11 @@ func (w *World) canEquipItemLocked(ch storage.Character, item data.StdItem, slot
 		switch item.StdMode {
 		case 10:
 			if ch.Sex != 0 {
-				return fmt.Errorf("item %s cannot be used", item.ID)
+				return equipFailure(fmt.Errorf("item %s cannot be used", item.ID), "男装不能穿戴物品.")
 			}
 		case 11:
 			if ch.Sex == 0 {
-				return fmt.Errorf("item %s cannot be used", item.ID)
+				return equipFailure(fmt.Errorf("item %s cannot be used", item.ID), "女装不能穿戴物品.")
 			}
 		}
 	}
@@ -50,6 +72,10 @@ func (w *World) canEquipItemLocked(ch storage.Character, item data.StdItem, slot
 		level = 1
 	}
 	base := Base(ch.Class, level)
+	if w.characterHasMuscleRingLocked(ch) {
+		base.MaxWearWeight *= 2
+		base.MaxHandWeight *= 2
+	}
 	stats := w.combatStatsLocked(ch)
 	combinedDC := PackWord(base.DC, base.DCMax, stats.DC, stats.DCMax)
 	combinedMC := PackWord(base.MC, base.MCMax, stats.MC, stats.MCMax)
@@ -61,63 +87,63 @@ func (w *World) canEquipItemLocked(ch storage.Character, item data.StdItem, slot
 	case "taoist":
 		job = 2
 	}
+	if slot == SlotWeapon || slot == SlotRightHand {
+		if item.Weight > base.MaxHandWeight {
+			return equipFailure(fmt.Errorf("item %s is too heavy", item.ID), "手上重量不够.")
+		}
+	} else {
+		currentWeight := 0
+		for i, equipped := range ch.EquippedItems {
+			if i == slot || i == SlotWeapon || i == SlotRightHand || equipped.ItemID == "" {
+				continue
+			}
+			currentWeight += w.itemWeight(equipped.ItemID)
+		}
+		if currentWeight+item.Weight > base.MaxWearWeight {
+			return equipFailure(fmt.Errorf("item %s is too heavy", item.ID), "负重不够.")
+		}
+	}
 	switch item.Need {
 	case 0:
 		if level < item.NeedLevel {
-			return fmt.Errorf("item %s cannot be used", item.ID)
+			return equipFailure(fmt.Errorf("item %s cannot be used", item.ID), "等级不够.")
 		}
 	case 1:
 		if int(byte(combinedDC>>8)) < item.NeedLevel {
-			return fmt.Errorf("item %s cannot be used", item.ID)
+			return equipFailure(fmt.Errorf("item %s cannot be used", item.ID), "攻击力不够.")
 		}
 	case 2:
 		if int(byte(combinedMC>>8)) < item.NeedLevel {
-			return fmt.Errorf("item %s cannot be used", item.ID)
+			return equipFailure(fmt.Errorf("item %s cannot be used", item.ID), "魔法力不够.")
 		}
 	case 3:
 		if int(byte(combinedSC>>8)) < item.NeedLevel {
-			return fmt.Errorf("item %s cannot be used", item.ID)
+			return equipFailure(fmt.Errorf("item %s cannot be used", item.ID), "道术力不够.")
 		}
 	case 5:
 		if ch.CreditPoint < item.NeedLevel {
-			return fmt.Errorf("item %s cannot be used", item.ID)
+			return equipFailure(fmt.Errorf("item %s cannot be used", item.ID), "声望点不够.")
 		}
 	case 10:
 		if job != item.NeedLevel&0xFF || level < item.NeedLevel>>8 {
-			return fmt.Errorf("item %s cannot be used", item.ID)
+			return equipFailure(fmt.Errorf("item %s cannot be used", item.ID), "职业不符或等级不够.")
 		}
 	case 11:
 		if job != item.NeedLevel&0xFF || int(byte(combinedDC>>8)) < item.NeedLevel>>8 {
-			return fmt.Errorf("item %s cannot be used", item.ID)
+			return equipFailure(fmt.Errorf("item %s cannot be used", item.ID), "职业不符或攻击力不够.")
 		}
 	case 12:
 		if job != item.NeedLevel&0xFF || int(byte(combinedMC>>8)) < item.NeedLevel>>8 {
-			return fmt.Errorf("item %s cannot be used", item.ID)
+			return equipFailure(fmt.Errorf("item %s cannot be used", item.ID), "职业不符或魔法力不够.")
 		}
 	case 13:
 		if job != item.NeedLevel&0xFF || int(byte(combinedSC>>8)) < item.NeedLevel>>8 {
-			return fmt.Errorf("item %s cannot be used", item.ID)
+			return equipFailure(fmt.Errorf("item %s cannot be used", item.ID), "职业不符或道术力不够.")
 		}
 	default:
 		if item.Need != 0 || item.NeedLevel != 0 {
 			return fmt.Errorf("item %s cannot be used", item.ID)
 		}
-	}
-	if slot == SlotWeapon || slot == SlotRightHand {
-		if item.Weight > base.MaxHandWeight {
-			return fmt.Errorf("item %s is too heavy", item.ID)
-		}
-		return nil
-	}
-	currentWeight := 0
-	for i, item := range ch.EquippedItems {
-		if i == slot || i == SlotWeapon || i == SlotRightHand || item.ItemID == "" {
-			continue
-		}
-		currentWeight += w.itemWeight(item.ItemID)
-	}
-	if currentWeight+item.Weight > base.MaxWearWeight {
-		return fmt.Errorf("item %s is too heavy", item.ID)
 	}
 	return nil
 }

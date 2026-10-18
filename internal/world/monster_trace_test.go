@@ -34,7 +34,7 @@ func newMonsterTraceWorld(t *testing.T, seed int64) (*World, *Monster) {
 		ID: "trace-monster", Name: "鹿", TemplateID: "鹿", MapID: testMapID,
 		X: x, Y: y, Dir: 2, ViewRange: 10, LeashRange: 20,
 		SearchNoTargetMS: 1, SearchHasTargetMS: 1, HP: 100, MaxHP: 100,
-		Alive: true, WalkSpeedMS: 1, WalkStep: 1, NextSearchAt: time.Unix(9, 0),
+		Alive: true, WalkSpeedMS: 1, WalkStep: 1, NextSearchAt: time.Unix(9, 0), ProcessRunCount: monsterProcessInterval,
 	}
 	w.monsters[mon.ID] = mon
 	w.occupyMonsterLocked(mon)
@@ -74,6 +74,7 @@ func TestMonsterTraceChaseIsDeterministicAcrossWorlds(t *testing.T) {
 	makeRun := func() MonsterTickTrace {
 		w, mon := newMonsterTraceWorld(t, 23)
 		target := storage.Character{ID: "trace-target", MapID: testMapID, X: mon.X - 2, Y: mon.Y, HP: 100, MaxHP: 100}
+		mon.TargetCharacterID = target.ID
 		result, err := w.Tick([]PlayerSnapshot{{Character: target}}, time.Unix(10, 0))
 		if err != nil {
 			t.Fatalf("Tick() error = %v", err)

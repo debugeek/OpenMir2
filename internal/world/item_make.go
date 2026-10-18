@@ -21,11 +21,7 @@ func (w *World) MakeItemsByName(ch storage.Character, itemName string, count int
 	if !ok {
 		return ch, nil, fmt.Errorf("item %s not found", itemName)
 	}
-	if w.normalizeBagItemMakeIndexesLocked(&ch) {
-		if err := w.store.SaveCharacter(ch); err != nil {
-			return ch, nil, err
-		}
-	}
+	w.normalizeBagItemMakeIndexesLocked(&ch)
 	added := make([]storage.UserItem, 0, count)
 	for i := 0; i < count; i++ {
 		if len(ch.BagItems) >= w.gameplay.Item.MaxBagItem {
@@ -48,18 +44,13 @@ func (w *World) ConsumeMakeIngredients(ch storage.Character, itemName string) (s
 	if !ok {
 		return ch, nil, fmt.Errorf("item %s not found", itemName)
 	}
-	if w.normalizeBagItemMakeIndexesLocked(&ch) {
-		if err := w.store.SaveCharacter(ch); err != nil {
-			return ch, nil, err
-		}
-	}
 	for _, ingredient := range recipe {
 		if ingredient.Count <= 0 || ingredient.ItemID == "" {
 			return ch, nil, fmt.Errorf("invalid recipe for %s", itemName)
 		}
 		have := 0
 		for _, entry := range ch.BagItems {
-			if entry.ItemID == ingredient.ItemID {
+			if w.makeIngredientMatchesLocked(entry, ingredient.ItemID) {
 				have++
 			}
 		}
@@ -68,11 +59,12 @@ func (w *World) ConsumeMakeIngredients(ch storage.Character, itemName string) (s
 		}
 	}
 	removed := make([]storage.UserItem, 0, len(recipe))
+	ch.BagItems = append([]storage.UserItem(nil), ch.BagItems...)
 	for _, ingredient := range recipe {
 		need := ingredient.Count
 		for i := len(ch.BagItems) - 1; i >= 0 && need > 0; i-- {
 			entry := ch.BagItems[i]
-			if entry.ItemID != ingredient.ItemID {
+			if !w.makeIngredientMatchesLocked(entry, ingredient.ItemID) {
 				continue
 			}
 			removed = append(removed, entry)
@@ -81,6 +73,11 @@ func (w *World) ConsumeMakeIngredients(ch storage.Character, itemName string) (s
 		}
 	}
 	return ch, removed, nil
+}
+
+func (w *World) makeIngredientMatchesLocked(entry storage.UserItem, ingredientName string) bool {
+	item, ok := w.data.Items[entry.ItemID]
+	return ok && item.Name == ingredientName
 }
 
 func (w *World) findItemByNameLocked(name string) (data.StdItem, bool) {

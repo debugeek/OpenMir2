@@ -1,8 +1,14 @@
 {
   "id": "D2079",
+  "light": 1,
+  "no_position_move": true,
+  "no_recall": true,
+  "no_reconnect": true,
+  "reconnect_map": "D2078",
   "name": "牛魔寺庙大厅",
   "width": 100,
   "height": 100,
+  "no_random_move": true,
   "connections": [
     {
       "to_map": "D2078",
@@ -26,7 +32,8 @@
       "y": 50,
       "range": 1,
       "count": 1,
-      "respawn_seconds": 720
+      "respawn_seconds": 720,
+      "reference_order": 2020
     },
     {
       "monster_id": "牛魔侍卫",
@@ -34,7 +41,8 @@
       "y": 50,
       "range": 70,
       "count": 30,
-      "respawn_seconds": 8
+      "respawn_seconds": 8,
+      "reference_order": 2012
     },
     {
       "monster_id": "牛魔侍卫1",
@@ -42,7 +50,8 @@
       "y": 50,
       "range": 70,
       "count": 8,
-      "respawn_seconds": 60
+      "respawn_seconds": 60,
+      "reference_order": 2018
     },
     {
       "monster_id": "牛魔将军",
@@ -50,7 +59,8 @@
       "y": 50,
       "range": 70,
       "count": 25,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 2013
     },
     {
       "monster_id": "牛魔将军",
@@ -58,7 +68,8 @@
       "y": 50,
       "range": 70,
       "count": 18,
-      "respawn_seconds": 8
+      "respawn_seconds": 8,
+      "reference_order": 2021
     },
     {
       "monster_id": "牛魔将军1",
@@ -66,7 +77,8 @@
       "y": 50,
       "range": 70,
       "count": 8,
-      "respawn_seconds": 60
+      "respawn_seconds": 60,
+      "reference_order": 2017
     },
     {
       "monster_id": "牛魔法师",
@@ -74,7 +86,8 @@
       "y": 50,
       "range": 70,
       "count": 30,
-      "respawn_seconds": 8
+      "respawn_seconds": 8,
+      "reference_order": 2011
     },
     {
       "monster_id": "牛魔法师1",
@@ -82,7 +95,8 @@
       "y": 50,
       "range": 70,
       "count": 8,
-      "respawn_seconds": 60
+      "respawn_seconds": 60,
+      "reference_order": 2016
     },
     {
       "monster_id": "牛魔王",
@@ -90,7 +104,8 @@
       "y": 50,
       "range": 1,
       "count": 1,
-      "respawn_seconds": 180
+      "respawn_seconds": 180,
+      "reference_order": 2019
     },
     {
       "monster_id": "牛魔祭司",
@@ -98,7 +113,8 @@
       "y": 50,
       "range": 70,
       "count": 25,
-      "respawn_seconds": 15
+      "respawn_seconds": 15,
+      "reference_order": 2014
     },
     {
       "monster_id": "牛魔祭司",
@@ -106,7 +122,8 @@
       "y": 50,
       "range": 70,
       "count": 18,
-      "respawn_seconds": 11
+      "respawn_seconds": 11,
+      "reference_order": 2022
     },
     {
       "monster_id": "牛魔祭司1",
@@ -114,7 +131,8 @@
       "y": 50,
       "range": 70,
       "count": 8,
-      "respawn_seconds": 60
+      "respawn_seconds": 60,
+      "reference_order": 2015
     }
   ],
   "blocked_bits": "////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////n//5/////5//+f////AP///////wD////wd+4P////8HfuD//y/BA/7///8/wIP8//8QGID/////ARjI//8PAMD4////HwAA+P9/AACA////fwAAAP7/AwAA+P///wMAAOD/nwAAAP7//z8AAAD5/wkAAAD///8BAACQ/x8AAADgf/4HAAAA+P8DAAAA/MM/AAAAwP9/AAAAgB/4AQAAAP7/DwAAgPEADwAAAPD//wFAAAAGYAAAAID//x8ABAAAAAAgAAD4//8BAAAAAAAAAgCA//8PAAAAAAAAAAAA8P9/AAAAAAAAAAAAAP7/AwAAAAAAAAAAAMD/HwAAAAAAAAAAAAD4/wEEAAAAAAAAAACA/x8AAAAAAAAAAAAA+P8DAAAAAAAAAAAAwP9/AAAAAAAAAAAAAP7/DwAAAAAAAAAACPD//wEAAAAAAAAAAID//z8AAAAAAAAAAAD8//8HAAAAAAAAAADg////AAAAAAAAAAAA////HwAAAAAAAAAA+P///wMAAAAAAAAAwP///38AAAAAAAAAAP7///8PAAAAAAAAAPD/////AQAAAAAAAID/////PwAAAP4AAAD8/////wcAAPAfAADg/////38AAAAEAAAA/v////8HAAAAAAAA4P////8/AAAgABgAAPz/////AQAAB8AAAID/////DwAAYAAMAADw////fwAAAAaAAAAA/v///wcABGAACAAA4P///38AQAAGwAAAAP7///8PAABgAAwAAPD/////AQAAA4ABAID/////PwAAMAAIAAD8/////wcAAMAGAADg/////38AAAD+AAAA/v////8HAADwHwAA4P////8/AAAAggAAAPz/////AQAAAAAAAID/////DwAAAAAAAADw////fwAAAAAAAAAA/v///wMAAAAAAAAIwP///z8AAQAAAACAAPz///8BAAAAAAAAAID///8HAAAAgAAAAADg//8/AAAAAAAAAAAA/v//AQAAAAAAAAAAgP//DwAAAAAAAAAAAPj/fwAAAAAAAAAAAAD+/wcAAAAAAAAAAADA/x8AAAAAAAAAAAAA+P8BAAAAAAAAAAAAgP8fAAAAAAAAAAAAAPj/A0AAAAAAAAAAAMD/fwAEAAAAAAAAABD+/w8AAAAAAAAAAADw//8BAAAAAAAAAACA//8fAAAAAAAAAAAB+P//AQAAAAZgAAAAgP//DwAAAPAADwAAAPD/fwAAAIAf+AEAAAD+/wMAAAD8wz8AAADA/x8AAADgf/4HAAAA+P8FAAAA////AAAAoP9fAAAA+P//HwAAAPr/AwAAwP///wMAAMD/fwAAAP7//38AAAD+/08AAPD///8PAADw//8FGID/////ARiQ//8/wAP8////P8AD/f//B37g/////wd+4P////AP///////wD////5//+f////+f//n///////////////////////////////////////////////////////////////////8="

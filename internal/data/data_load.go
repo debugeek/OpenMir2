@@ -26,6 +26,10 @@ func LoadConfigsWithReport(dir string) (StdBundle, StdLoadReport, error) {
 	if err != nil {
 		return StdBundle{}, report, err
 	}
+	miniMaps, err := loadConfigMinMaps(filepath.Join(dir, "minimap.json"))
+	if err != nil {
+		return StdBundle{}, report, err
+	}
 	monsters, drops, err := loadConfigMonsters(filepath.Join(dir, "monsters"), items, &report)
 	if err != nil {
 		return StdBundle{}, report, err
@@ -50,6 +54,7 @@ func LoadConfigsWithReport(dir string) (StdBundle, StdLoadReport, error) {
 		Monsters:  monsters,
 		Drops:     drops,
 		Maps:      maps,
+		MiniMaps:  miniMaps,
 		Spawns:    spawns,
 		MakeItems: makeItems,
 		NPCs:      npcs,
@@ -59,6 +64,17 @@ func LoadConfigsWithReport(dir string) (StdBundle, StdLoadReport, error) {
 		return StdBundle{}, report, err
 	}
 	return b, report, nil
+}
+
+func loadConfigMinMaps(path string) (map[string]int, error) {
+	var miniMaps map[string]int
+	if err := loadJSON(path, &miniMaps); err != nil {
+		return nil, err
+	}
+	if miniMaps == nil {
+		miniMaps = map[string]int{}
+	}
+	return miniMaps, nil
 }
 
 func loadJSON(path string, out any) error {
@@ -199,6 +215,15 @@ func loadConfigMaps(dir string) (map[string]StdMap, []spawnRecord, error) {
 		if err := loadJSON(path, &mp); err != nil {
 			return nil, nil, err
 		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return nil, nil, err
+		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &fields); err != nil {
+			return nil, nil, err
+		}
+		_, mp.LightFixed = fields["light"]
 		if mp.ID == "" {
 			return nil, nil, fmt.Errorf("%s: map id is required", path)
 		}
@@ -322,7 +347,7 @@ func loadConfigMonsters(dir string, items map[string]StdItem, report *StdLoadRep
 
 func loadConfigSpawns(records []spawnRecord, monsters map[string]StdMonster, report *StdLoadReport) []StdSpawn {
 	var out []StdSpawn
-	for _, rec := range records {
+	for sequence, rec := range records {
 		if _, ok := monsters[rec.StdSpawn.MonsterID]; !ok {
 			report.Skipped = append(report.Skipped, StdLoadSkip{
 				Kind:   "spawn",
@@ -332,6 +357,10 @@ func loadConfigSpawns(records []spawnRecord, monsters map[string]StdMonster, rep
 				Reason: "missing monster attributes",
 			})
 			continue
+		}
+		referenceOrder := rec.StdSpawn.ReferenceOrder
+		if referenceOrder <= 0 {
+			referenceOrder = sequence + 1
 		}
 		out = append(out, StdSpawn{
 			ID:             fmt.Sprintf("%s:%03d:%s", rec.MapID, rec.Index, rec.StdSpawn.MonsterID),
@@ -343,9 +372,12 @@ func loadConfigSpawns(records []spawnRecord, monsters map[string]StdMonster, rep
 			Count:          rec.StdSpawn.Count,
 			RespawnSeconds: rec.StdSpawn.RespawnSeconds,
 			MissionGenRate: rec.StdSpawn.MissionGenRate,
+			ReferenceOrder: referenceOrder,
 		})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].ReferenceOrder < out[j].ReferenceOrder
+	})
 	return out
 }
 

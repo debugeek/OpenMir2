@@ -1,5 +1,6 @@
 {
   "id": "D10062",
+  "light": 1,
   "name": "赤月魔穴",
   "width": 40,
   "height": 40,
@@ -19,7 +20,8 @@
       "y": 21,
       "range": 21,
       "count": 5,
-      "respawn_seconds": 30
+      "respawn_seconds": 30,
+      "reference_order": 1627
     },
     {
       "monster_id": "赤月恶魔",
@@ -27,7 +29,8 @@
       "y": 18,
       "range": 0,
       "count": 1,
-      "respawn_seconds": 360
+      "respawn_seconds": 360,
+      "reference_order": 1628
     },
     {
       "monster_id": "月魔蜘蛛",
@@ -35,7 +38,8 @@
       "y": 30,
       "range": 75,
       "count": 5,
-      "respawn_seconds": 7
+      "respawn_seconds": 7,
+      "reference_order": 1623
     },
     {
       "monster_id": "血僵尸",
@@ -43,7 +47,8 @@
       "y": 30,
       "range": 75,
       "count": 5,
-      "respawn_seconds": 45
+      "respawn_seconds": 45,
+      "reference_order": 1629
     },
     {
       "monster_id": "血巨人",
@@ -51,7 +56,8 @@
       "y": 30,
       "range": 75,
       "count": 5,
-      "respawn_seconds": 9
+      "respawn_seconds": 9,
+      "reference_order": 1624
     },
     {
       "monster_id": "黑锷蜘蛛",
@@ -59,7 +65,8 @@
       "y": 30,
       "range": 75,
       "count": 5,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1625
     },
     {
       "monster_id": "黑锷蜘蛛2",
@@ -67,7 +74,8 @@
       "y": 30,
       "range": 75,
       "count": 5,
-      "respawn_seconds": 8
+      "respawn_seconds": 8,
+      "reference_order": 1626
     }
   ],
   "blocked_bits": "////////////////////////////////////////////////////////////////////////////P/v//88P8///D4Hz//8AweP//wDhw///APDH/38A8Mf/fwBgx/9/AIDB/38AAMD/fwYcwP//Bxzg//8HHvD//yc8+P//Nxj+//8/AP7//38A/v///wD+////A//////3//////////////////////////////////////////////////////////////8="

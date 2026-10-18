@@ -1,5 +1,6 @@
 {
   "id": "D414",
+  "light": 1,
   "name": "矿区C一层",
   "mine": true,
   "width": 100,

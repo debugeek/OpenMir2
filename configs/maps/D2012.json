@@ -1,8 +1,10 @@
 {
   "id": "D2012",
+  "no_recall": true,
   "name": "炼狱回廊",
   "width": 100,
   "height": 100,
+  "no_random_move": true,
   "connections": [
     {
       "to_map": "D2013",
@@ -36,7 +38,8 @@
       "y": 47,
       "range": 50,
       "count": 30,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1777
     },
     {
       "monster_id": "楔蛾",
@@ -44,7 +47,8 @@
       "y": 47,
       "range": 50,
       "count": 20,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1775
     },
     {
       "monster_id": "白野猪",
@@ -52,7 +56,8 @@
       "y": 47,
       "range": 50,
       "count": 2,
-      "respawn_seconds": 28
+      "respawn_seconds": 28,
+      "reference_order": 1778
     },
     {
       "monster_id": "祖玛卫士",
@@ -60,7 +65,8 @@
       "y": 47,
       "range": 50,
       "count": 19,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1770
     },
     {
       "monster_id": "祖玛卫士3",
@@ -68,7 +74,8 @@
       "y": 47,
       "range": 50,
       "count": 1,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1769
     },
     {
       "monster_id": "祖玛弓箭手",
@@ -76,7 +83,8 @@
       "y": 47,
       "range": 50,
       "count": 30,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1774
     },
     {
       "monster_id": "祖玛弓箭手2",
@@ -84,7 +92,8 @@
       "y": 47,
       "range": 50,
       "count": 3,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1771
     },
     {
       "monster_id": "祖玛雕像",
@@ -92,7 +101,8 @@
       "y": 47,
       "range": 50,
       "count": 20,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1767
     },
     {
       "monster_id": "祖玛雕像1",
@@ -100,7 +110,8 @@
       "y": 47,
       "range": 50,
       "count": 10,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1780
     },
     {
       "monster_id": "红野猪2",
@@ -108,7 +119,8 @@
       "y": 47,
       "range": 50,
       "count": 10,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1779
     },
     {
       "monster_id": "虹魔猪卫",
@@ -116,7 +128,8 @@
       "y": 47,
       "range": 50,
       "count": 1,
-      "respawn_seconds": 60
+      "respawn_seconds": 60,
+      "reference_order": 1776
     },
     {
       "monster_id": "虹魔蝎卫",
@@ -124,7 +137,8 @@
       "y": 47,
       "range": 50,
       "count": 1,
-      "respawn_seconds": 60
+      "respawn_seconds": 60,
+      "reference_order": 1773
     },
     {
       "monster_id": "蝎蛇",
@@ -132,7 +146,8 @@
       "y": 47,
       "range": 50,
       "count": 30,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1772
     },
     {
       "monster_id": "黑野猪2",
@@ -140,7 +155,8 @@
       "y": 47,
       "range": 50,
       "count": 10,
-      "respawn_seconds": 10
+      "respawn_seconds": 10,
+      "reference_order": 1768
     }
   ],
   "blocked_bits": "///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////n/5////////////8//P/w////////////gf8H/v//////////D/A/wP//////////fwD+Afj//////////wPADwD//////////x8AeEDg//////////8AAAMO/P////////8HAADwgf////////8/AACAP/D///////+fAQAA+Af+////////EAAAwP/A////////BwAAAPwf+P//////PwAAAMD/A////////wEAAAD4f+D//////x8AAAAY/w/8//////8BAMCA4f+B//////8fAAAMGPw/8P//////AQDAAOD/B/7/////HwAAAAD//8D/////fwAAABj4/x/4/////wMAAIDB//8D/////x8AAAAc/v9/4P////8AAADA8P//D/z///8HAAAAgP///4D///8/AAAAAPz//x/w////AQAAAOD///8D/v//DwAAAAD+//N/wP//fwAAAADg/x/+B/j//wMAAAAA///A/wD//38AAAAA8P8H+A/4//8PAAAAAP8/AP/A////AQBgAOD/AeAH/v//PwAABgD8DwA84P///wcAYACAfwCAAf////8AAAAA8AMAAPj///8fAAAYAB4AAMD/////ATDAA8AAAAD8////HwADfgAQAADg/////wEw8AcAAAAA/v///x8AgP8AAAAA4P////8AAPwfAAAGAPz///8HBuD/AwBgAID///8/8AD/PwAABgDw////AR/4/wcAAAAA/v//D/jD/38AAAAAwP//f4B//v8HAAAAAPj//wP8//+/AAAAAAD//3/A////AQAAwADg//8P/P//DwAAAAwA/P//gf//fwAAAMAAgP//P/D//wMAAAAAAPD//wf+/x8AAAAAAAD+///A//8AGAACAADA//8f+P8HgAEAAPAA/v//A/8/ABgAAAAP8P//f+D/AQAAAAAAgP///w/8PwAAAAAAAPz///+B/wcAAAAAGOD///8/8P8AAAAAgAH/////B/4fAAAAAADw/////8D/AwAYAACA/////x/4fwCAAQAA/P////8D/wcAGAAA4P////9/4H8AAAAAAP7/////D/wPAAAAAPD//////4H/AAAAAAD//////z/wDwAAAADw//////8HfgAAwAAA/v//////wAMDAAwAwP//////Hxh4AMAAAPj//////wPADwAAAAD//////38A/gEAgAHg//////8P8D8AADwA/P//////gf8HAOAHwP//////P/z/AAD/APz//////+f/HwD4H8D//////////wPA/wP+/////////38A/n/w//////////8P8P/P////////////gf//////////////P/z//////////////+f///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////8="

@@ -1,5 +1,9 @@
 {
   "id": "Q003",
+  "light": 1,
+  "no_recall": true,
+  "no_reconnect": true,
+  "reconnect_map": "0",
   "name": "勇斗寺殿",
   "width": 25,
   "height": 25,

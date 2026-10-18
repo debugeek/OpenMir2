@@ -1,5 +1,7 @@
 {
   "id": "D5071",
+  "light": 1,
+  "no_recall": true,
   "name": "祖玛神殿七层大厅",
   "width": 50,
   "height": 50,
