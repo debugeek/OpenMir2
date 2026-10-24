@@ -530,6 +530,7 @@ func (w *World) registerMonsterLocked(mon *Monster, state *spawnState) {
 	if mon == nil {
 		return
 	}
+	w.monsterProcessRegistryValidated = false
 	if w.monsterProcessGroupByID == nil {
 		w.monsterProcessGroupByID = map[string]string{}
 	}
@@ -546,12 +547,13 @@ func (w *World) registerMonsterLocked(mon *Monster, state *spawnState) {
 	w.monsters[mon.ID] = mon
 	w.indexMonsterCellLocked(mon)
 	if _, exists := w.monsterProcessGroupByID[mon.ID]; !exists {
-		state.memberIDs = append(state.memberIDs, mon.ID)
+		state.members = append(state.members, mon)
 		w.monsterProcessGroupByID[mon.ID] = spawnStateKey(state.spawn)
 	}
 }
 
 func (w *World) unregisterMonsterLocked(id string) {
+	w.monsterProcessRegistryValidated = false
 	delete(w.visibleActors, id)
 	delete(w.monsterStatusClocks, id)
 	key, ok := w.monsterProcessGroupByID[id]
@@ -563,11 +565,11 @@ func (w *World) unregisterMonsterLocked(id string) {
 	if state == nil {
 		return
 	}
-	for i, memberID := range state.memberIDs {
-		if memberID != id {
+	for i, member := range state.members {
+		if member == nil || member.ID != id {
 			continue
 		}
-		state.memberIDs = append(state.memberIDs[:i], state.memberIDs[i+1:]...)
+		state.members = append(state.members[:i], state.members[i+1:]...)
 		if key == w.monsterProcessGroupKeyLocked() && i < w.monsterProcessMemberCursor {
 			w.monsterProcessMemberCursor--
 		}
@@ -584,17 +586,21 @@ func (w *World) monsterProcessGroupKeyLocked() string {
 
 func (w *World) ensureMonsterProcessRegistryLocked() {
 	if len(w.monsterProcessGroupByID) == len(w.monsters) && (len(w.monsters) == 0 || len(w.monsterProcessGroups) > 0) {
+		if w.monsterProcessRegistryValidated {
+			return
+		}
 		if w.monsterProcessGroupCursor >= 0 && w.monsterProcessGroupCursor < len(w.monsterProcessGroups) {
 			state := w.spawns[w.monsterProcessGroups[w.monsterProcessGroupCursor]]
 			if state != nil {
-				for _, id := range state.memberIDs {
-					if w.monsters[id] == nil {
+				for _, member := range state.members {
+					if member == nil || w.monsters[member.ID] != member {
 						w.rebuildMonsterProcessRegistryLocked()
 						return
 					}
 				}
 			}
 		}
+		w.monsterProcessRegistryValidated = true
 		return
 	}
 	w.rebuildMonsterProcessRegistryLocked()
@@ -609,8 +615,9 @@ type monsterProcessEntry struct {
 }
 
 func (w *World) rebuildMonsterProcessRegistryLocked() {
+	w.monsterProcessRegistryValidated = false
 	for _, state := range w.spawns {
-		state.memberIDs = nil
+		state.members = nil
 	}
 	w.monsterProcessGroupByID = make(map[string]string, len(w.monsters))
 	monsters := make([]*Monster, 0, len(w.monsters))
@@ -636,6 +643,7 @@ func (w *World) rebuildMonsterProcessRegistryLocked() {
 	for _, mon := range monsters {
 		w.registerMonsterLocked(mon, nil)
 	}
+	w.monsterProcessRegistryValidated = true
 }
 
 func (w *World) nextMonsterProcessEntryLocked(processed map[string]struct{}) (monsterProcessEntry, bool) {
@@ -658,20 +666,20 @@ func (w *World) nextMonsterProcessEntryLocked(processed map[string]struct{}) (mo
 		key := w.monsterProcessGroups[groupIndex]
 		state := w.spawns[key]
 		if state != nil {
-			if memberIndex < 0 || memberIndex > len(state.memberIDs) {
+			if memberIndex < 0 || memberIndex > len(state.members) {
 				memberIndex = 0
 			}
-			for member := memberIndex; member < len(state.memberIDs); member++ {
-				id := state.memberIDs[member]
-				if _, alreadyProcessed := processed[id]; alreadyProcessed {
-					continue
-				}
-				mon := w.monsters[id]
+			for member := memberIndex; member < len(state.members); member++ {
+				mon := state.members[member]
 				if mon == nil {
 					continue
 				}
+				id := mon.ID
+				if _, alreadyProcessed := processed[id]; alreadyProcessed {
+					continue
+				}
 				nextGroup, nextMember := groupIndex, member+1
-				if nextMember >= len(state.memberIDs) {
+				if nextMember >= len(state.members) {
 					nextGroup = groupIndex + 1
 					nextMember = 0
 				}

@@ -130,6 +130,7 @@ func (s *Server) recordMonsterPacketTrace(client *Client, action world.MonsterAc
 }
 
 func (s *Server) recordMonsterPacketTraceForObserver(observer string, action world.MonsterAction, phase string, cmd mir176.Command, text []byte) {
+	s.log.Info("monster outbound", "observer", observer, "monster", action.MonsterID, "actor", action.ActorID, "kind", action.Kind, "phase", phase, "ident", cmd.Ident, "recog", cmd.Recog, "x", action.X, "y", action.Y, "dir", action.Dir, "target_x", action.TargetX, "target_y", action.TargetY)
 	s.monsterTraceMu.Lock()
 	defer s.monsterTraceMu.Unlock()
 	if !s.monsterPacketTraceEnable {
@@ -1161,6 +1162,14 @@ func (s *Server) handleProtocol(ctx context.Context, conn net.Conn) {
 				}
 				cmd, text, err := mir176.DecodePlain6ClientMessage(frame)
 				if err == nil && isPlausibleProtocolIdent(cmd.Ident) {
+					if cmd.Ident >= 1000 && cmd.Ident <= 1010 || cmd.Ident == mir176.CMRun || cmd.Ident == mir176.CMWalk {
+						s.log.Info("game inbound action", "char", func() string {
+							if activeChar == nil {
+								return ""
+							}
+							return activeChar.Name
+						}(), "ident", cmd.Ident, "recog", cmd.Recog, "param", cmd.Param, "tag", cmd.Tag, "series", cmd.Series)
+					}
 					if cmd.Ident == mir176.CMLoginNoticeOK && pendingLogin != nil {
 						pendingLogin.ClientTick = uint32(cmd.Param)
 						_ = conn.SetReadDeadline(time.Time{})
@@ -1168,7 +1177,7 @@ func (s *Server) handleProtocol(ctx context.Context, conn net.Conn) {
 							initializeSpellStateOnLogin(&ch)
 							ch = s.world.RegisterCharacter(ch)
 							activeClient = s.registerClient(conn, ch)
-							activeClient.softVersion = pendingLogin.Version
+							activeClient.softVersion = extendedSoftVersion(pendingLogin.Version)
 							activeClient.clientTick = pendingLogin.ClientTick
 							activeChar = &ch
 							activeClient.active = activeChar
@@ -1475,6 +1484,7 @@ func (s *Server) processMove(conn net.Conn, activeChar *storage.Character, cmd m
 	}
 	x := int(uint32(cmd.Recog) & 0xFFFF)
 	y := int(uint32(cmd.Recog) >> 16)
+	s.log.Info("game move begin", "char", activeChar.Name, "run", run, "late", lateDelivery, "from_x", activeChar.X, "from_y", activeChar.Y, "target_x", x, "target_y", y, "series", cmd.Series)
 	dir := world.Direction(activeChar.X, activeChar.Y, x, y)
 	client := s.clientForConn(conn)
 	runFlagMatchesIdent := run && cmd.Series == cmd.Ident
@@ -1594,6 +1604,7 @@ func (s *Server) processMove(conn net.Conn, activeChar *storage.Character, cmd m
 		*activeChar = updated
 		s.updateClient(conn, updated)
 		s.sendActionFail(conn)
+		s.log.Info("game move result", "char", activeChar.Name, "run", run, "ok", false, "x", updated.X, "y", updated.Y, "target_x", x, "target_y", y, "error", err.Error())
 		return
 	}
 	*activeChar = updated
@@ -1615,6 +1626,7 @@ func (s *Server) processMove(conn net.Conn, activeChar *storage.Character, cmd m
 	}
 	s.recordClientAction(conn, cmd.Ident, dir)
 	s.sendActionOK(conn)
+	s.log.Info("game move result", "char", activeChar.Name, "run", run, "ok", true, "x", updated.X, "y", updated.Y, "target_x", x, "target_y", y)
 }
 
 func (s *Server) queueCharacterMapChange(client *Client, ch storage.Character) {
@@ -6042,7 +6054,7 @@ func (s *Server) handleButcher(conn net.Conn, activeChar *storage.Character, cmd
 
 // handleEatItem implements CM_EAT.
 func (s *Server) handleEatItem(conn net.Conn, activeChar *storage.Character, cmd mir176.Command, text []byte) {
-	_ = text
+	s.log.Info("game eat request", "char", activeChar.Name, "recog", cmd.Recog, "param", cmd.Param, "tag", cmd.Tag, "text_len", len(text))
 	if s.world.IsCharacterDead(activeChar.ID) {
 		s.sendCommand(conn, mir176.Command{Ident: mir176.SMEatFail}, nil)
 		return
@@ -6082,11 +6094,11 @@ func (s *Server) handleSoftClose(conn net.Conn) {
 
 // handleQueryBagItems implements CM_QUERYBAGITEMS.
 func (s *Server) handleQueryBagItems(conn net.Conn, activeChar *storage.Character) {
-	body, _ := s.bagItemsBodyAndCountForClient(conn, *activeChar)
+	body, count := BagItemsBodyAndCount(s.world, *activeChar)
 	if len(body) == 0 {
 		return
 	}
-	s.sendCommand(conn, mir176.Command{Ident: mir176.SMBagItems, Recog: world.CharacterActorID(*activeChar), Param: 0, Tag: 0, Series: uint16(len(activeChar.BagItems))}, body)
+	s.sendCommand(conn, mir176.Command{Ident: mir176.SMBagItems, Recog: world.CharacterActorID(*activeChar), Param: 0, Tag: 0, Series: uint16(count)}, body)
 }
 
 // sendAbilityRefresh mirrors the reference equip refresh chain:
@@ -6149,7 +6161,6 @@ func (s *Server) sendMagicLevelExp(conn net.Conn, magicID uint16, level byte, tr
 func (s *Server) sendInitialLoginState(conn net.Conn, ch storage.Character) {
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMAbility, Recog: int32(ch.Gold), Param: makeWord(byte(world.Plain6ClassID(ch.Class)), 99)}, EncodeBuffer(s.abilityBodyForClient(conn, ch)))
 	s.sendCommand(conn, SubAbilityCommand(s.world.SubAbilityStats(ch)), nil)
-	s.sendAdjustBonus(conn, ch)
 	gameTime := s.clientGameTime(conn)
 	s.sendCommand(conn, DayChangingCommand(gameTime, byte(s.world.MapDayBright(ch.MapID, gameTime))), nil)
 	s.sendEquippedItems(conn, ch)
@@ -6549,6 +6560,15 @@ func decodeRunLogin(frame []byte) (RunLogin, bool) {
 	return RunLogin{Account: parts[0], CharName: parts[1], SessionID: int32(sessionID), Version: version, Code: code}, true
 }
 
+func extendedSoftVersion(version int) int {
+	extended := 0
+	for version > 100000000 {
+		version -= 100000000
+		extended += 100000000
+	}
+	return extended
+}
+
 func (s *Server) validateRunLogin(login RunLogin) bool {
 	account, ok := s.sessionAccount(login.SessionID)
 	if !ok || account != login.Account || login.SessionID < 2 {
@@ -6653,7 +6673,6 @@ func (s *Server) sendEnterWorldState(conn net.Conn, ch storage.Character) {
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMChangeLight, Recog: actorID, Param: uint16(dayBright), Tag: 500}, nil)
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMLogon, Recog: actorID, Param: uint16(ch.X), Tag: uint16(ch.Y), Series: makeWord(byte(ch.Dir), byte(s.world.CharacterObjectLight(ch)))}, EncodeBuffer(LogonBody(feature, s.world.CharacterStatus(ch), ch.AllowGroup, s.world.CharacterFeatureEx(ch))))
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMFeatureChanged, Recog: actorID, Param: uint16(feature), Tag: uint16(uint32(feature) >> 16), Series: uint16(s.world.CharacterFeatureEx(ch))}, nil)
-	s.sendServerConfig(conn, ch)
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMUserName, Recog: actorID, Param: s.world.CharacterNameColor(ch)}, EncodeString(s.world.CharacterDisplayName(ch)))
 	s.sendCommand(conn, mir176.Command{Ident: mir176.SMAreaState, Recog: s.world.CharacterAreaState(ch)}, nil)
 	s.sendCommand(conn, mapDescriptionCommand(ch), EncodeString(s.world.MapName(ch.MapID)))
@@ -7952,7 +7971,7 @@ func (s *Server) applyMonsterAction(action world.MonsterAction) {
 		s.broadcastMonsterSpaceMove(action)
 		return
 	}
-	clients := s.spellRefClientsFor("monster:"+action.MonsterID, action.MapID, action.X, action.Y)
+	clients := s.monsterActionClients(action)
 	if len(clients) == 0 {
 		if action.Kind == world.MonsterActionHit {
 			s.sendMonsterTargetEffects(action)
@@ -7982,6 +8001,26 @@ func (s *Server) applyMonsterAction(action world.MonsterAction) {
 	case world.MonsterActionPush:
 		s.broadcastMonsterPush(clients, action)
 	}
+}
+
+func (s *Server) monsterActionClients(action world.MonsterAction) []*Client {
+	clients := s.spellRefClientsFor("monster:"+action.MonsterID, action.MapID, action.X, action.Y)
+	seen := make(map[*Client]struct{}, len(clients))
+	for _, client := range clients {
+		seen[client] = struct{}{}
+	}
+	for _, client := range s.allClients() {
+		if _, ok := seen[client]; ok {
+			continue
+		}
+		client.mu.Lock()
+		mon, visible := client.visibleMonsters[action.MonsterID]
+		client.mu.Unlock()
+		if visible && mon.MapID == action.MapID {
+			clients = append(clients, client)
+		}
+	}
+	return clients
 }
 
 func (s *Server) applyNPCAction(action world.NPCAction) {
@@ -8393,7 +8432,7 @@ func (s *Server) syncVisibleDropsAtForCharacters(now time.Time, allowedIDs map[s
 
 func (s *Server) broadcastMonsterWalk(clients []*Client, action world.MonsterAction) {
 	action = s.normalizeMonsterAction(action)
-	mon := world.Monster{ID: action.MonsterID, ActorID: action.ActorID, Name: action.Name, RaceImg: action.RaceImg, MonsterWeapon: action.MonsterWeapon, Appr: action.Appr, Light: action.Light, MapID: action.MapID, X: action.X, Y: action.Y, Dir: action.Dir}
+	mon := world.Monster{ID: action.MonsterID, ActorID: action.ActorID, Name: action.Name, RaceImg: action.RaceImg, MonsterWeapon: action.MonsterWeapon, Appr: action.Appr, Light: action.Light, MapID: action.MapID, X: action.X, Y: action.Y, Dir: action.Dir, Alive: true}
 	for _, client := range clients {
 		client.ensureMonsterVisibleWithStatus(s, mon, action.Status)
 		cmd := MonsterWalkCommand(action, action.Light)
@@ -8420,7 +8459,7 @@ func (s *Server) broadcastMonsterSpaceMove(action world.MonsterAction) {
 		client.forgetMonster(action.MonsterID)
 	}
 	newClients := s.spellRefClientsFor("monster:"+action.MonsterID, action.MapID, action.X, action.Y)
-	mon := world.Monster{ID: action.MonsterID, ActorID: action.ActorID, Name: action.Name, RaceImg: action.RaceImg, MonsterWeapon: action.MonsterWeapon, Appr: action.Appr, Light: action.Light, MapID: action.MapID, X: action.X, Y: action.Y, Dir: action.Dir}
+	mon := world.Monster{ID: action.MonsterID, ActorID: action.ActorID, Name: action.Name, RaceImg: action.RaceImg, MonsterWeapon: action.MonsterWeapon, Appr: action.Appr, Light: action.Light, MapID: action.MapID, X: action.X, Y: action.Y, Dir: action.Dir, Alive: true}
 	for _, client := range newClients {
 		cmd := mir176.Command{
 			Ident:  mir176.SMSpacemoveShow2,
