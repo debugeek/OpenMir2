@@ -19,7 +19,7 @@ func TestMonsterPacketTraceRecordsObserverAndFrame(t *testing.T) {
 		conn: serverConn,
 		ch:   storage.Character{ID: "trace-observer", MapID: testMapID, X: 10, Y: 10, HP: 100, MaxHP: 100},
 		visibleMonsters: map[string]world.Monster{
-			"trace-monster": {ID: "trace-monster", MapID: testMapID, X: 10, Y: 10},
+			"trace-monster": {ID: "trace-monster", MapID: testMapID, X: 10, Y: 10, Alive: true},
 		},
 	}
 	action := world.MonsterAction{MonsterID: "trace-monster", MapID: testMapID, X: 11, Y: 10, Dir: 2, Status: 7, Kind: world.MonsterActionWalk}

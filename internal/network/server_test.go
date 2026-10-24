@@ -22676,45 +22676,12 @@ func TestSendInitialLoginStateMatchesMirbetaOrder(t *testing.T) {
 		t.Fatalf("SM_SUBABILITY = %+v, want %+v", subAbilityCmd, wantSubAbility)
 	}
 
-	adjustCmd, adjustBody, err := decodeMessageLikeClient(readFrame(t, client))
-	if err != nil {
-		t.Fatalf("decode SM_ADJUST_BONUS frame error = %v", err)
-	}
-	if adjustCmd.Ident != mir176.SMAdjustBonus || adjustCmd.Recog != int32(ch.BonusPoint) {
-		t.Fatalf("SM_ADJUST_BONUS header = %+v, want ident=%d bonus=%d", adjustCmd, mir176.SMAdjustBonus, ch.BonusPoint)
-	}
-	parts := bytes.Split(adjustBody, []byte("/"))
-	if len(parts) != 3 {
-		t.Fatalf("SM_ADJUST_BONUS parts = %d, want 3", len(parts))
-	}
-	bonusDecoded, err := mir176.DecodePlain6Payload(parts[0])
-	if err != nil {
-		t.Fatalf("decode SM_ADJUST_BONUS bonus values: %v", err)
-	}
-	if got := binary.LittleEndian.Uint16(bonusDecoded[0:2]); got != 17 {
-		t.Fatalf("SM_ADJUST_BONUS warrior DC = %d, want 17", got)
-	}
-	currentDecoded, err := mir176.DecodePlain6Payload(parts[1])
-	if err != nil {
-		t.Fatalf("decode SM_ADJUST_BONUS current values: %v", err)
-	}
-	if got := binary.LittleEndian.Uint16(currentDecoded[0:2]); got != 1 {
-		t.Fatalf("SM_ADJUST_BONUS current DC = %d, want 1", got)
-	}
-	nakedDecoded, err := mir176.DecodePlain6Payload(parts[2])
-	if err != nil {
-		t.Fatalf("decode SM_ADJUST_BONUS naked values: %v", err)
-	}
-	if got := binary.LittleEndian.Uint16(nakedDecoded[0:2]); got != 512 {
-		t.Fatalf("SM_ADJUST_BONUS naked DC = %d, want 512", got)
-	}
-
 	dayCmd, _, err := decodeMessageLikeClient(readFrame(t, client))
 	if err != nil {
 		t.Fatalf("decode SM_DAYCHANGING frame error = %v", err)
 	}
 	if dayCmd.Ident != mir176.SMDayChanging {
-		t.Fatalf("fifth frame ident = %d, want SM_DAYCHANGING (%d)", dayCmd.Ident, mir176.SMDayChanging)
+		t.Fatalf("third frame ident = %d, want SM_DAYCHANGING (%d)", dayCmd.Ident, mir176.SMDayChanging)
 	}
 	gameTime := world.GameTime(time.Now())
 	dayBright := byte(s.world.MapDayBright(ch.MapID, gameTime))

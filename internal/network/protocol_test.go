@@ -22,6 +22,24 @@ func TestDecodeRunLogin(t *testing.T) {
 	}
 }
 
+func TestExtendedSoftVersionMatchesReferenceExtraction(t *testing.T) {
+	tests := []struct {
+		version int
+		want    int
+	}{
+		{version: 0, want: 0},
+		{version: 21158117, want: 0},
+		{version: 100000000, want: 0},
+		{version: 121158117, want: 100000000},
+		{version: 221158117, want: 200000000},
+	}
+	for _, tt := range tests {
+		if got := extendedSoftVersion(tt.version); got != tt.want {
+			t.Fatalf("extendedSoftVersion(%d) = %d, want %d", tt.version, got, tt.want)
+		}
+	}
+}
+
 func TestValidateRunLoginMatchesCaseInsensitiveCharacterLookup(t *testing.T) {
 	s := newTestServer(t)
 	if _, err := s.world.CreateCharacterWithAppearance("account", "Hero", "warrior", 0, 0, testMapID, 10, 10); err != nil {

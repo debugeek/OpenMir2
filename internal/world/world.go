@@ -35,6 +35,7 @@ type World struct {
 	monsterProcessGroupByID            map[string]string
 	monsterProcessGroupCursor          int
 	monsterProcessMemberCursor         int
+	monsterProcessRegistryValidated    bool
 	visibleActors                      map[string][]string
 	npcActors                          map[string]int32
 	npcCombat                          map[string]*NPCCombatState
@@ -176,7 +177,7 @@ type spawnState struct {
 	spawn           data.StdSpawn
 	activeCount     int
 	nextMemberOrder uint64
-	memberIDs       []string
+	members         []*Monster
 	lastRegenAt     time.Time
 }
 

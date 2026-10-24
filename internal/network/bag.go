@@ -19,11 +19,11 @@ func (s *Server) sendBagAddItem(conn net.Conn, ch storage.Character, itemID stri
 		if entry.ItemID != itemID {
 			continue
 		}
-		if entry.MakeIndex != makeIndex {
+		if makeIndex > 0 && entry.MakeIndex != makeIndex {
 			continue
 		}
 		item = world.UpgradeClientItemForDisplay(item, entry, true)
-		s.sendCommand(conn, mir176.Command{Ident: mir176.SMAddItem, Recog: world.CharacterActorID(ch), Series: 1}, EncodeBuffer(s.itemBodyForClient(conn, item, entry.Desc, entry.MakeIndex, entry.Dura, entry.DuraMax)))
+		s.sendCommand(conn, mir176.Command{Ident: mir176.SMAddItem, Recog: world.CharacterActorID(ch), Series: 1}, EncodeBuffer(itemBodyForAdd(ch, item, entry.Desc, entry.MakeIndex, entry.Dura, entry.DuraMax)))
 		return true
 	}
 	return false
@@ -66,7 +66,7 @@ func (s *Server) sendEquippedItems(conn net.Conn, ch storage.Character) {
 }
 
 func (s *Server) sendBagItems(conn net.Conn, ch storage.Character) {
-	body, count := s.bagItemsBodyAndCountForClient(conn, ch)
+	body, count := BagItemsBodyAndCount(s.world, ch)
 	if len(body) == 0 {
 		return
 	}
@@ -77,7 +77,7 @@ func (s *Server) itemBodyForClient(conn net.Conn, item data.StdItem, desc [14]by
 	client := s.clientForConn(conn)
 	if client != nil {
 		client.mu.Lock()
-		legacy := client.softVersion == 0
+		legacy := client.softVersion == 0 || client.clientTick == 0
 		client.mu.Unlock()
 		if legacy {
 			return LegacyClientItemBody(item, makeIndex, dura, duraMax)
@@ -155,8 +155,9 @@ func (s *Server) bagItemsBodyAndCountForClient(conn net.Conn, ch storage.Charact
 	legacy := false
 	if client := s.clientForConn(conn); client != nil {
 		client.mu.Lock()
-		legacy = client.softVersion == 0
+		legacy = client.softVersion == 0 || client.clientTick == 0
 		client.mu.Unlock()
+		s.log.Info("bag sync format", "legacy", legacy, "items", len(ch.BagItems))
 	}
 	return bagItemsBodyAndCount(s.world, ch, func(item data.StdItem, desc [14]byte, makeIndex int32, dura, duraMax uint16) []byte {
 		if legacy {

@@ -681,6 +681,7 @@ func (w *World) applyPendingCharacterEventsLocked(result *TickResult, playersByI
 func (w *World) Tick(players []PlayerSnapshot, now time.Time) (TickResult, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	w.monsterProcessRegistryValidated = false
 	for id, disconnected := range w.disconnectedCharacters {
 		if now.After(disconnected.Until) {
 			delete(w.disconnectedCharacters, id)
