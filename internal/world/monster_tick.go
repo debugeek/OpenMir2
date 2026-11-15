@@ -1221,13 +1221,6 @@ func (w *World) Tick(players []PlayerSnapshot, now time.Time) (TickResult, error
 			if mon.RunIntervalMS > 0 {
 				mon.NextRunAt = now.Add(time.Duration(mon.RunIntervalMS) * time.Millisecond)
 			}
-			if mon.PendingDeath {
-				if err := settleMonsterDeath(mon); err != nil {
-					return TickResult{}, err
-				}
-				w.processPendingMonsterSpawnsForParentLocked(mon, now, &result)
-				continue
-			}
 			if mon.NextVisibleSearchAt.IsZero() || now.After(mon.NextVisibleSearchAt) {
 				w.refreshMonsterVisibleActorsLocked(mon, playersByID)
 			}
@@ -1316,7 +1309,6 @@ func (w *World) Tick(players []PlayerSnapshot, now time.Time) (TickResult, error
 				}
 			}
 			inheritedBeforeBehavior := w.monsterBaseRunBeforeBehaviorLocked(mon)
-			pendingDeathAtStart := mon.PendingDeath
 			if inheritedBeforeBehavior {
 				w.applyMonsterInheritedStateTickLocked(mon, now, &result)
 				w.applyMonsterRecoveryTickLocked(mon, now, &result)
@@ -1423,19 +1415,17 @@ func (w *World) Tick(players []PlayerSnapshot, now time.Time) (TickResult, error
 				playersByID[ch.ID] = ch
 				updated[ch.ID] = ch
 			}
-			pendingDeathBeforeEvents := mon.PendingDeath
 			dueAttacks, err = w.applyPendingMonsterEventsForTargetLocked(&result, playersByID, updated, dueAttacks, mon.ID, now)
 			if err != nil {
 				return TickResult{}, err
 			}
-			if wasAliveAtRun && !pendingDeathBeforeEvents && (mon.PendingDeath || !mon.Alive) {
+			if wasAliveAtRun && !mon.Alive {
 				w.cleanupMonsterHitterRefsLocked(mon, playersByID, now)
 				w.cleanupMonsterTargetAfterRunLocked(mon, playersByID, now)
 				w.finalizeSummonedOwnerStateAfterRunLocked(mon, playersByID, now)
 				w.applyMonsterInheritedStateTickLocked(mon, now, &result)
 				continue
 			}
-			pendingDeathAfterBehavior := mon.PendingDeath
 			masterTickExpired := false
 			if !inheritedBeforeBehavior {
 				w.applyMonsterRecoveryTickLocked(mon, now, &result)
@@ -1492,16 +1482,6 @@ func (w *World) Tick(players []PlayerSnapshot, now time.Time) (TickResult, error
 				result.OrderedMonsterEvents = append(result.OrderedMonsterEvents, OrderedMonsterEvent{Kind: OrderedMonsterEventUsername, Monster: *mon})
 			}
 			masterTickExpired = expireSummonedMonsterMasterTickLocked(mon, now)
-			if !pendingDeathAtStart && mon.PendingDeath && mon.HP > 0 {
-				mon.PendingDeath = false
-				mon.DeathHitterID = ""
-			}
-			if !pendingDeathAtStart && pendingDeathAfterBehavior && mon.PendingDeath && mon.MasterID == "" {
-				if err := settleMonsterDeath(mon); err != nil {
-					return TickResult{}, err
-				}
-				continue
-			}
 			if masterTickExpired {
 				if err := settleMonsterDeath(mon); err != nil {
 					return TickResult{}, err
@@ -2218,7 +2198,7 @@ func (w *World) applyPendingSpellTicksForPhaseAndCharacterLocked(result *TickRes
 		}
 		if pending.TargetMonsterID != "" {
 			mon, ok := w.monsters[pending.TargetMonsterID]
-			if !ok || mon == nil || mon.Ghost || mon.PendingDeath {
+			if !ok || mon == nil || mon.Ghost || !mon.Alive {
 				continue
 			}
 		}
@@ -2875,7 +2855,7 @@ func (w *World) applyMonsterRecoveryTickLocked(mon *Monster, now time.Time, resu
 		result.PostActionMonsterHealthRefreshes = append(result.PostActionMonsterHealthRefreshes, changed)
 		result.OrderedMonsterEvents = append(result.OrderedMonsterEvents, OrderedMonsterEvent{Kind: OrderedMonsterEventHealth, Monster: changed})
 	}
-	if mon.PendingDeath && mon.HP <= 0 {
+	if !mon.Alive && mon.HP <= 0 {
 		return
 	}
 	if w.applyMonsterHealingTickLocked(mon, now) {
@@ -3186,7 +3166,7 @@ func (w *World) tickSpitSpiderAndInheritedLocked(mon *Monster, players map[strin
 	if w.thinkMonsterLocked(mon, players, now) {
 		return append(combined, w.monsterActionLocked(mon, MonsterActionWalk)), hits, chars, nil
 	}
-	if len(actions) > 0 || mon.PendingDeath {
+	if len(actions) > 0 || !mon.Alive {
 		return combined, hits, chars, nil
 	}
 	if target := w.monsters[mon.TargetMonsterID]; target != nil && w.monsterSpitMonsterTargetInDirectionLocked(mon, target, direction(mon.X, mon.Y, target.X, target.Y)) {
@@ -3215,7 +3195,7 @@ func (w *World) tickGasAttackAndInheritedLocked(mon *Monster, players map[string
 		return nil, nil, nil, err
 	}
 	combined := append(prefix, actions...)
-	if len(actions) > 0 || mon.PendingDeath {
+	if len(actions) > 0 || !mon.Alive {
 		return combined, hits, chars, nil
 	}
 	if target, ok := players[mon.TargetCharacterID]; ok && (mon.X != target.X || mon.Y != target.Y) && abs(mon.X-target.X) <= 1 && abs(mon.Y-target.Y) <= 1 {
@@ -3248,7 +3228,7 @@ func (w *World) tickAlwaysInheritedCustomLocked(mon *Monster, players map[string
 		return nil, nil, nil, err
 	}
 	combined := append(prefix, actions...)
-	if mon.PendingDeath {
+	if !mon.Alive {
 		return combined, hits, chars, nil
 	}
 	inheritedActions, inheritedHits, inheritedChars, err := w.finishMonsterTickWithoutSearchLocked(mon, players, now, combined, w.tickNormalMonsterWithoutSearchLocked)
@@ -3280,7 +3260,7 @@ func (w *World) tickLightingZombieAndInheritedLocked(mon *Monster, players map[s
 			}
 		}
 	}
-	if mon.PendingDeath {
+	if !mon.Alive {
 		return combined, hits, chars, nil
 	}
 	inheritedActions, inheritedHits, inheritedChars, err := w.finishMonsterTickWithoutSearchLocked(mon, players, now, combined, w.tickNormalMonsterWithoutSearchLocked)
@@ -3299,7 +3279,7 @@ func (w *World) tickElectronicScorpionAndInheritedLocked(mon *Monster, players m
 	if mon.TargetCharacterID == "" && mon.TargetMonsterID == "" {
 		return combined, hits, chars, nil
 	}
-	if mon.PendingDeath {
+	if !mon.Alive {
 		return combined, hits, chars, nil
 	}
 	inheritedActions, inheritedHits, inheritedChars, err := w.finishMonsterTickWithoutSearchLocked(mon, players, now, combined, w.tickNormalMonsterWithoutSearchLocked)
@@ -3657,7 +3637,7 @@ func (w *World) tickImmediateCustomAndInheritedLocked(mon *Monster, players map[
 		return append(prefix, actions...), hits, chars, nil
 	}
 	actions = prefix
-	if mon.PendingDeath {
+	if !mon.Alive {
 		return actions, hits, chars, nil
 	}
 	inheritedActions, inheritedHits, inheritedChars, err := w.finishMonsterTickLocked(mon, players, now, actions, w.tickNormalMonsterLocked)
@@ -3686,7 +3666,7 @@ func (w *World) tickExplosionSpiderAndInheritedLocked(mon *Monster, players map[
 		actions = append(actions, detonationActions...)
 		hits = append(hits, detonationHits...)
 		chars = append(chars, detonationChars...)
-		if mon.PendingDeath {
+		if !mon.Alive {
 			return actions, hits, chars, nil
 		}
 	}
@@ -4240,7 +4220,6 @@ func (w *World) dualAxeAttackMonsterLocked(mon, target *Monster, power int) (int
 	perSpell := target.PerSpell
 	meatQuality := target.MeatQuality
 	holySeizeUntil := target.HolySeizeUntil
-	pendingDeath := target.PendingDeath
 	deathHitterID := target.DeathHitterID
 	caster := storage.Character{ID: mon.ID, MapID: mon.MapID, X: mon.X, Y: mon.Y}
 	damage := w.monsterPhysicalDamageAfterDefenseLocked(target, power)
@@ -4263,7 +4242,6 @@ func (w *World) dualAxeAttackMonsterLocked(mon, target *Monster, power int) (int
 	target.PerSpell = perSpell
 	target.MeatQuality = meatQuality
 	target.HolySeizeUntil = holySeizeUntil
-	target.PendingDeath = pendingDeath
 	target.DeathHitterID = deathHitterID
 	if hit.Damage > 0 {
 		hit.ImpactDelay = time.Duration(maxInt(abs(mon.X-target.X), abs(mon.Y-target.Y))*50+600) * time.Millisecond
@@ -5661,8 +5639,7 @@ func (w *World) explosionSpiderAttackLocked(mon *Monster, players map[string]sto
 func (w *World) explosionSpiderDamageLocked(mon *Monster, players map[string]storage.Character, now time.Time, detonate bool) ([]MonsterAction, []CharacterHit, []storage.Character, error) {
 	if detonate {
 		mon.HP = core.ApplyHPDelta(mon.HP, mon.MaxHP, -mon.HP).HP
-		mon.PendingDeath = true
-		mon.DeathHitterID = mon.ExpHitterID
+		w.removeMonsterLocked(mon, true)
 		if mon.DeathHitterID == "" {
 			mon.DeathHitterID = mon.LastHitterID
 		}

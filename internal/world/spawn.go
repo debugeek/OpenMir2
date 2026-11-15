@@ -178,7 +178,6 @@ func (w *World) respawnLocked(now time.Time, players []PlayerSnapshot, result *T
 		mon.RespawnAt = time.Time{}
 		mon.TargetCharacterID = ""
 		mon.TargetMonsterID = ""
-		mon.PendingDeath = false
 		mon.DeathHitterID = ""
 		mon.LastHitterID = ""
 		mon.LastHitterAt = time.Time{}

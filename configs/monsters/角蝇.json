@@ -7,7 +7,7 @@
   "level": 30,
   "undead": 0,
   "cool_eye": 0,
-  "animal": true,
+  "animal": false,
   "view_range": 9,
   "search_no_target_ms": 2500,
   "search_has_target_ms": 2500,

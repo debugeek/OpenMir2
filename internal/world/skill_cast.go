@@ -631,8 +631,15 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 		if w.rand.Intn(100) < chance {
 			w.setMonsterLastHitterAtLocked(mon, ch.ID, now)
 			mon.HP = 0
-			mon.PendingDeath = true
-			mon.DeathHitterID = ch.ID
+			death, err := w.killMonsterWithDamageAtLocked(ch, mon, 0, now)
+			if err != nil {
+				return result, err
+			}
+			result.MonsterHit = &death
+			result.MonsterHits = append(result.MonsterHits, death)
+			result.Experience = death.Experience
+			result.CurrentExp = death.CurrentExp
+			result.LevelUp = death.LevelUp
 			result.Character = ch
 			skillTrained = true
 		} else {
@@ -998,12 +1005,10 @@ func (w *World) DoSpell(ch storage.Character, skillID string, targetX, targetY i
 								result.AffectedMonsters = []Monster{*target}
 								result.NameMonsters = []Monster{*target}
 							} else if w.rand.Intn(14) == 0 {
-								target.HP = 0
-								target.PendingDeath = true
+								w.removeMonsterLocked(target, true)
 							}
 						} else if !eligible && target.Undead > 0 && w.rand.Intn(20) == 0 {
-							target.HP = 0
-							target.PendingDeath = true
+							w.removeMonsterLocked(target, true)
 						} else if !eligible && target.Undead <= 0 && w.rand.Intn(20) == 0 {
 							target.CrazyUntil = now.Add(time.Duration(w.rand.Intn(20)+10) * time.Second)
 							result.NameColorMonsters = []Monster{*target}

@@ -123,7 +123,7 @@ func (w *World) attackMonsterWithDamageLocked(ch storage.Character, mon *Monster
 }
 
 func (w *World) attackMonsterWithPoisonDamageLocked(ch storage.Character, mon *Monster, damage int) (AttackResult, error) {
-	result, err := w.attackMonsterWithDamageModeAndMeatLocked(ch, mon, damage, false, false, false, true, false)
+	result, err := w.attackMonsterWithDamageModeAndMeatLocked(ch, mon, damage, false, false, false, false)
 	if err == nil && result.Damage > 0 {
 		w.decayMonsterMeatQualityLocked(mon, 1)
 	}
@@ -188,17 +188,13 @@ func (w *World) attackMonsterDirectDamageModeForActorLocked(ch storage.Character
 			w.setMonsterLastHitterAtLocked(mon, ch.ID, now)
 		}
 	}
-	if mon.HP <= 0 {
-		mon.PendingDeath = true
-		mon.DeathHitterID = ch.ID
-	}
 	result := AttackResult{
 		MonsterID: mon.ID, MonsterMapID: mon.MapID, Connected: true, Damage: damage, MonsterHP: mon.HP, MonsterMaxHP: mon.MaxHP,
 		MonsterRaceImg: mon.RaceImg, MonsterWeapon: mon.MonsterWeapon, MonsterAppr: mon.Appr,
 		MonsterX: mon.X, MonsterY: mon.Y, MonsterDir: mon.Dir, MonsterStatus: MonsterStatus(*mon, now),
 		MonsterHealthChanged: mon.ShowHPUntil > 0, Character: ch, ImpactDelay: 500 * time.Millisecond,
 	}
-	if damage > 0 && applyMonsterEffects && mon.Race >= 50 {
+	if damage > 0 && mon.HP > 0 && applyMonsterEffects && mon.Race >= 50 {
 		if attackerIsCharacter {
 			mon.LastHitterID = oldLastHitterID
 			mon.LastHitterAt = oldLastHitterAt
@@ -207,6 +203,17 @@ func (w *World) attackMonsterDirectDamageModeForActorLocked(ch storage.Character
 			ch = w.monsterStruckByCharacterLocked(mon, ch, blockers, now)
 		}
 		result.Character = ch
+	}
+	if mon.HP <= 0 {
+		death, _, err := w.killMonsterWithDamageAtAndPlayersLocked(ch, mon, 0, now, nil, blockers...)
+		if err != nil {
+			return AttackResult{}, err
+		}
+		death.Damage = damage
+		death.MonsterHP = 0
+		death.MonsterMaxHP = mon.MaxHP
+		death.Character = ch
+		return death, nil
 	}
 	return result, nil
 }
@@ -251,7 +258,7 @@ func (w *World) attackMonsterWithBaseDamageModeLocked(ch storage.Character, mon 
 	oldTargetMonsterID := mon.TargetMonsterID
 	oldTargetFocusAt := mon.TargetFocusAt
 	oldNextSearchAt := mon.NextSearchAt
-	result, err := w.attackMonsterWithDamageModeAndMeatLocked(ch, mon, damage, false, false, true, true, true, blockers...)
+	result, err := w.attackMonsterWithDamageModeAndMeatLocked(ch, mon, damage, false, false, true, true, blockers...)
 	if err != nil {
 		return result, err
 	}
@@ -270,10 +277,10 @@ func (w *World) attackMonsterWithBaseDamageModeLocked(ch storage.Character, mon 
 }
 
 func (w *World) attackMonsterWithDamageModeLocked(ch storage.Character, mon *Monster, damage int, applyDefense bool, blockers ...storage.Character) (AttackResult, error) {
-	return w.attackMonsterWithDamageModeAndMeatLocked(ch, mon, damage, applyDefense, true, true, true, true, blockers...)
+	return w.attackMonsterWithDamageModeAndMeatLocked(ch, mon, damage, applyDefense, true, true, true, blockers...)
 }
 
-func (w *World) attackMonsterWithDamageModeAndMeatLocked(ch storage.Character, mon *Monster, damage int, applyDefense, decayMeat, applyPoisonArmor, deferDeath, resetRecovery bool, blockers ...storage.Character) (AttackResult, error) {
+func (w *World) attackMonsterWithDamageModeAndMeatLocked(ch storage.Character, mon *Monster, damage int, applyDefense, decayMeat, applyPoisonArmor, resetRecovery bool, blockers ...storage.Character) (AttackResult, error) {
 	now := w.monsterActionTimeLocked()
 	if damage < 0 {
 		damage = 0
@@ -335,16 +342,9 @@ func (w *World) attackMonsterWithDamageModeAndMeatLocked(ch storage.Character, m
 		Character:      ch,
 	}
 	if hp.Dead {
-		if deferDeath {
-			mon.PendingDeath = true
-			mon.DeathHitterID = ch.ID
-			result.Character = ch
-			return result, nil
-		}
 		if mon.CastleWall {
 			mon.Alive = false
 			mon.DeathAt = now
-			mon.PendingDeath = false
 			w.castleWallSetMapFlagLocked(mon)
 			result.Dead = true
 			result.Character = ch
@@ -523,8 +523,19 @@ func (w *World) applyMonsterMagicDamageAtLocked(ch storage.Character, mon *Monst
 		MonsterHealthChanged: true,
 	}
 	if hp.Dead {
-		mon.PendingDeath = true
-		mon.DeathHitterID = ch.ID
+		death, _, err := w.killMonsterWithDamageAtAndPlayersLocked(ch, mon, 0, now, nil, blockers...)
+		if err != nil {
+			return AttackResult{}, err
+		}
+		death.Damage = damage
+		death.MonsterHP = 0
+		death.MonsterMaxHP = mon.MaxHP
+		death.MonsterMP = mon.MP
+		death.MonsterMaxMP = mon.MaxMP
+		death.Magic = true
+		death.MonsterHealthChanged = true
+		death.Character = ch
+		return death, nil
 	}
 	result.Character = ch
 	if _, isMonster := w.monsters[ch.ID]; isMonster {
@@ -561,8 +572,6 @@ func (w *World) applyReferenceMonsterVsMonsterDamageAtLocked(attacker, target *M
 	targetPerSpell := target.PerSpell
 	meatQuality := target.MeatQuality
 	holySeizeUntil := target.HolySeizeUntil
-	pendingDeath := target.PendingDeath
-	deathHitterID := target.DeathHitterID
 	caster := storage.Character{ID: attacker.ID, MapID: attacker.MapID, X: attacker.X, Y: attacker.Y}
 	hit, err := w.applyMonsterMagicDamageAtLocked(caster, target, damage, false, now)
 	target.LastAttackAt = lastAttackAt
@@ -580,11 +589,16 @@ func (w *World) applyReferenceMonsterVsMonsterDamageAtLocked(attacker, target *M
 	target.PerSpell = targetPerSpell
 	target.MeatQuality = meatQuality
 	target.HolySeizeUntil = holySeizeUntil
-	target.PendingDeath = pendingDeath
-	target.DeathHitterID = deathHitterID
 	if hit.Damage > 0 && hit.MonsterHP <= 0 {
-		target.PendingDeath = true
-		target.DeathHitterID = attacker.ID
+		death, _, deathErr := w.killMonsterWithDamageAtAndPlayersLocked(caster, target, 0, now, nil)
+		if deathErr != nil {
+			return AttackResult{}, deathErr
+		}
+		death.Damage = hit.Damage
+		death.MonsterHP = 0
+		death.MonsterMaxHP = target.MaxHP
+		death.Character = caster
+		return death, nil
 	}
 	return hit, err
 }
@@ -732,7 +746,6 @@ func (w *World) killMonsterWithDamageAtAndPlayersLocked(ch storage.Character, mo
 	}
 	if mon.CastleWall {
 		mon.Alive = false
-		mon.PendingDeath = false
 		mon.DeathAt = now
 		w.castleWallSetMapFlagLocked(mon)
 		result.Dead = true
@@ -1430,7 +1443,7 @@ func (w *World) archerAttackMonsterLocked(attacker, target *Monster, power int) 
 	targetNextSearchAt := target.NextSearchAt
 	caster := storage.Character{ID: attacker.ID, MapID: attacker.MapID, X: attacker.X, Y: attacker.Y}
 	damage := w.monsterPhysicalDamageAfterDefenseLocked(target, power)
-	hit, err := w.attackMonsterWithDamageModeAndMeatLocked(caster, target, damage, false, false, true, true, false)
+	hit, err := w.attackMonsterWithDamageModeAndMeatLocked(caster, target, damage, false, false, true, false)
 	if err != nil {
 		return AttackResult{}, err
 	}
@@ -1460,10 +1473,6 @@ func (w *World) archerGuardAttackMonsterLocked(attacker, target *Monster, power 
 		target.LastHitterAt = now
 		target.ExpHitterID = ""
 		target.ExpHitterAt = time.Time{}
-		if hit.MonsterHP <= 0 {
-			target.PendingDeath = true
-			target.DeathHitterID = attacker.ID
-		}
 		w.enqueueReferenceMonsterStruckLocked(attacker, target, now, time.Duration(maxInt(abs(attacker.X-target.X), abs(attacker.Y-target.Y))*50+600)*time.Millisecond)
 	}
 	hit.Magic = false

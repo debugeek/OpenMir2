@@ -627,32 +627,6 @@ func TestWorldTickConsumesMonsterEventsInLegacyCrossSourceOrder(t *testing.T) {
 	}
 }
 
-func TestWorldTickDropsEventsForPendingDeathMonsterTarget(t *testing.T) {
-	w, caster := newTestWorldCharacter(t)
-	now := time.Unix(20, 0)
-	target := &Monster{ID: "pending-event-target", MapID: caster.MapID, X: caster.X, Y: caster.Y, Alive: true, PendingDeath: true, HP: 0, MaxHP: 100, MasterID: caster.ID}
-	w.mu.Lock()
-	w.monsters["pending-event-attacker"] = &Monster{ID: "pending-event-attacker", MapID: caster.MapID, Alive: true, HP: 100, MaxHP: 100}
-	w.monsters[target.ID] = target
-	w.pendingMonsterAttacks = append(w.pendingMonsterAttacks, pendingMonsterAttack{
-		DueAt: now.Add(-time.Second), MonsterID: "pending-event-attacker",
-		MonsterTargets: []pendingMonsterTarget{{ID: target.ID, Damage: 30}},
-	})
-	w.pendingSpells = append(w.pendingSpells, pendingSpell{
-		DueAt: now.Add(-time.Second), CasterID: caster.ID, TargetMonsterID: target.ID,
-		PoisonHealth: true, PoisonHealthLevel: 1, PoisonDuration: time.Minute,
-	})
-	w.mu.Unlock()
-
-	result, err := w.Tick([]PlayerSnapshot{{Character: caster}}, now)
-	if err != nil {
-		t.Fatalf("World.Tick() error = %v", err)
-	}
-	if len(result.MonsterHits) != 0 || target.PoisonHealthLevel != 0 {
-		t.Fatalf("pending-death target events = hits:%+v poison:%d, want none", result.MonsterHits, target.PoisonHealthLevel)
-	}
-}
-
 func TestWorldTickSkipsGhostMonsterMessageTarget(t *testing.T) {
 	w, caster := newTestWorldCharacter(t)
 	now := time.Unix(20, 0)
@@ -3430,113 +3404,6 @@ func TestWorldTickOrdersMonsterShowHealthOpenWithInheritedEvents(t *testing.T) {
 	}
 }
 
-func TestWorldTickSkipsShowHPOpenForPendingDeathMonster(t *testing.T) {
-	w, ch := newTestWorldCharacter(t)
-	now := time.Unix(10, 0)
-	mon := &Monster{
-		ID: "pending-show-health-death", MapID: ch.MapID, X: ch.X + 1, Y: ch.Y,
-		Alive: true, PendingDeath: true, HP: 0, MaxHP: 100,
-		ShowHPOpenAt: now.Add(-time.Millisecond).UnixNano(), ShowHPDuration: int64(time.Minute),
-	}
-	w.mu.Lock()
-	w.monsters = map[string]*Monster{mon.ID: mon}
-	w.mu.Unlock()
-
-	result, err := w.Tick([]PlayerSnapshot{{Character: ch}}, now)
-	if err != nil {
-		t.Fatalf("World.Tick() error = %v", err)
-	}
-	if len(result.ShowHPOpenedMonsters) != 0 {
-		t.Fatalf("ShowHPOpenedMonsters = %+v, want none for pending-death monster", result.ShowHPOpenedMonsters)
-	}
-	if len(result.MonsterDeaths) != 1 || result.MonsterDeaths[0].MonsterID != mon.ID {
-		t.Fatalf("MonsterDeaths = %+v, want pending monster settlement", result.MonsterDeaths)
-	}
-}
-
-func TestWorldTickDoesNotSettlePendingDeathBeforeMonsterRunIsDue(t *testing.T) {
-	w, ch := newTestWorldCharacter(t)
-	now := time.Unix(10, 0)
-	mon := &Monster{
-		ID: "pending-death-run-gate", MapID: ch.MapID, X: ch.X + 1, Y: ch.Y,
-		Alive: true, PendingDeath: true, HP: 0, MaxHP: 100, RunIntervalMS: 250,
-		NextRunAt: now.Add(time.Second),
-	}
-	w.mu.Lock()
-	w.monsters = map[string]*Monster{mon.ID: mon}
-	w.mu.Unlock()
-
-	first, err := w.Tick([]PlayerSnapshot{{Character: ch}}, now)
-	if err != nil {
-		t.Fatalf("first World.Tick() error = %v", err)
-	}
-	if len(first.MonsterDeaths) != 0 || !mon.PendingDeath || !mon.Alive {
-		t.Fatalf("before run deadline = deaths:%d pending:%t alive:%t, want deferred pending death", len(first.MonsterDeaths), mon.PendingDeath, mon.Alive)
-	}
-
-	mon.NextRunAt = now.Add(-time.Nanosecond)
-	second, err := w.Tick([]PlayerSnapshot{{Character: ch}}, now.Add(time.Second))
-	if err != nil {
-		t.Fatalf("second World.Tick() error = %v", err)
-	}
-	if len(second.MonsterDeaths) != 1 || second.MonsterDeaths[0].MonsterID != mon.ID || mon.Alive || mon.PendingDeath {
-		t.Fatalf("at run deadline = deaths:%+v pending:%t alive:%t, want settled death", second.MonsterDeaths, mon.PendingDeath, mon.Alive)
-	}
-}
-
-func TestWorldTickConsumesDelayedSpawnFromPendingDeathMonster(t *testing.T) {
-	w, ch := newTestWorldCharacter(t)
-	now := time.Unix(10, 0)
-	mon := &Monster{
-		ID: "pending-spawn-death", MapID: ch.MapID, X: ch.X + 1, Y: ch.Y,
-		Alive: true, PendingDeath: true, HP: 0, MaxHP: 100,
-	}
-	w.mu.Lock()
-	w.monsters = map[string]*Monster{mon.ID: mon}
-	w.pendingMonsterSpawns = []pendingMonsterSpawn{{
-		DueAt: now, ParentID: mon.ID, ChildName: "爆裂蜘蛛",
-	}}
-	w.mu.Unlock()
-
-	result, err := w.Tick([]PlayerSnapshot{{Character: ch}}, now)
-	if err != nil {
-		t.Fatalf("World.Tick() error = %v", err)
-	}
-	if len(result.SpawnedMonsters) != 1 {
-		t.Fatalf("SpawnedMonsters = %+v, want delayed child from non-ghost pending-death parent", result.SpawnedMonsters)
-	}
-	if len(result.MonsterDeaths) != 1 || result.MonsterDeaths[0].MonsterID != mon.ID {
-		t.Fatalf("MonsterDeaths = %+v, want pending parent settlement", result.MonsterDeaths)
-	}
-}
-
-func TestWorldTickSettlesMonsterDeathCreatedByBehavior(t *testing.T) {
-	w, ch := newTestWorldCharacter(t)
-	now := time.Unix(10, 0)
-	mon := &Monster{
-		ID: "behavior-death", Race: 117, MapID: ch.MapID, X: ch.X + 1, Y: ch.Y,
-		Alive: true, HP: 10, MaxHP: 10, MinAttack: 4, MaxAttack: 4,
-		ExplosionStartAt: now.Add(-61 * time.Second), NextRunAt: now.Add(-time.Second),
-		IncHealth: 100, IncHealthSpellAt: now.Add(-time.Second).UnixMilli(), PerHealth: 1,
-		ProcessRunCount: monsterProcessInterval,
-	}
-	w.mu.Lock()
-	w.monsters = map[string]*Monster{mon.ID: mon}
-	w.occupyMonsterLocked(mon)
-	w.mu.Unlock()
-
-	result, err := w.Tick([]PlayerSnapshot{{Character: ch}}, now)
-	if err != nil {
-		t.Fatalf("World.Tick() error = %v", err)
-	}
-	if len(result.MonsterDeaths) != 1 || result.MonsterDeaths[0].MonsterID != mon.ID {
-		t.Fatalf("MonsterDeaths = %+v, want same-tick behavior death", result.MonsterDeaths)
-	}
-	if mon.Alive || mon.PendingDeath {
-		t.Fatalf("monster state = alive:%t pending:%t, want settled death", mon.Alive, mon.PendingDeath)
-	}
-}
-
 func TestMonsterAttackMissDoesNotStrikeMonster(t *testing.T) {
 	w, ch := prepareHitDamageTestWorld(t, nil)
 	w.mu.Lock()
@@ -6195,20 +6062,6 @@ func TestMonsterChildLimitKeepsHiddenChildrenAndDropsGhostChildren(t *testing.T)
 	}
 }
 
-func TestMonsterChildCleanupKeepsPendingDeathChildren(t *testing.T) {
-	w, ch := newTestWorldCharacter(t)
-	parent := &Monster{ID: "pending-child-parent", MapID: ch.MapID, Alive: true}
-	child := &Monster{ID: "pending-death-child", ParentID: parent.ID, MapID: ch.MapID, Alive: true, PendingDeath: true}
-	parent.ChildIDs = map[string]struct{}{child.ID: {}}
-	w.monsters[parent.ID] = parent
-	w.monsters[child.ID] = child
-
-	w.cleanupTrackedMonsterChildrenLocked(parent)
-	if _, ok := parent.ChildIDs[child.ID]; !ok {
-		t.Fatal("pending-death child was removed before death settlement")
-	}
-}
-
 func TestStoneKingAttackBreaksHolySeize(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
 	target := ch
@@ -7712,16 +7565,6 @@ func TestMonsterThinkClearsSummonTargetEnteringSafeZone(t *testing.T) {
 	w.clearInvalidMonsterTargetLocked(mon, map[string]storage.Character{target.ID: target}, now)
 	if mon.TargetCharacterID != "" || !mon.TargetFocusAt.IsZero() {
 		t.Fatalf("target after safe-zone cleanup = id:%q focus:%v, want cleared", mon.TargetCharacterID, mon.TargetFocusAt)
-	}
-}
-
-func TestMonsterClearsPendingDeathMonsterTarget(t *testing.T) {
-	mon := &Monster{ID: "target-owner", MapID: "map", X: 10, Y: 10, Alive: true, TargetMonsterID: "pending-target"}
-	pending := &Monster{ID: "pending-target", MasterID: "master", MapID: "map", X: 11, Y: 10, Alive: true, PendingDeath: true}
-	w := &World{monsters: map[string]*Monster{mon.ID: mon, pending.ID: pending}}
-	w.clearInvalidMonsterTargetLocked(mon, nil, time.Unix(100, 0))
-	if mon.TargetMonsterID != "" {
-		t.Fatalf("pending-death target = %q, want cleared", mon.TargetMonsterID)
 	}
 }
 
@@ -10168,33 +10011,6 @@ func TestDualAxeMonsterChasesTargetOutsideAttackRange(t *testing.T) {
 	}
 }
 
-func TestDualAxeMonsterThrowsAtSummonedMonster(t *testing.T) {
-	w, ch := newTestWorldCharacter(t)
-	w.rand = rand.New(zeroSource{})
-	mon := &Monster{ID: "dual-axe-summoner", Race: 87, MapID: ch.MapID, X: 200, Y: 200, HP: 100, MaxHP: 100, Alive: true, ViewRange: 12, TargetMonsterID: "dual-axe-summoned", MinAttack: 10, MaxAttack: 10, Hit: 100, UseMagic: true, AttackIntervalMS: 1, LastAttackAt: time.Unix(1, 0)}
-	target := &Monster{ID: mon.TargetMonsterID, MasterID: "owner", MapID: ch.MapID, X: 201, Y: 201, HP: 100, MaxHP: 100, Alive: true, Speed: 1, LastHitterID: "prior-last", LastHitterAt: time.Unix(2, 0), ExpHitterID: "prior-exp", ExpHitterAt: time.Unix(3, 0), TargetCharacterID: "other-character", TargetMonsterID: "other-monster", TargetFocusAt: time.Unix(4, 0), NextSearchAt: time.Unix(5, 0), LastAttackAt: time.Unix(6, 0), MeatQuality: 7000, HolySeizeUntil: time.Unix(7, 0), HealthTick: 8, SpellTick: 9, PerHealth: 10, PerSpell: 11, PendingDeath: true, DeathHitterID: "old-death"}
-	w.monsters = map[string]*Monster{target.ID: target}
-	actions, hits, _, err := w.tickDualAxeMonsterLocked(mon, map[string]storage.Character{}, time.Unix(10, 0))
-	if err != nil {
-		t.Fatalf("tickDualAxeMonsterLocked() error = %v", err)
-	}
-	if len(actions) != 1 || actions[0].Kind != MonsterActionFlyAxe || len(hits) != 0 || len(w.monsterBehaviorHits) != 1 || w.monsterBehaviorHits[0].MonsterID != target.ID || target.HP >= 100 {
-		t.Fatalf("dual axe summon result = actions:%+v hits:%+v monster hits:%+v target hp:%d, want delayed summon fly-axe hit", actions, hits, w.monsterBehaviorHits, target.HP)
-	}
-	if w.monsterBehaviorHits[0].ImpactDelay != 650*time.Millisecond {
-		t.Fatalf("dual axe summon impact delay = %s, want 650ms", w.monsterBehaviorHits[0].ImpactDelay)
-	}
-	if !mon.UseMagic {
-		t.Fatal("dual axe summon changed persistent magic mode")
-	}
-	if target.LastHitterID != "prior-last" || target.ExpHitterID != "prior-exp" || !target.LastHitterAt.Equal(time.Unix(2, 0)) || !target.ExpHitterAt.Equal(time.Unix(3, 0)) {
-		t.Fatalf("dual axe changed target hitter state = last:%q/%v exp:%q/%v", target.LastHitterID, target.LastHitterAt, target.ExpHitterID, target.ExpHitterAt)
-	}
-	if target.TargetCharacterID != "other-character" || target.TargetMonsterID != "other-monster" || !target.TargetFocusAt.Equal(time.Unix(4, 0)) || !target.NextSearchAt.Equal(time.Unix(5, 0)) || !target.LastAttackAt.Equal(time.Unix(6, 0)) || target.MeatQuality != 7000 || !target.HolySeizeUntil.Equal(time.Unix(7, 0)) || target.HealthTick != 8 || target.SpellTick != 9 || target.PerHealth != 10 || target.PerSpell != 11 || !target.PendingDeath || target.DeathHitterID != "old-death" {
-		t.Fatalf("dual axe changed unrelated target state: %+v", target)
-	}
-}
-
 func TestDualAxeMonsterAttacksLockedHiddenSummonedMonster(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
 	w.rand = rand.New(zeroSource{})
@@ -10752,14 +10568,9 @@ func TestCombatDropPickupKeepsRuntimeStateSeparateFromStorage(t *testing.T) {
 			break
 		}
 	}
-	tick, err := w.Tick([]PlayerSnapshot{{Character: ch}}, time.Now())
-	if err != nil {
-		t.Fatalf("Tick() error = %v", err)
+	if !result.Dead || result.MonsterHP != 0 {
+		t.Fatalf("monster did not die immediately: %+v", result)
 	}
-	if len(tick.MonsterDeaths) != 1 {
-		t.Fatalf("monster did not die")
-	}
-	result = tick.MonsterDeaths[0]
 	ch = result.Character
 	if result.Experience == 0 {
 		t.Fatalf("expected experience")
@@ -10931,34 +10742,6 @@ func TestStickMonsterAttackBreaksHolySeize(t *testing.T) {
 	}
 }
 
-func TestExplosionSpiderCharacterDamageAppliesImmediatelyWithDelayedImpact(t *testing.T) {
-	w, _ := newTestWorldCharacter(t)
-	mon := &Monster{ID: "exploder", MapID: testMapID, X: 10, Y: 10, MinAttack: 4, MaxAttack: 4, Alive: true, HP: 1, MaxHP: 1}
-	ch := storage.Character{ID: "player-explode", MapID: testMapID, X: 10, Y: 10, HP: 100, MaxHP: 100, PerHealth: 5, PerSpell: 5, HealthTick: 600, SpellTick: 700, LastHitterID: "old-hitter", LastHitterAt: 123}
-	actions, hits, updated, err := w.explosionSpiderLocked(mon, map[string]storage.Character{ch.ID: ch}, time.Now())
-	if err != nil {
-		t.Fatalf("explosionSpiderLocked() error = %v", err)
-	}
-	if len(hits) != 1 || len(updated) != 1 || len(w.pendingMonsterAttacks) != 0 {
-		t.Fatalf("explosion result = hits:%d updated:%d pending:%d, want immediate result", len(hits), len(updated), len(w.pendingMonsterAttacks))
-	}
-	if len(actions) != 0 {
-		t.Fatalf("explosion actions = %+v, want no ordinary hit action", actions)
-	}
-	if hits[0].ImpactDelay != 700*time.Millisecond || updated[0].HP >= ch.HP {
-		t.Fatalf("explosion hit = %+v updated=%+v, want 700ms delayed notification and reduced HP", hits[0], updated[0])
-	}
-	if updated[0].LastHitterID != ch.LastHitterID || updated[0].LastHitterAt != ch.LastHitterAt || updated[0].HealthTick != ch.HealthTick || updated[0].SpellTick != ch.SpellTick || updated[0].PerHealth != ch.PerHealth || updated[0].PerSpell != ch.PerSpell {
-		t.Fatalf("explosion changed struck state = %+v, want hitter and regeneration state preserved", updated[0])
-	}
-	if mon.HP != 0 {
-		t.Fatalf("exploder HP = %d, want zero after explosion", mon.HP)
-	}
-	if !mon.PendingDeath {
-		t.Fatal("exploder pending death = false, want unified death settlement")
-	}
-}
-
 func TestExplosionSpiderHitsLockedActiveHiddenCharacter(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
 	now := time.Unix(10, 0)
@@ -11032,81 +10815,6 @@ func TestExplosionSpiderDamagesHiddenSummonedMonster(t *testing.T) {
 	}
 	if len(w.monsterBehaviorHits) != 1 || w.monsterBehaviorHits[0].MonsterID != target.ID || target.HP >= target.MaxHP {
 		t.Fatalf("explosion hidden target = hits:%+v hp:%d, want one hidden summon hit", w.monsterBehaviorHits, target.HP)
-	}
-}
-
-func TestExplosionSpiderUsesInheritedSummonedTarget(t *testing.T) {
-	w, ch := newTestWorldCharacter(t)
-	mon := &Monster{ID: "exploder-inherited", Race: 117, MapID: ch.MapID, X: ch.X, Y: ch.Y, MinAttack: 4, MaxAttack: 4, Alive: true, HP: 1, MaxHP: 1, TargetMonsterID: "exploder-inherited-target", ExplosionStartAt: time.Unix(1, 0), LastAttackAt: time.Unix(1, 0), AttackIntervalMS: 1}
-	target := &Monster{ID: mon.TargetMonsterID, MasterID: "owner", MapID: ch.MapID, X: ch.X + 1, Y: ch.Y, HP: 100, MaxHP: 100, Alive: true}
-	w.monsters[target.ID] = target
-	_, hits, _, err := w.tickExplosionSpiderLocked(mon, map[string]storage.Character{}, time.Unix(10, 0))
-	if err != nil {
-		t.Fatalf("tickExplosionSpiderLocked() error = %v", err)
-	}
-	if len(hits) != 0 || len(w.monsterBehaviorHits) != 1 || target.HP >= 100 || !mon.PendingDeath || mon.HP != 0 {
-		t.Fatalf("inherited explosion result = character hits:%d monster hits:%+v target hp:%d pending:%t, want summon damage with self-detonation", len(hits), w.monsterBehaviorHits, target.HP, mon.PendingDeath)
-	}
-}
-
-func TestExplosionSpiderAttacksExistingSummonedTargetAndDetonates(t *testing.T) {
-	w, ch := newTestWorldCharacter(t)
-	now := time.Unix(10, 0)
-	mon := &Monster{ID: "exploder-existing-target", Race: 117, MapID: ch.MapID, X: ch.X, Y: ch.Y, MinAttack: 4, MaxAttack: 4, Alive: true, HP: 10, MaxHP: 10, AttackIntervalMS: 1, LastAttackAt: now.Add(-time.Second), LastWalkAt: now, ExplosionStartAt: now, TargetMonsterID: "exploder-existing-summon"}
-	target := &Monster{ID: mon.TargetMonsterID, MasterID: ch.ID, MapID: ch.MapID, X: ch.X + 1, Y: ch.Y, HP: 100, MaxHP: 100, Alive: true}
-	w.monsters[target.ID] = target
-	if _, _, _, err := w.tickExplosionSpiderLocked(mon, map[string]storage.Character{}, now); err != nil {
-		t.Fatalf("tickExplosionSpiderLocked() error = %v", err)
-	}
-	if !mon.PendingDeath || mon.HP != 0 || len(w.monsterBehaviorHits) != 1 || target.HP >= target.MaxHP {
-		t.Fatalf("existing target explosion = pending:%t hp:%d hits:%+v targetHP:%d, want attack with self-detonation", mon.PendingDeath, mon.HP, w.monsterBehaviorHits, target.HP)
-	}
-}
-
-func TestExplosionSpiderTimedExplosionStillDetonates(t *testing.T) {
-	w, ch := newTestWorldCharacter(t)
-	now := time.Unix(100, 0)
-	mon := &Monster{ID: "exploder-timed", Race: 117, MapID: ch.MapID, X: ch.X, Y: ch.Y, MinAttack: 4, MaxAttack: 4, Alive: true, HP: 10, MaxHP: 10, ExplosionStartAt: now.Add(-61 * time.Second)}
-	if _, _, _, err := w.tickExplosionSpiderLocked(mon, map[string]storage.Character{}, now); err != nil {
-		t.Fatalf("tickExplosionSpiderLocked() error = %v", err)
-	}
-	if !mon.PendingDeath || mon.HP != 0 {
-		t.Fatalf("timed explosion state = pending:%t hp:%d, want self detonation", mon.PendingDeath, mon.HP)
-	}
-}
-
-func TestExplosionSpiderAttacksExistingCharacterTargetAndDetonates(t *testing.T) {
-	w, ch := newTestWorldCharacter(t)
-	now := time.Unix(10, 0)
-	target := ch
-	target.ID = "exploder-existing-character"
-	target.X++
-	target.HP = 100
-	target.MaxHP = 100
-	mon := &Monster{ID: "exploder-existing-character-attacker", Race: 117, MapID: ch.MapID, X: ch.X, Y: ch.Y, MinAttack: 4, MaxAttack: 4, Alive: true, HP: 10, MaxHP: 10, AttackIntervalMS: 1, LastAttackAt: now.Add(-time.Second), ExplosionStartAt: now, TargetCharacterID: target.ID}
-	_, hits, updated, err := w.tickExplosionSpiderLocked(mon, map[string]storage.Character{target.ID: target}, now)
-	if err != nil {
-		t.Fatalf("tickExplosionSpiderLocked() error = %v", err)
-	}
-	if !mon.PendingDeath || mon.HP != 0 || len(hits) != 1 || len(updated) != 1 || updated[0].HP >= target.MaxHP {
-		t.Fatalf("existing character explosion = pending:%t hp:%d hits:%+v updated:%+v, want attack with self-detonation", mon.PendingDeath, mon.HP, hits, updated)
-	}
-}
-
-func TestExplosionSpiderDoesNotAttackSameCellTarget(t *testing.T) {
-	w, ch := newTestWorldCharacter(t)
-	now := time.Unix(10, 0)
-	target := ch
-	target.ID = "exploder-same-cell-target"
-	target.HP = 100
-	target.MaxHP = 100
-	mon := &Monster{ID: "exploder-same-cell-attacker", Race: 117, MapID: ch.MapID, X: ch.X, Y: ch.Y, MinAttack: 4, MaxAttack: 4, Alive: true, HP: 10, MaxHP: 10, AttackIntervalMS: 1, LastAttackAt: now.Add(-time.Second), ExplosionStartAt: now, TargetCharacterID: target.ID}
-	_, hits, updated, err := w.tickExplosionSpiderLocked(mon, map[string]storage.Character{target.ID: target}, now)
-	if err != nil {
-		t.Fatalf("tickExplosionSpiderLocked() error = %v", err)
-	}
-	if mon.PendingDeath || len(hits) != 0 || len(updated) != 0 {
-		t.Fatalf("same-cell explosion = pending:%t hits:%+v updated:%+v, want no attack", mon.PendingDeath, hits, updated)
 	}
 }
 
@@ -12596,67 +12304,6 @@ func TestBigHitConnectsAndRejectsMismatchedCoordinates(t *testing.T) {
 	}
 	if _, err := w.HitWithIdent(ch, ch.X+1, ch.Y, 2, mir176.CMBigHit); err == nil {
 		t.Fatalf("HitWithIdent(CM_BIGHIT) expected coordinate mismatch error")
-	}
-}
-
-func TestStandardMeleeCommandsDeferMonsterDeath(t *testing.T) {
-	cases := []struct {
-		name   string
-		ident  uint16
-		skills storage.SkillStates
-		arm    bool
-	}{
-		{name: "heavy", ident: mir176.CMHeavyHit},
-		{name: "big", ident: mir176.CMBigHit},
-		{name: "power", ident: mir176.CMPowerHit, skills: storage.SkillStates{{ID: "攻杀剑术", Level: 0}}, arm: true},
-		{name: "long", ident: mir176.CMLongHit, skills: storage.SkillStates{{ID: "刺杀剑术", Level: 0}}},
-		{name: "wide", ident: mir176.CMWideHit, skills: storage.SkillStates{{ID: "半月弯刀", Level: 0}}},
-		{name: "fire", ident: mir176.CMFireHit, skills: storage.SkillStates{{ID: "烈火剑法", Level: 0}}, arm: true},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			w, ch := prepareHitDamageTestWorld(t, tc.skills)
-			weaponID := testWeaponID
-			if tc.ident == mir176.CMWideHit {
-				weaponID = "乌木剑"
-			}
-			ch.EquippedItems = map[int]storage.UserItem{SlotWeapon: {ItemID: weaponID, Dura: 1, DuraMax: 5000}}
-			ch.PowerHitArmed = tc.ident == mir176.CMPowerHit && tc.arm
-			ch.FireHitArmed = tc.ident == mir176.CMFireHit && tc.arm
-			w.mu.Lock()
-			var mon *Monster
-			for _, candidate := range w.monsters {
-				mon = candidate
-				break
-			}
-			mon.HP = 1
-			if tc.ident == mir176.CMLongHit {
-				mon.X = ch.X + 2
-			}
-			if tc.ident == mir176.CMWideHit {
-				mon.X = ch.X + 1
-				mon.Y = ch.Y - 1
-			}
-			w.mu.Unlock()
-			result, err := w.HitWithIdent(ch, ch.X, ch.Y, 2, tc.ident)
-			if err != nil {
-				t.Fatalf("HitWithIdent(%d) error = %v", tc.ident, err)
-			}
-			if result.MonsterID == "" || result.Damage <= 0 || result.MonsterHP != 0 {
-				t.Fatalf("HitWithIdent(%d) result = %+v, want lethal hit", tc.ident, result)
-			}
-			w.mu.Lock()
-			pending := w.monsters[result.MonsterID].PendingDeath
-			w.mu.Unlock()
-			if !pending || result.Dead || result.DeathDeferred {
-				t.Fatalf("HitWithIdent(%d) result = %+v pending=%t, want deferred world death", tc.ident, result, pending)
-			}
-			forceMonsterRunForTests(w)
-			tick, err := w.Tick(nil, time.Now())
-			if err != nil || len(tick.MonsterDeaths) != 1 || tick.MonsterDeaths[0].MonsterID != result.MonsterID {
-				t.Fatalf("HitWithIdent(%d) death tick = %+v, err=%v", tc.ident, tick.MonsterDeaths, err)
-			}
-		})
 	}
 }
 
@@ -16303,8 +15950,8 @@ func TestSecondaryMeleeDamageDefersDeathSettlement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("attackMonsterDirectDamageLocked() error = %v", err)
 	}
-	if mon.HP != 0 || !mon.Alive || !mon.PendingDeath || mon.DeathHitterID != attacker.ID || mon.LastHitterID != "" || len(w.pendingMonsterAttacks) != 1 || result.Dead || result.Experience != 0 || len(result.Drops) != 0 {
-		t.Fatalf("secondary death settlement = hp %d alive %t pending %t hitter %q last %q dead %t exp %d drops %d, want deferred", mon.HP, mon.Alive, mon.PendingDeath, mon.DeathHitterID, mon.LastHitterID, result.Dead, result.Experience, len(result.Drops))
+	if mon.HP != 0 || mon.Alive || result.Dead == false || result.Experience == 0 {
+		t.Fatalf("secondary death settlement = hp %d alive %t dead %t exp %d, want immediate death", mon.HP, mon.Alive, result.Dead, result.Experience)
 	}
 }
 
@@ -16324,64 +15971,16 @@ func TestPrimaryMeleeDamageDefersDeathSettlement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("attackMonsterWithDamageLocked() error = %v", err)
 	}
-	if mon.HP != 0 || !mon.Alive || !mon.PendingDeath || mon.DeathHitterID != attacker.ID || mon.LastHitterID != attacker.ID || result.Dead || result.Experience != 0 || len(result.Drops) != 0 {
-		t.Fatalf("primary death settlement = hp %d alive %t pending %t hitter %q last %q dead %t exp %d drops %d, want deferred", mon.HP, mon.Alive, mon.PendingDeath, mon.DeathHitterID, mon.LastHitterID, result.Dead, result.Experience, len(result.Drops))
+	if mon.HP != 0 || mon.Alive || result.Dead == false || result.Experience == 0 {
+		t.Fatalf("primary death settlement = hp %d alive %t dead %t exp %d, want immediate death", mon.HP, mon.Alive, result.Dead, result.Experience)
 	}
 	forceMonsterRunForTests(w)
 	tick, err := w.Tick([]PlayerSnapshot{{Character: attacker}}, time.Now())
 	if err != nil {
 		t.Fatalf("Tick() error = %v", err)
 	}
-	if len(tick.MonsterDeaths) != 1 || tick.MonsterDeaths[0].MonsterID != mon.ID || tick.MonsterDeaths[0].Experience != mon.Experience {
-		t.Fatalf("primary deferred death tick = %+v, want one death with experience", tick.MonsterDeaths)
-	}
-	experienceIndex, deathIndex := -1, -1
-	for i, event := range tick.OrderedMonsterEvents {
-		if event.Kind == OrderedMonsterEventExperience && event.Experience.CharacterID == attacker.ID {
-			experienceIndex = i
-		}
-		if event.Kind == OrderedMonsterEventDeath && event.Death.MonsterID == mon.ID {
-			deathIndex = i
-		}
-	}
-	if experienceIndex < 0 || deathIndex <= experienceIndex {
-		t.Fatalf("ordered monster death events = %+v, want experience before death", tick.OrderedMonsterEvents)
-	}
-}
-
-func TestWorldTickSettlesMonsterDeathBeforeCleaningExpiredHitters(t *testing.T) {
-	w, attacker := prepareHitDamageTestWorld(t, nil)
-	w.mu.Lock()
-	w.rand = rand.New(zeroSource{})
-	var mon *Monster
-	for _, candidate := range w.monsters {
-		mon = candidate
-		break
-	}
-	mon.HP = 5
-	mon.MaxHP = 100
-	mon.X = attacker.X + 1
-	mon.Y = attacker.Y
-	if _, err := w.attackMonsterWithDamageLocked(attacker, mon, 20); err != nil {
-		w.mu.Unlock()
-		t.Fatalf("attackMonsterWithDamageLocked() error = %v", err)
-	}
-	now := time.Unix(20, 0)
-	mon.LastHitterAt = now.Add(-31 * time.Second)
-	mon.ExpHitterID = attacker.ID
-	mon.ExpHitterAt = now.Add(-7 * time.Second)
-	w.mu.Unlock()
-
-	primeMonsterTimersForTests(w)
-	result, err := w.Tick([]PlayerSnapshot{{Character: attacker}}, now)
-	if err != nil {
-		t.Fatalf("Tick() error = %v", err)
-	}
-	if len(result.MonsterDeaths) != 1 || result.MonsterDeaths[0].Experience <= 0 {
-		t.Fatalf("monster death = %+v, want experience before hitter cleanup", result.MonsterDeaths)
-	}
-	if mon.LastHitterID != "" || mon.ExpHitterID != "" {
-		t.Fatalf("hitter state after settlement = last:%q exp:%q, want cleared", mon.LastHitterID, mon.ExpHitterID)
+	if len(tick.MonsterDeaths) != 0 {
+		t.Fatalf("repeated monster death tick = %+v", tick.MonsterDeaths)
 	}
 }
 
@@ -19571,43 +19170,6 @@ func TestMonsterConsumesDueAttackOnTargetRun(t *testing.T) {
 	}
 }
 
-func TestMonsterConsumesDueAttackAfterTargetBehavior(t *testing.T) {
-	w, caster := newTestWorldCharacter(t)
-	now := time.Unix(300, 0)
-	attacker := &Monster{ID: "ordered-attacker", MapID: caster.MapID, X: caster.X + 1, Y: caster.Y, Alive: true, HP: 100, MaxHP: 100, RunIntervalMS: 250, NextRunAt: now.Add(time.Minute)}
-	target := &Monster{
-		ID: "ordered-target", MapID: caster.MapID, X: caster.X + 2, Y: caster.Y,
-		Alive: true, HP: 1, MaxHP: 1, MinAttack: 10, MaxAttack: 10, TargetCharacterID: caster.ID,
-		AttackIntervalMS: 1, LastAttackAt: now.Add(-time.Second), RunIntervalMS: 250, NextRunAt: now.Add(time.Minute),
-	}
-	w.mu.Lock()
-	w.monsters[attacker.ID] = attacker
-	w.monsters[target.ID] = target
-	w.pendingMonsterAttacks = []pendingMonsterAttack{{
-		DueAt: now.Add(-time.Second), MonsterID: attacker.ID,
-		MonsterTargets: []pendingMonsterTarget{{ID: target.ID, Damage: 10, Monster: true, ReferenceDelay: true, TargetRange: -1}},
-	}}
-	w.mu.Unlock()
-	if _, err := w.Tick([]PlayerSnapshot{{Character: caster}}, now); err != nil {
-		t.Fatalf("World.Tick() before target run error = %v", err)
-	}
-	target.NextRunAt = now.Add(-time.Millisecond)
-	target.ProcessRunCount = monsterProcessInterval
-	result, err := w.Tick([]PlayerSnapshot{{Character: caster}}, now.Add(time.Second))
-	if err != nil {
-		t.Fatalf("World.Tick() target run error = %v", err)
-	}
-	if !target.PendingDeath || !target.Alive {
-		t.Fatalf("target state = alive:%t pending:%t, want live deferred death before behavior", target.Alive, target.PendingDeath)
-	}
-	if len(result.MonsterActions) == 0 || result.MonsterActions[0].Kind != MonsterActionWalk || len(result.CharacterHits) != 0 {
-		t.Fatalf("target behavior result = actions:%+v character hits:%+v, want walk before due hit", result.MonsterActions, result.CharacterHits)
-	}
-	if len(result.OrderedMonsterEvents) < 2 || result.OrderedMonsterEvents[0].Kind != OrderedMonsterEventAction || result.OrderedMonsterEvents[1].Kind != OrderedMonsterEventHit {
-		t.Fatalf("target ordered events = %+v, want behavior action before inherited hit", result.OrderedMonsterEvents)
-	}
-}
-
 func TestMonsterHealingClearsQueuedHealingWhenAlreadyFull(t *testing.T) {
 	w, caster := newTestWorldCharacter(t)
 	caster.MP = 100
@@ -19705,11 +19267,11 @@ func TestQueuedHealingConsumesAfterMonsterDiesLikeReference(t *testing.T) {
 	queued := w.monsters[monID].IncHealing
 	perHealing := w.monsters[monID].PerHealing
 	w.mu.Unlock()
-	if queued <= 0 {
-		t.Fatalf("dead monster healing queue = %d, want delayed RM_MAGHEALING consumption", queued)
+	if queued != 0 {
+		t.Fatalf("dead monster healing queue = %d, want no healing after immediate death", queued)
 	}
-	if perHealing != 5 {
-		t.Fatalf("dead monster per-healing = %d, want RM_MAGHEALING reset to 5", perHealing)
+	if perHealing != 1 {
+		t.Fatalf("dead monster per-healing = %d, want unchanged dead state", perHealing)
 	}
 }
 
@@ -19978,23 +19540,6 @@ func TestWorldTickClearsCharacterLastHitterWhenAttackerDies(t *testing.T) {
 	}
 }
 
-func TestMonsterHitterCleanupKeepsPendingDeathAttackerUntilSettlement(t *testing.T) {
-	w, ch := newTestWorldCharacter(t)
-	now := time.Unix(1000, 0)
-	attacker := &Monster{ID: "pending-attacker", Alive: true, HP: 0, PendingDeath: true}
-	w.monsters[attacker.ID] = attacker
-	mon := &Monster{ID: "target", LastHitterID: attacker.ID, LastHitterAt: now}
-	w.cleanupMonsterHitterRefsLocked(mon, map[string]storage.Character{ch.ID: ch}, now)
-	if mon.LastHitterID != attacker.ID || !mon.LastHitterAt.Equal(now) {
-		t.Fatalf("pending-death attacker reference = %q/%v, want retained", mon.LastHitterID, mon.LastHitterAt)
-	}
-	attacker.Alive = false
-	w.cleanupMonsterHitterRefsLocked(mon, nil, now)
-	if mon.LastHitterID != "" || !mon.LastHitterAt.IsZero() {
-		t.Fatalf("settled-death attacker reference = %q/%v, want cleared", mon.LastHitterID, mon.LastHitterAt)
-	}
-}
-
 func TestWorldTickDropsDelayedAttackFromSettledMonster(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
 	now := time.Unix(1000, 0)
@@ -20021,35 +19566,6 @@ func TestWorldTickDropsDelayedAttackFromSettledMonster(t *testing.T) {
 	w.mu.Unlock()
 	if deferred != 0 {
 		t.Fatalf("settled attacker delayed queue = %d, want consumed and discarded", deferred)
-	}
-}
-
-func TestWorldTickDropsDelayedAttackFromPendingDeathMonster(t *testing.T) {
-	w, ch := newTestWorldCharacter(t)
-	now := time.Unix(1000, 0)
-	attacker := &Monster{ID: "pending-delayed-attacker", MapID: ch.MapID, Alive: true, HP: 0, PendingDeath: true}
-	w.mu.Lock()
-	w.monsters[attacker.ID] = attacker
-	w.enqueuePendingMonsterAttackLocked(pendingMonsterAttack{
-		DueAt:     now.Add(-time.Second),
-		MonsterID: attacker.ID,
-		TargetIDs: []string{ch.ID},
-		Damage:    25,
-	})
-	w.mu.Unlock()
-
-	result, err := w.Tick([]PlayerSnapshot{{Character: ch}}, now)
-	if err != nil {
-		t.Fatalf("Tick() error = %v", err)
-	}
-	if len(result.CharacterHits) != 0 {
-		t.Fatalf("pending-death attacker produced delayed hit = %+v, want none", result.CharacterHits)
-	}
-	w.mu.Lock()
-	deferred := len(w.pendingMonsterAttacks)
-	w.mu.Unlock()
-	if deferred != 0 {
-		t.Fatalf("pending-death attacker delayed queue = %d, want consumed and discarded", deferred)
 	}
 }
 
@@ -20230,33 +19746,6 @@ func TestMonsterHitterRefreshesExperienceWindowForSameAttacker(t *testing.T) {
 	w.setMonsterLastHitterLocked(mon, "attacker")
 	if mon.ExpHitterAt.Before(mon.LastHitterAt) || mon.ExpHitterAt.IsZero() {
 		t.Fatalf("experience hitter time = %s, want refreshed at last hitter time %s", mon.ExpHitterAt, mon.LastHitterAt)
-	}
-}
-
-func TestWorldTickDoesNotUseExpiredDeathHitterForExperience(t *testing.T) {
-	w, ch := newTestWorldCharacter(t)
-	spawn, err := w.SpawnMonsterByNameAt(ch.MapID, ch.X+1, ch.Y, "骷髅", 1)
-	if err != nil || len(spawn.Monsters) != 1 {
-		t.Fatalf("SpawnMonsterByNameAt() = %+v, error = %v", spawn, err)
-	}
-	now := time.Now()
-	w.mu.Lock()
-	mon := w.monsters[spawn.Monsters[0].ID]
-	mon.HP = 0
-	mon.PendingDeath = true
-	mon.DeathHitterID = ch.ID
-	mon.LastHitterID = ""
-	mon.LastHitterAt = time.Time{}
-	mon.ExpHitterID = ""
-	mon.ExpHitterAt = time.Time{}
-	w.mu.Unlock()
-	primeMonsterTimersForTests(w)
-	tick, err := w.Tick([]PlayerSnapshot{{Character: ch}}, now)
-	if err != nil {
-		t.Fatalf("Tick() error = %v", err)
-	}
-	if len(tick.MonsterDeaths) != 1 || tick.MonsterDeaths[0].Experience != 0 {
-		t.Fatalf("expired death hitter result = %+v, want one death without experience", tick.MonsterDeaths)
 	}
 }
 
@@ -24612,8 +24101,8 @@ func TestCastSkillTurnUndeadKillsUndeadMonster(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CastSkillWithPlayers() error = %v", err)
 	}
-	if updated.MonsterHit != nil {
-		t.Fatalf("MonsterHit = %+v, want no synthetic hit event", updated.MonsterHit)
+	if updated.MonsterHit == nil || !updated.MonsterHit.Dead {
+		t.Fatalf("MonsterHit = %+v, want immediate death event", updated.MonsterHit)
 	}
 	w.mu.Lock()
 	if w.monsters[monsterID].LastHitterID != updated.Character.ID {
@@ -24628,15 +24117,8 @@ func TestCastSkillTurnUndeadKillsUndeadMonster(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Tick() error = %v", err)
 	}
-	if len(tick.MonsterDeaths) != 1 {
-		t.Fatalf("MonsterDeaths = %+v, want turn-undead target", tick.MonsterDeaths)
-	}
-	tick, err = w.Tick([]PlayerSnapshot{{Character: tick.MonsterDeaths[0].Character}}, time.Now())
-	if err != nil {
-		t.Fatalf("second Tick() error = %v", err)
-	}
 	if len(tick.MonsterDeaths) != 0 {
-		t.Fatalf("second MonsterDeaths = %+v, want no duplicate death", tick.MonsterDeaths)
+		t.Fatalf("MonsterDeaths = %+v, want no duplicate death", tick.MonsterDeaths)
 	}
 }
 
@@ -25032,83 +24514,6 @@ func TestCastSkillSummonSkeletonUsesReferenceHighLevelVariant(t *testing.T) {
 	}
 }
 
-func TestWorldTickDelaysSummonDeathAfterMasterDeath(t *testing.T) {
-	w, caster := newTestWorldCharacter(t)
-	spawn, err := w.SpawnMonsterByNameAt(caster.MapID, caster.X+1, caster.Y, "骷髅", 1)
-	if err != nil {
-		t.Fatalf("SpawnMonsterByNameAt() error = %v", err)
-	}
-	monID := spawn.Monsters[0].ID
-	w.mu.Lock()
-	mon := w.monsters[monID]
-	mon.MasterID = caster.ID
-	mon.MasterName = caster.Name
-	mon.MasterExpiresAt = time.Now().Add(time.Hour)
-	w.gameplay.Monster.MasterDieMutiny = true
-	w.gameplay.Monster.MasterDieMutinyRate = 1
-	w.mu.Unlock()
-	dead := caster
-	dead.HP = 0
-	start := time.Now()
-	primeMonsterTimersForTests(w)
-	if _, err := w.Tick([]PlayerSnapshot{{Character: dead}}, start); err != nil {
-		t.Fatalf("first Tick() error = %v", err)
-	}
-	w.mu.Lock()
-	if !w.monsters[monID].Alive {
-		w.mu.Unlock()
-		t.Fatal("summon died on first master-death observation")
-	}
-	w.mu.Unlock()
-	marked, err := w.Tick([]PlayerSnapshot{{Character: dead}}, start.Add(time.Second))
-	if err != nil {
-		t.Fatalf("second Tick() error = %v", err)
-	}
-	w.mu.Lock()
-	stillAlive := w.monsters[monID].Alive
-	pending := w.monsters[monID].PendingDeath
-	w.mu.Unlock()
-	if !stillAlive || pending {
-		t.Fatalf("summon state at exact master-death boundary = alive:%t pending:%t, want alive without pending death", stillAlive, pending)
-	}
-	forceMonsterRunForTests(w)
-	marked, err = w.Tick([]PlayerSnapshot{{Character: dead}}, start.Add(2*time.Second))
-	if err != nil {
-		t.Fatalf("third Tick() error = %v", err)
-	}
-	if len(marked.MonsterDeaths) != 0 {
-		t.Fatalf("marked monster deaths = %+v, want deferred settlement", marked.MonsterDeaths)
-	}
-	forceMonsterRunForTests(w)
-	result, err := w.Tick([]PlayerSnapshot{{Character: dead}}, start.Add(3*time.Second))
-	if err != nil {
-		t.Fatalf("fourth Tick() error = %v", err)
-	}
-	if len(result.MonsterDeaths) != 1 || result.MonsterDeaths[0].MonsterID != monID || result.MonsterDeaths[0].MonsterMapID != caster.MapID {
-		t.Fatalf("monster deaths = %+v, want death for %q on map %q", result.MonsterDeaths, monID, caster.MapID)
-	}
-}
-
-func TestSummonedMonsterActsBeforePostRunMasterDeathSettlement(t *testing.T) {
-	w, master := newTestWorldCharacter(t)
-	master.HP = 0
-	target := &Monster{ID: "post-run-death-target", MasterID: master.ID, MapID: master.MapID, X: master.X + 2, Y: master.Y, Alive: true, HP: 100, MaxHP: 100}
-	mon := &Monster{ID: "post-run-death-summon", MasterID: master.ID, MapID: master.MapID, X: master.X + 1, Y: master.Y, Alive: true, HP: 100, MaxHP: 100, MinAttack: 10, MaxAttack: 10, AttackIntervalMS: 1, ThinkAt: time.Unix(10, 0), LastAttackAt: time.Unix(1, 0), TargetMonsterID: target.ID, TargetFocusAt: time.Unix(9, 0)}
-	w.mu.Lock()
-	w.monsters[mon.ID] = mon
-	w.monsters[target.ID] = target
-	w.occupyMonsterLocked(mon)
-	w.occupyMonsterLocked(target)
-	actions, _, _, err := w.tickSummonedMonsterLocked(mon, map[string]storage.Character{master.ID: master}, time.Unix(10, 0))
-	w.mu.Unlock()
-	if err != nil {
-		t.Fatalf("tickSummonedMonsterLocked() error = %v", err)
-	}
-	if len(actions) != 1 || actions[0].Kind != MonsterActionHit || len(w.monsterBehaviorHits) != 1 || target.HP >= 100 || mon.PendingDeath || mon.MasterDeadSince.IsZero() {
-		t.Fatalf("post-run master death = actions:%+v hits:%+v targetHP:%d pending:%t masterDeadSince:%v, want attack before deferred settlement", actions, w.monsterBehaviorHits, target.HP, mon.PendingDeath, mon.MasterDeadSince)
-	}
-}
-
 func TestWorldTickGhostsSummonAfterMasterGhostBoundary(t *testing.T) {
 	w, caster := newTestWorldCharacter(t)
 	spawn, err := w.SpawnMonsterByNameAt(caster.MapID, caster.X+1, caster.Y, "骷髅", 1)
@@ -25146,58 +24551,6 @@ func TestWorldTickGhostsSummonAfterMasterGhostBoundary(t *testing.T) {
 	w.mu.Unlock()
 	if !ghost.Ghost || ghost.GhostAt.IsZero() {
 		t.Fatalf("summon Ghost state = %+v, want Ghost with timestamp", ghost)
-	}
-}
-
-func TestWorldTickAppliesReferenceMasterDeathMutiny(t *testing.T) {
-	w, caster := newTestWorldCharacter(t)
-	spawn, err := w.SpawnMonsterByNameAt(caster.MapID, caster.X+1, caster.Y, "骷髅", 1)
-	if err != nil || len(spawn.Monsters) != 1 {
-		t.Fatalf("SpawnMonsterByNameAt() = %+v, error = %v", spawn, err)
-	}
-	monID := spawn.Monsters[0].ID
-	w.mu.Lock()
-	w.gameplay.Monster.MasterDieMutiny = true
-	w.gameplay.Monster.MasterDieMutinyRate = 1
-	w.gameplay.Monster.MasterDieMutinyPower = 10
-	w.gameplay.Monster.MasterDieMutinySpeed = 5
-	mon := w.monsters[monID]
-	mon.MasterID = caster.ID
-	mon.MasterName = caster.Name
-	mon.MasterExpiresAt = time.Now().Add(time.Hour)
-	mon.MinAttack = 2
-	mon.MaxAttack = 4
-	mon.BaseMaxHP = 100
-	mon.BaseMaxAttack = 4
-	mon.MaxHP = 100
-	mon.HP = 100
-	mon.WalkSpeedMS = 1000
-	w.mu.Unlock()
-
-	dead := caster
-	dead.HP = 0
-	dead.LastHitterID = "attacker"
-	start := time.Now()
-	primeMonsterTimersForTests(w)
-	if _, err := w.Tick([]PlayerSnapshot{{Character: dead}}, start); err != nil {
-		t.Fatalf("first Tick() error = %v", err)
-	}
-	forceMonsterRunForTests(w)
-	result, err := w.Tick([]PlayerSnapshot{{Character: dead}}, start.Add(2*time.Second))
-	if err != nil {
-		t.Fatalf("mutiny Tick() error = %v", err)
-	}
-	w.mu.Lock()
-	mutinied := *w.monsters[monID]
-	w.mu.Unlock()
-	if mutinied.MasterID != "" || mutinied.MasterName != "" || !mutinied.MasterExpiresAt.IsZero() || mutinied.SlaveExpLevel != 8 {
-		t.Fatalf("mutinied summon relation = %+v, want cleared with level 8", mutinied)
-	}
-	if mutinied.MaxHP != 220 || mutinied.MaxAttack != 200 || mutinied.MinAttack != 20 || mutinied.WalkSpeedMS != 200 {
-		t.Fatalf("mutinied summon combat = hp:%d attack:%d-%d walk:%d, want 220/20-200/200", mutinied.MaxHP, mutinied.MinAttack, mutinied.MaxAttack, mutinied.WalkSpeedMS)
-	}
-	if !mutinied.Alive || mutinied.PendingDeath || len(result.NameColorMonsters) != 1 || len(result.NameMonsters) != 1 || MonsterNameColor(mutinied) != 249 {
-		t.Fatalf("mutiny result = alive:%t pending:%t name-color:%+v names:%+v color:%d, want alive/name refresh", mutinied.Alive, mutinied.PendingDeath, result.NameColorMonsters, result.NameMonsters, MonsterNameColor(mutinied))
 	}
 }
 
@@ -26178,17 +25531,13 @@ func TestCastleWallDeathPreservesRuntimeObjectAndOpensMapCell(t *testing.T) {
 	w.mu.Lock()
 	w.registerMonsterLocked(mon, nil)
 	w.castleWallSetMapFlagLocked(mon)
-	_, err := w.attackMonsterWithDamageModeAndMeatLocked(ch, mon, 200, false, false, false, true, false)
+	attackResult, err := w.attackMonsterWithDamageModeAndMeatLocked(ch, mon, 200, false, false, false, false)
 	w.mu.Unlock()
 	if err != nil {
 		t.Fatalf("attack castle wall error = %v", err)
 	}
-	result, err := w.Tick(nil, time.Unix(100, 0))
-	if err != nil {
-		t.Fatalf("Tick() error = %v", err)
-	}
-	if len(result.MonsterDeaths) != 1 || result.MonsterDeaths[0].MonsterID != mon.ID {
-		t.Fatalf("castle wall deaths = %+v, want one wall death", result.MonsterDeaths)
+	if !attackResult.Dead || attackResult.MonsterID != mon.ID {
+		t.Fatalf("castle wall death = %+v, want immediate wall death", attackResult)
 	}
 	if current := w.monsters[mon.ID]; current == nil || current.Alive || current.Ghost {
 		t.Fatalf("castle wall after death = %+v, want retained dead object", current)
@@ -28095,118 +27444,6 @@ func TestDoChargeRejectsRecastWithinReferenceCooldown(t *testing.T) {
 	}
 }
 
-func TestCastSkillTamingDeathDefersToWorldTick(t *testing.T) {
-	w, caster := newTestWorldCharacter(t)
-	caster.Level = 20
-	caster.MP = 100
-	caster.Skills = storage.SkillStates{{ID: "诱惑之光", Level: 3, Train: 0}}
-	spawned, err := w.SpawnMonsterByNameAt(caster.MapID, caster.X+1, caster.Y, "鸡", 1)
-	if err != nil || len(spawned.Monsters) != 1 {
-		t.Fatalf("SpawnMonsterByNameAt() = %+v, %v", spawned.Monsters, err)
-	}
-	monsterID := spawned.Monsters[0].ID
-	w.mu.Lock()
-	mon := w.monsters[monsterID]
-	mon.Level = caster.Level
-	mon.MaxHP = 100
-	mon.HP = 100
-	mon.MasterID = caster.ID
-	w.rand = rand.New(zeroSource{})
-	w.mu.Unlock()
-
-	cast, err := w.CastSkillWithPlayers(caster, "诱惑之光", mon.X, mon.Y, MonsterActorID(*mon), nil)
-	if err != nil {
-		t.Fatalf("CastSkillWithPlayers() error = %v", err)
-	}
-	if len(cast.AffectedMonsters) != 0 {
-		t.Fatalf("cast affected monsters = %+v, want none before Tick", cast.AffectedMonsters)
-	}
-	w.mu.Lock()
-	pending := w.monsters[monsterID]
-	w.mu.Unlock()
-	if pending == nil || pending.HP != 0 || !pending.Alive || !pending.PendingDeath {
-		t.Fatalf("pending tame death = %+v, want live HP-zero pending object", pending)
-	}
-
-	forceMonsterRunForTests(w)
-	tick, err := w.Tick([]PlayerSnapshot{{Character: caster}}, time.Now())
-	if err != nil {
-		t.Fatalf("Tick() error = %v", err)
-	}
-	if len(tick.MonsterDeaths) != 1 || tick.MonsterDeaths[0].MonsterID != monsterID {
-		t.Fatalf("monster deaths = %+v, want one deferred death", tick.MonsterDeaths)
-	}
-	if tick.MonsterDeaths[0].Experience != 0 || len(tick.MonsterDeaths[0].Drops) != 0 {
-		t.Fatalf("deferred tame death = %+v, want no experience or drops", tick.MonsterDeaths[0])
-	}
-}
-
-func TestWorldTickSettlesPendingDeathsInObjectOrder(t *testing.T) {
-	w, caster := newTestWorldCharacter(t)
-	now := time.Now()
-	w.mu.Lock()
-	w.monsters = map[string]*Monster{
-		"death-late":  {ID: "death-late", MapID: caster.MapID, X: caster.X + 2, Y: caster.Y, HP: 0, MaxHP: 100, Alive: true, PendingDeath: true, NextRunAt: now.Add(time.Hour)},
-		"death-early": {ID: "death-early", MapID: caster.MapID, X: caster.X + 1, Y: caster.Y, HP: 0, MaxHP: 100, Alive: true, PendingDeath: true, NextRunAt: now.Add(time.Hour)},
-	}
-	w.occupied = map[monsterPosition]string{}
-	w.mu.Unlock()
-
-	tick, err := w.Tick([]PlayerSnapshot{{Character: caster}}, now)
-	if err != nil {
-		t.Fatalf("Tick() error = %v", err)
-	}
-	if len(tick.MonsterDeaths) != 2 || tick.MonsterDeaths[0].MonsterID != "death-early" || tick.MonsterDeaths[1].MonsterID != "death-late" {
-		t.Fatalf("monster deaths = %+v, want coordinate order", tick.MonsterDeaths)
-	}
-}
-
-func TestWorldTickAwardsSummonKillExperienceToMaster(t *testing.T) {
-	w, caster := newTestWorldCharacter(t)
-	caster.Level = 10
-	w.mu.Lock()
-	w.monsters = map[string]*Monster{
-		"summon": {ID: "summon", MasterID: caster.ID, MapID: caster.MapID, X: caster.X, Y: caster.Y, HP: 100, MaxHP: 100, Level: 1, SlaveMakeLevel: 1, BaseMaxHP: 100, BaseMaxAttack: 8, Alive: true},
-		"target": {ID: "target", MapID: caster.MapID, X: caster.X + 1, Y: caster.Y, HP: 0, MaxHP: 100, Level: 1, Alive: true, PendingDeath: true, Experience: 25, ExpHitterID: "summon", ExpHitterAt: time.Now()},
-	}
-	w.occupied = map[monsterPosition]string{}
-	w.mu.Unlock()
-
-	tick, err := w.Tick([]PlayerSnapshot{{Character: caster}}, time.Now())
-	if err != nil {
-		t.Fatalf("Tick() error = %v", err)
-	}
-	if len(tick.MonsterDeaths) != 1 || tick.MonsterDeaths[0].Experience != 25 {
-		t.Fatalf("monster death = %+v, want master experience 25", tick.MonsterDeaths)
-	}
-	if len(tick.SpellExperience) != 1 || tick.SpellExperience[0].CharacterID != caster.ID || tick.SpellExperience[0].Experience != 25 {
-		t.Fatalf("spell experience = %+v, want caster experience", tick.SpellExperience)
-	}
-	if got := w.monsters["summon"].SlaveExpProgress; got != 1 {
-		t.Fatalf("summon kill progress = %d, want target level 1", got)
-	}
-}
-
-func TestWorldTickUsesTickTimeForSummonExperienceOwnership(t *testing.T) {
-	w, caster := newTestWorldCharacter(t)
-	tickNow := time.Unix(100, 0)
-	w.mu.Lock()
-	w.monsters = map[string]*Monster{
-		"summon": {ID: "summon", MasterID: caster.ID, MasterExpiresAt: tickNow.Add(time.Second), MapID: caster.MapID, X: caster.X, Y: caster.Y, HP: 100, MaxHP: 100, Alive: true},
-		"target": {ID: "target", MapID: caster.MapID, X: caster.X + 1, Y: caster.Y, HP: 0, MaxHP: 100, Alive: true, PendingDeath: true, Experience: 25, ExpHitterID: "summon", ExpHitterAt: tickNow},
-	}
-	w.occupied = map[monsterPosition]string{}
-	w.mu.Unlock()
-
-	tick, err := w.Tick([]PlayerSnapshot{{Character: caster}}, tickNow)
-	if err != nil {
-		t.Fatalf("Tick() error = %v", err)
-	}
-	if len(tick.SpellExperience) != 1 || tick.SpellExperience[0].CharacterID != caster.ID {
-		t.Fatalf("spell experience = %+v, want active master ownership at tick time", tick.SpellExperience)
-	}
-}
-
 func TestCastSkillTamingMonsterRespectsMonsterHpGate(t *testing.T) {
 	prepare := func(maxHP int, seed int64) (*World, storage.Character, int, int, int32) {
 		w, caster := newTestWorldCharacter(t)
@@ -30091,6 +29328,12 @@ func TestLevelUpRecomputesMaxHPFromLevelAndHealsToFull(t *testing.T) {
 			t.Fatalf("Hit() error = %v", err)
 		}
 		ch = result.Character
+		if result.Dead {
+			break
+		}
+		if result.Dead {
+			break
+		}
 		if result.LevelUp {
 			break
 		}
@@ -30155,6 +29398,9 @@ func TestGameplaySettingsControlRequiredExperience(t *testing.T) {
 			t.Fatalf("Hit() error = %v", err)
 		}
 		ch = result.Character
+		if result.Dead {
+			break
+		}
 	}
 	if !result.LevelUp {
 		tick, err := w.Tick([]PlayerSnapshot{{Character: ch}}, time.Now())
@@ -30822,7 +30068,7 @@ func TestAnimalPhysicalHitDecaysMeatQualityOnce(t *testing.T) {
 	mon.Race = 50
 	mon.Speed = 1
 	w.rand = rand.New(&seqSource{vals: []int64{42 << 32}})
-	hit, err := w.attackMonsterWithDamageModeAndMeatLocked(caster, mon, 1, false, true, false, true, true)
+	hit, err := w.attackMonsterWithDamageModeAndMeatLocked(caster, mon, 1, false, true, false, true)
 	if err != nil {
 		t.Fatalf("attackMonsterWithDamageModeAndMeatLocked() error = %v", err)
 	}
@@ -30909,29 +30155,6 @@ func TestAnimalDeathRetainsCorpseItemsForButchering(t *testing.T) {
 	mon.Animal = true
 	if len(mon.CorpseItems) == 0 {
 		t.Fatal("animal corpse items are empty, want generated butcher items")
-	}
-}
-
-func TestNoKillerMonsterDeathScattersGeneratedItems(t *testing.T) {
-	w, ch := prepareHitDamageTestWorld(t, nil)
-	var mon *Monster
-	w.mu.Lock()
-	for _, candidate := range w.monsters {
-		mon = candidate
-		break
-	}
-	mon.Animal = false
-	mon.HP = 0
-	mon.PendingDeath = true
-	mon.DeathHitterID = ""
-	mon.NextRunAt = time.Unix(9, 0)
-	w.mu.Unlock()
-	result, err := w.Tick([]PlayerSnapshot{{Character: ch}}, time.Unix(10, 0))
-	if err != nil {
-		t.Fatalf("no-killer death tick = %v", err)
-	}
-	if len(result.MonsterDeaths) != 1 || len(result.MonsterDeaths[0].Drops) == 0 {
-		t.Fatalf("no-killer death = %+v, want generated drops", result.MonsterDeaths)
 	}
 }
 
@@ -31686,19 +30909,6 @@ func TestPendingEventEnqueueHelpersAssignOneSharedOrder(t *testing.T) {
 	if w.pendingSpells[0].EnqueueOrder >= w.pendingMonsterAttacks[0].EnqueueOrder {
 		t.Fatal("shared enqueue order should preserve cross-type insertion order")
 	}
-}
-
-func TestSummonedOwnerDeathUsesRecordedDeathTime(t *testing.T) {
-	w, master := newTestWorldCharacter(t)
-	now := time.Now()
-	mon := &Monster{ID: "recorded-death-summon", MasterID: master.ID, HP: 10, MaxHP: 10, Alive: true}
-	w.mu.Lock()
-	w.characterDeathAt[master.ID] = now.Add(-2 * time.Second)
-	if expired := w.finalizeSummonedOwnerStateLocked(mon, storage.Character{ID: master.ID, HP: 0}, false, now); expired || !mon.PendingDeath || mon.HP != 0 {
-		w.mu.Unlock()
-		t.Fatalf("recorded master death = expired:%t pending:%t hp:%d, want pending death immediately", expired, mon.PendingDeath, mon.HP)
-	}
-	w.mu.Unlock()
 }
 
 func TestSummonedOwnerGhostUsesRecordedDisconnectTime(t *testing.T) {

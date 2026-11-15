@@ -19,7 +19,7 @@ var referenceSpitMap = [8][][2]int{
 }
 
 func monsterTargetAliveLocked(mon *Monster) bool {
-	return mon != nil && mon.Alive && !mon.PendingDeath && !mon.Ghost
+	return mon != nil && mon.Alive && !mon.Ghost
 }
 
 func (w *World) monsterIsPassiveLocked(mon *Monster) bool {

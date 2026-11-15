@@ -328,23 +328,6 @@ func TestSummonedTargetKeepsFirstEqualDistanceVisibleMonster(t *testing.T) {
 	}
 }
 
-func TestSummonedTargetSkipsPendingDeathMonster(t *testing.T) {
-	w, ch := newTestWorldCharacter(t)
-	observer := &Monster{ID: "summon-target-pending", MapID: ch.MapID, X: ch.X, Y: ch.Y, ViewRange: 6}
-	target := &Monster{ID: "pending-summon-target", MasterID: ch.ID, MapID: ch.MapID, X: ch.X + 1, Y: ch.Y, Alive: true, PendingDeath: true}
-	w.mu.Lock()
-	for id := range w.monsters {
-		delete(w.monsters, id)
-	}
-	w.monsters[observer.ID] = observer
-	w.monsters[target.ID] = target
-	_, ok := w.findClosestSummonedMonsterTargetLocked(observer, nil, 6)
-	w.mu.Unlock()
-	if ok {
-		t.Fatal("pending-death monster was selected as a summoned target")
-	}
-}
-
 func TestCentipedeTargetGateUsesVisibleMonsterMembership(t *testing.T) {
 	w, ch := newTestWorldCharacter(t)
 	observer := &Monster{ID: "centipede-membership", Race: 107, MapID: ch.MapID, X: ch.X, Y: ch.Y, ViewRange: 6}

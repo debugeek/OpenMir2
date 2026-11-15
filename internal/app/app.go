@@ -17,10 +17,15 @@ type App struct {
 	configsDir string
 	cfg        config.Config
 	log        *slog.Logger
+	publicHost string
 }
 
 func New(configsDir string, cfg config.Config, log *slog.Logger) *App {
 	return &App{configsDir: configsDir, cfg: cfg, log: log}
+}
+
+func (a *App) SetPublicHost(host string) {
+	a.publicHost = host
 }
 
 func (a *App) Run(ctx context.Context) error {
@@ -35,12 +40,13 @@ func (a *App) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	store, err := storage.Open(a.cfg.StoragePath)
+	store, err := storage.OpenSQLite(a.cfg.StoragePath)
 	if err != nil {
 		return err
 	}
 	w := world.New(bundle, store, gameplay)
 	server := network.New(a.cfg.ServerName, a.cfg.Listeners, store, w, a.log)
+	server.SetPublicHost(a.publicHost)
 	server.SetHitImpactDelay(time.Duration(gameplay.Combat.HitImpactDelayMS) * time.Millisecond)
 	server.SetMonsterTickInterval(time.Duration(gameplay.Monster.TickMS) * time.Millisecond)
 	a.log.Info("server ready", "name", a.cfg.ServerName, "configs_dir", a.configsDir, "storage", a.cfg.StoragePath)

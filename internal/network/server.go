@@ -43,9 +43,10 @@ type Server struct {
 	connMu      sync.Mutex
 	connections map[net.Conn]struct{}
 	saveDone    chan struct{}
-	store       *storage.Store
+	store       storage.Repository
 	world       *world.World
 	log         *slog.Logger
+	publicHost  string
 
 	sessionMu                sync.Mutex
 	sessions                 map[int32]string
@@ -299,8 +300,12 @@ const (
 	spellObjectMessageCharacterDeath
 )
 
-func New(serverName string, listeners []config.Listener, store *storage.Store, world *world.World, log *slog.Logger) *Server {
+func New(serverName string, listeners []config.Listener, store storage.Repository, world *world.World, log *slog.Logger) *Server {
 	return &Server{serverName: serverName, listeners: listeners, store: store, world: world, log: log, sessions: map[int32]string{}, sessionPlaying: map[int32]bool{}, clients: map[net.Conn]*Client{}, connections: map[net.Conn]struct{}{}, closed: map[net.Conn]struct{}{}, spellRefs: map[string]spellRefSnapshot{}, skillExpGen: map[string]uint64{}, fireHitState: map[string]fireHitState{}, powerHitState: map[string]bool{}, lastCharacterSave: map[string]time.Time{}, lastCastleSave: time.Now(), lastWeaponUpgradeExpiry: time.Now(), actionStartedAt: time.Now(), characterSaveQueue: make(chan characterSaveJob, characterSaveQueueCapacity), characterSaveWake: make(chan struct{}, 1), saveDone: make(chan struct{}), hitImpactDelay: 200 * time.Millisecond, monsterTickInterval: time.Millisecond, actionProcessLimit: humanActionProcessLimit}
+}
+
+func (s *Server) SetPublicHost(host string) {
+	s.publicHost = host
 }
 
 func (s *Server) SetHitImpactDelay(delay time.Duration) {
@@ -958,11 +963,10 @@ func (s *Server) runClientActionTick() {
 		client := clients[clientIndex]
 		client.mu.Lock()
 		now := time.Now()
-		if !client.actionRunAt.IsZero() && now.Sub(client.actionRunAt) <= 250*time.Millisecond {
+		if !client.actionRunAt.IsZero() && now.Before(client.actionRunAt.Add(clientActionProcessInterval)) {
 			client.mu.Unlock()
 			continue
 		}
-		client.actionRunAt = now
 		messages := make([]clientActionMessage, 0, len(client.actionMessages))
 		pending := client.actionMessages[:0]
 		for _, message := range client.actionMessages {
@@ -1007,21 +1011,13 @@ func (s *Server) queueClientAction(conn net.Conn, cmd mir176.Command) {
 		return
 	}
 	client.mu.Lock()
-	if client.actionRunAt.IsZero() {
-		client.actionRunAt = time.Now()
-	}
-	client.actionRunAt = client.actionRunAt.Add(-100 * time.Millisecond)
-	pending := client.actionMessages[:0]
-	for _, message := range client.actionMessages {
-		if !isQueuedClientAction(message.cmd.Ident) {
-			pending = append(pending, message)
-			continue
+	client.actionMessages = append(client.actionMessages, clientActionMessage{cmd: cmd})
+	if clientActionRunInterval > 0 {
+		if client.actionRunAt.IsZero() {
+			client.actionRunAt = time.Now()
 		}
-		if message.late {
-			decrementPendingActionLocked(client, message.cmd.Ident)
-		}
+		client.actionRunAt = client.actionRunAt.Add(-clientActionRunInterval)
 	}
-	client.actionMessages = append(pending, clientActionMessage{cmd: cmd})
 	client.mu.Unlock()
 }
 
@@ -1101,6 +1097,8 @@ func (s *Server) processClientAction(conn net.Conn, activeChar *storage.Characte
 		s.processSitDown(conn, activeChar, cmd, lateDelivery)
 	case mir176.CMHit, mir176.CMHeavyHit, mir176.CMBigHit, mir176.CMPowerHit, mir176.CMLongHit, mir176.CMWideHit, mir176.CMFireHit, mir176.CMCRHit, mir176.CMTwinHit:
 		s.processHit(conn, activeChar, cmd, lateDelivery)
+	case mir176.CMBUTCH:
+		s.handleButcher(conn, activeChar, cmd, lateDelivery)
 	}
 }
 
@@ -1194,12 +1192,17 @@ func (s *Server) handleProtocol(ctx context.Context, conn net.Conn) {
 						continue
 					}
 					if activeChar != nil {
+						if activeClient != nil {
+							*activeChar = activeClient.character()
+						}
 						switch cmd.Ident {
 						case mir176.CMOpenDoor:
 							s.handleOpenDoor(activeChar, cmd)
 						case mir176.CMTurn, mir176.CMWalk, mir176.CMRun, mir176.CMSitDown,
 							mir176.CMHit, mir176.CMHeavyHit, mir176.CMBigHit, mir176.CMPowerHit, mir176.CMLongHit, mir176.CMWideHit, mir176.CMFireHit, mir176.CMCRHit, mir176.CMTwinHit:
 							s.queueClientAction(conn, cmd)
+						case mir176.CMBUTCH:
+							s.handleButcher(conn, activeChar, cmd, false)
 						case mir176.CMSpell:
 							s.handleSpell(conn, activeChar, cmd)
 						case mir176.CMSay, mir176.CMUserCommand:
@@ -1246,8 +1249,6 @@ func (s *Server) handleProtocol(ctx context.Context, conn net.Conn) {
 							}
 						case mir176.CMLegacy1017:
 							s.sendCommand(conn, mir176.Command{Ident: 1}, nil)
-						case mir176.CMBUTCH:
-							s.handleButcher(conn, activeChar, cmd, false)
 						case mir176.CMPickup:
 							s.handlePickup(conn, activeChar, cmd)
 						case mir176.CMQueryBagItems:
@@ -1820,6 +1821,7 @@ func (s *Server) processHit(conn net.Conn, activeChar *storage.Character, cmd mi
 		s.sendActionFail(conn)
 		return
 	}
+	s.log.Info("game hit begin", "char", activeChar.Name, "ident", cmd.Ident, "x", activeChar.X, "y", activeChar.Y, "dir", cmd.Tag, "late", lateDelivery)
 	client := s.clientForConn(conn)
 	requestedAttackIdent := cmd.Ident
 	attackIdent := requestedAttackIdent
@@ -1895,14 +1897,61 @@ func (s *Server) processHit(conn net.Conn, activeChar *storage.Character, cmd mi
 	dir := int(cmd.Tag)
 	result, err := s.world.HitWithIdent(*activeChar, x, y, dir, attackIdent, s.PlayerCharacters()...)
 	if err != nil {
+		s.log.Info("game hit result", "char", activeChar.Name, "ok", false, "error", err.Error(), "ident", attackIdent)
 		s.sendActionFail(conn)
 		return
 	}
+	s.log.Info("game hit result", "char", activeChar.Name, "ok", true, "ident", attackIdent, "monster", result.MonsterID, "damage", result.Damage, "monster_hp", result.MonsterHP, "monster_max_hp", result.MonsterMaxHP, "dead", result.Dead)
 	*activeChar = result.Character
 	s.syncGroundEvents(result.GroundEvents)
 	s.recordClientAction(conn, cmd.Ident, dir)
 	s.broadcastNPCCombatResults(result.NPCSpeeches, result.NPCStruckHits, result.NPCCombatEvents)
 	world.ApplyAttackSync(attackSyncAdapter{s: s, conn: conn, characterID: result.Character.ID}, result, attackIdent)
+	if result.Dead && result.MonsterID != "" {
+		clients := s.monsterDeathClients(result)
+		if client != nil {
+			seen := false
+			for _, candidate := range clients {
+				if candidate == client {
+					seen = true
+					break
+				}
+			}
+			if !seen {
+				clients = append(clients, client)
+			}
+		}
+		if len(clients) > 0 {
+			if len(result.Drops) > 0 {
+				s.broadcastMonsterDeathWithDrops(clients, result)
+			} else {
+				s.broadcastMonsterDeath(clients, result)
+			}
+		}
+	}
+	for _, hit := range result.MonsterHits {
+		if !hit.Dead || hit.MonsterID == "" || (result.Dead && hit.MonsterID == result.MonsterID) {
+			continue
+		}
+		clients := s.monsterDeathClients(hit)
+		if client != nil {
+			seen := false
+			for _, candidate := range clients {
+				if candidate == client {
+					seen = true
+					break
+				}
+			}
+			if !seen {
+				clients = append(clients, client)
+			}
+		}
+		if len(hit.Drops) > 0 {
+			s.broadcastMonsterDeathWithDrops(clients, hit)
+		} else {
+			s.broadcastMonsterDeath(clients, hit)
+		}
+	}
 	if client != nil && !result.HeavyHitMining {
 		s.advancePowerHitStateLocked(client, *activeChar, true)
 	}
@@ -1945,6 +1994,9 @@ func moveActionInterval(combat config.CombatSettings, run bool, previousIdent ui
 func baseActionInterval(combat config.CombatSettings) time.Duration {
 	return time.Duration(combat.ActionIntervalMS) * time.Millisecond
 }
+
+const clientActionRunInterval = 100 * time.Millisecond
+const clientActionProcessInterval = 250 * time.Millisecond
 
 func spellMagicInterval(combat config.CombatSettings) time.Duration {
 	return time.Duration(combat.MagicHitIntervalMS) * time.Millisecond
@@ -2696,6 +2748,18 @@ func (s *Server) handleSpellEvent(conn net.Conn, activeChar *storage.Character, 
 		hit := event.MonsterHit
 		mapID := attackResultMapID(hit)
 		clients := s.spellRefClientsFor("monster:"+hit.MonsterID, mapID, hit.MonsterX, hit.MonsterY)
+		if hit.Dead {
+			deathClients := s.monsterDeathClients(hit)
+			if len(deathClients) == 0 {
+				deathClients = clients
+			}
+			if len(hit.Drops) > 0 {
+				s.broadcastMonsterDeathWithDrops(deathClients, hit)
+			} else {
+				s.broadcastMonsterDeath(deathClients, hit)
+			}
+			return
+		}
 		if hit.Magic {
 			for _, client := range clients {
 				if hit.MonsterHealthChanged {
@@ -6538,10 +6602,11 @@ func decodeRunLogin(frame []byte) (RunLogin, bool) {
 	if err != nil {
 		return RunLogin{}, false
 	}
-	if !strings.HasPrefix(string(text), "**") {
+	decoded := DecodeString(text)
+	if !strings.HasPrefix(decoded, "**") {
 		return RunLogin{}, false
 	}
-	parts := strings.Split(string(text[2:]), "/")
+	parts := strings.Split(decoded[2:], "/")
 	if len(parts) < 5 {
 		return RunLogin{}, false
 	}
@@ -8662,7 +8727,7 @@ func (s *Server) broadcastMonsterLighting(clients []*Client, action world.Monste
 
 func (s *Server) broadcastMonsterTurn(clients []*Client, action world.MonsterAction) {
 	action = s.normalizeMonsterAction(action)
-	mon := world.Monster{ID: action.MonsterID, ActorID: action.ActorID, Name: action.Name, RaceImg: action.RaceImg, MonsterWeapon: action.MonsterWeapon, Appr: action.Appr, Light: action.Light, MapID: action.MapID, X: action.X, Y: action.Y, Dir: action.Dir}
+	mon := world.Monster{ID: action.MonsterID, ActorID: action.ActorID, Name: action.Name, RaceImg: action.RaceImg, MonsterWeapon: action.MonsterWeapon, Appr: action.Appr, Light: action.Light, MapID: action.MapID, X: action.X, Y: action.Y, Dir: action.Dir, Alive: true}
 	for _, client := range clients {
 		client.mu.Lock()
 		if client.visibleMonsters == nil {
@@ -11754,6 +11819,14 @@ func EncodeString(text string) []byte {
 		encoded = text
 	}
 	return mir176.EncodePlain6Payload([]byte(encoded))
+}
+
+func encodePlain6Text(text string) []byte {
+	encoded, err := simplifiedchinese.GB18030.NewEncoder().String(text)
+	if err != nil {
+		return []byte(text)
+	}
+	return []byte(encoded)
 }
 
 func referenceStringLength(text string) int {

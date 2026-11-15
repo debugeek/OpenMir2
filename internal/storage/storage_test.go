@@ -934,3 +934,32 @@ func TestCharacterTemporaryAbilitiesDoNotPersist(t *testing.T) {
 		t.Fatalf("temporary abilities restored from JSON: %+v/%+v", output.ExtraAbil, output.ExtraAbilTimes)
 	}
 }
+
+func TestOpenSQLiteMigratesLegacyJSONAndPersists(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	legacy, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	character, err := legacy.InsertCharacter(Character{Account: "test", Name: "sqlite-user"})
+	if err != nil {
+		t.Fatalf("InsertCharacter() error = %v", err)
+	}
+	store, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatalf("OpenSQLite() error = %v", err)
+	}
+	if _, ok := store.Character(character.ID); !ok {
+		t.Fatalf("migrated character %q not found", character.ID)
+	}
+	if err := store.SaveCharacter(character); err != nil {
+		t.Fatalf("SaveCharacter() error = %v", err)
+	}
+	reopened, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatalf("reopen OpenSQLite() error = %v", err)
+	}
+	if _, ok := reopened.Character(character.ID); !ok {
+		t.Fatalf("persisted character %q not found after reopen", character.ID)
+	}
+}

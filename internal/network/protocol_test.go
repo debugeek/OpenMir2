@@ -22,6 +22,17 @@ func TestDecodeRunLogin(t *testing.T) {
 	}
 }
 
+func TestDecodeRunLoginGB18030CharacterName(t *testing.T) {
+	frame := mir176.WrapFrame(append([]byte{'1'}, mir176.EncodePlain6Payload(encodePlain6Text("**test/韩梅梅/2/21158117/0"))...))
+	got, ok := decodeRunLogin(frame)
+	if !ok {
+		t.Fatalf("decodeRunLogin() ok = false")
+	}
+	if got.CharName != "韩梅梅" {
+		t.Fatalf("decodeRunLogin() char name = %q, want 韩梅梅", got.CharName)
+	}
+}
+
 func TestExtendedSoftVersionMatchesReferenceExtraction(t *testing.T) {
 	tests := []struct {
 		version int

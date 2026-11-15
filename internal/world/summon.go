@@ -316,9 +316,7 @@ func (w *World) finalizeSummonedOwnerStateWithMasterTickLocked(mon *Monster, mas
 	if !w.characterDeadLocked(master) {
 		mon.MasterDeadSince = time.Time{}
 		if checkMasterTick && !mon.MasterTick.IsZero() && now.Sub(mon.MasterTick) > 12*time.Hour {
-			mon.HP = 0
-			mon.PendingDeath = true
-			mon.DeathHitterID = ""
+			w.removeMonsterLocked(mon, true)
 			return true
 		}
 		return false
@@ -372,9 +370,7 @@ func (w *World) finalizeSummonedOwnerStateWithMasterTickLocked(mon *Monster, mas
 		}
 		return false
 	}
-	mon.HP = 0
-	mon.PendingDeath = true
-	mon.DeathHitterID = ""
+	w.removeMonsterLocked(mon, true)
 	return false
 }
 
@@ -403,9 +399,9 @@ func expireSummonedMonsterMasterTickLocked(mon *Monster, now time.Time) bool {
 	if mon == nil || mon.MasterTick.IsZero() || now.Sub(mon.MasterTick) <= 12*time.Hour {
 		return false
 	}
+	mon.Alive = false
 	mon.HP = 0
-	mon.PendingDeath = true
-	mon.DeathHitterID = ""
+	mon.DeathAt = now
 	return true
 }
 

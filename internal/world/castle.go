@@ -644,7 +644,6 @@ func (w *World) CastleRepairWall(ch storage.Character, castleID string, index in
 	wall.Dir = castleWallDirection(wall)
 	wall.Alive = true
 	wall.Ghost = false
-	wall.PendingDeath = false
 	wall.DeathAt = time.Time{}
 	wall.GhostAt = time.Time{}
 	w.occupyMonsterLocked(wall)

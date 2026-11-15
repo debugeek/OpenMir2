@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,12 +10,43 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	_ "modernc.org/sqlite"
 )
 
 type Store struct {
 	path string
 	mu   sync.Mutex
 	db   database
+	sql  *sql.DB
+}
+
+type Repository interface {
+	Castle(string) (Castle, bool)
+	SaveCastle(Castle) error
+	Guild(string) (Guild, bool)
+	SaveGuild(Guild) error
+	UpdateGuildNoticeBestEffort(string, string) error
+	UpdateGuildRanksBestEffort(string, []GuildRank) error
+	SetGuildAuthAllyRuntime(string, bool) bool
+	AddGuildWar(string, string, ...time.Duration) error
+	ExpireGuildWars(time.Time) ([]ExpiredGuildWar, error)
+	GuildAtWar(string, string) bool
+	DeleteGuildBestEffort(string) error
+	Authenticate(string, string) bool
+	Characters(string) []Character
+	CharacterNameExists(string) bool
+	SelectCharacter(string, string) (bool, error)
+	DeleteCharacter(string, string) (bool, error)
+	InsertCharacter(Character) (Character, error)
+	Character(string) (Character, bool)
+	ExpireWeaponUpgrades(time.Time) ([]string, error)
+	SaveCharacter(Character) error
+	SetCharacterRuntime(Character) error
+	SetCharacterRuntimePair(Character, Character) error
+	SetCharacterRuntimeBatch([]Character) error
+	RemoveGuildMemberBestEffort(string, string) (bool, error)
+	SaveGuildAlliancePairBestEffort(Guild, Guild, []string, []string) error
 }
 
 type database struct {
@@ -457,6 +489,72 @@ func Open(path string) (*Store, error) {
 		}
 	}
 	return s, nil
+}
+
+func OpenSQLite(path string) (*Store, error) {
+	sqlPath := path + ".sqlite"
+	db, err := sql.Open("sqlite", sqlPath)
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(1)
+	if _, err := db.Exec(`PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;`); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS state (id INTEGER PRIMARY KEY CHECK (id = 1), payload BLOB NOT NULL)`); err != nil {
+		db.Close()
+		return nil, err
+	}
+	store := &Store{path: sqlPath, sql: db}
+	var payload []byte
+	err = db.QueryRow(`SELECT payload FROM state WHERE id = 1`).Scan(&payload)
+	if errors.Is(err, sql.ErrNoRows) {
+		legacy, legacyErr := Open(path)
+		if legacyErr != nil {
+			db.Close()
+			return nil, legacyErr
+		}
+		legacy.mu.Lock()
+		store.db = legacy.db
+		legacy.mu.Unlock()
+		store.mu.Lock()
+		err = store.saveLocked()
+		store.mu.Unlock()
+		if err != nil {
+			db.Close()
+			return nil, err
+		}
+		return store, nil
+	}
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := json.Unmarshal(payload, &store.db); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if store.db.Accounts == nil {
+		store.db.Accounts = map[string]Account{}
+	}
+	if store.db.Characters == nil {
+		store.db.Characters = map[string]Character{}
+	}
+	if store.db.Guilds == nil {
+		store.db.Guilds = map[string]Guild{}
+	}
+	if store.db.Castles == nil {
+		store.db.Castles = map[string]Castle{}
+	}
+	return store, nil
+}
+
+func (s *Store) Close() error {
+	if s.sql == nil {
+		return nil
+	}
+	return s.sql.Close()
 }
 
 func (s *Store) Castle(id string) (Castle, bool) {
@@ -1252,6 +1350,14 @@ func (s *Store) RemoveGuildMemberBestEffort(guildID, name string) (bool, error) 
 }
 
 func (s *Store) saveLocked() error {
+	if s.sql != nil {
+		b, err := json.Marshal(s.db)
+		if err != nil {
+			return err
+		}
+		_, err = s.sql.Exec(`INSERT INTO state (id, payload) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET payload = excluded.payload`, b)
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
 		return err
 	}

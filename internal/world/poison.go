@@ -202,8 +202,15 @@ func (w *World) applyMonsterPoisonTickLocked(mon *Monster, players map[string]st
 			Character: storage.Character{},
 		}
 		if change.Dead {
-			mon.PendingDeath = true
-			result.DeathDeferred = true
+			death, _, err := w.killMonsterWithDamageAtAndPlayersLocked(storage.Character{}, mon, 0, now, players)
+			if err != nil {
+				return nil, false, err
+			}
+			death.Damage = damage
+			death.MonsterHP = 0
+			death.MonsterMaxHP = mon.MaxHP
+			death.Character = storage.Character{}
+			result = death
 		}
 		return []AttackResult{result}, change.Dead, nil
 	}

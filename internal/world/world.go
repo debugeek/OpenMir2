@@ -16,7 +16,7 @@ import (
 type World struct {
 	mu                                 sync.Mutex
 	data                               data.StdBundle
-	store                              *storage.Store
+	store                              storage.Repository
 	monsters                           map[string]*Monster
 	monsterCells                       map[monsterPosition]map[string]struct{}
 	monsterCellByID                    map[string]monsterPosition
@@ -98,7 +98,7 @@ const characterProcessBudget = 30 * time.Millisecond
 const monsterStageInterval = time.Millisecond
 const monsterProcessBudget = 25 * time.Millisecond
 const monsterProcessInterval = 2
-const monsterRegenInterval = 20 * time.Millisecond
+const monsterRegenInterval = 200 * time.Millisecond
 
 type pendingMonsterSpawn struct {
 	EnqueueOrder uint64
@@ -306,7 +306,6 @@ type Monster struct {
 	ExplosionStartAt        time.Time
 	TargetCharacterID       string
 	TargetMonsterID         string
-	PendingDeath            bool
 	DeathHitterID           string
 	LastHitterID            string
 	LastHitterAt            time.Time
@@ -902,7 +901,7 @@ type CharacterRevival struct {
 	Message      string
 }
 
-func New(bundle data.StdBundle, store *storage.Store, gameplayConfig ...config.Gameplay) *World {
+func New(bundle data.StdBundle, store storage.Repository, gameplayConfig ...config.Gameplay) *World {
 	gameplay := config.DefaultGameplay()
 	if len(gameplayConfig) > 0 {
 		gameplay = gameplayConfig[0]

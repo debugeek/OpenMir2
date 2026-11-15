@@ -335,12 +335,12 @@ func (w *World) removeMonsterLocked(mon *Monster, adjustSpawn bool) {
 	}
 	w.vacateMonsterLocked(mon)
 	mon.Alive = false
+	mon.HP = 0
 	mon.DeathAt = w.monsterActionTimeLocked()
 	mon.GhostAt = time.Time{}
 	mon.Ghost = false
 	mon.TargetCharacterID = ""
 	mon.TargetMonsterID = ""
-	mon.PendingDeath = false
 	mon.DeathHitterID = ""
 	mon.LastHitterID = ""
 	mon.LastHitterAt = time.Time{}
@@ -392,7 +392,6 @@ func (w *World) killAnimalLocked(mon *Monster) {
 	if state.activeCount > 0 {
 		state.activeCount--
 	}
-	mon.PendingDeath = false
 	mon.DeathHitterID = ""
 	mon.MasterDeadSince = time.Time{}
 	mon.MasterGhostSince = time.Time{}

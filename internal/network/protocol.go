@@ -88,7 +88,7 @@ func (s *Server) sendPlain6LoginOK(conn net.Conn, account string) {
 	}
 	sessionID := s.newSessionID(account)
 	s.rememberSession(sessionID, account)
-	body := fmt.Sprintf("%s/%d/%d", acceptedLocalHost(conn), s.listenerPort("select", 7100), sessionID)
+	body := fmt.Sprintf("%s/%d/%d", s.advertisedHost(conn), s.listenerPort("select", 7100), sessionID)
 	response := mir176.EncodePlain6ClientMessage(mir176.Command{Ident: mir176.SMSelectServerOK, Recog: sessionID}, []byte(body))
 	if _, err := conn.Write(response); err != nil {
 		return
@@ -134,7 +134,7 @@ func (s *Server) handlePlain6SelectCommand(conn net.Conn, cmd mir176.Command, te
 		}
 		state.queried = false
 		state.lastTick = time.Now()
-		parts := strings.Split(string(text), "/")
+		parts := strings.Split(DecodeString(text), "/")
 		account, sessionOK := s.sessionAccount(state.sessionID)
 		if !sessionOK || account != state.account {
 			s.sendPlain6Command(conn, mir176.Command{Ident: mir176.SMOutOfConnection}, nil)
@@ -168,7 +168,7 @@ func (s *Server) handlePlain6SelectCommand(conn net.Conn, cmd mir176.Command, te
 		s.sendPlain6Command(conn, mir176.Command{Ident: mir176.SMNewCharacterOK}, nil)
 		return true
 	case mir176.CMDeleteCharacter:
-		name := string(text)
+		name := DecodeString(text)
 		if !state.lastTick.IsZero() && time.Since(state.lastTick) <= time.Second {
 			return true
 		}
@@ -186,12 +186,12 @@ func (s *Server) handlePlain6SelectCommand(conn net.Conn, cmd mir176.Command, te
 		s.sendPlain6Command(conn, mir176.Command{Ident: mir176.SMDeleteCharacterOK}, nil)
 		return true
 	case mir176.CMSelectCharacter:
-		account, name := splitPlainText(text, "/")
+		account, name := splitPlainText([]byte(DecodeString(text)), "/")
 		if account == "" {
 			account = state.account
 		}
 		if name == "" {
-			name = string(text)
+			name = DecodeString(text)
 		}
 		sessionAccount, sessionOK := s.sessionAccount(state.sessionID)
 		if !sessionOK || sessionAccount != state.account || account != state.account {
@@ -237,14 +237,14 @@ func (s *Server) sendPlain6CharacterList(conn net.Conn, account string) {
 		fmt.Fprintf(&body, "%s/%d/%d/%d/%d/", name, world.Plain6ClassID(ch.Class), ch.Hair, ch.Level, ch.Sex)
 		listed++
 	}
-	response := mir176.EncodePlain6ClientMessage(mir176.Command{Ident: mir176.SMQueryCharacter, Recog: int32(listed), Tag: 1}, []byte(body.String()))
+	response := mir176.EncodePlain6ClientMessage(mir176.Command{Ident: mir176.SMQueryCharacter, Recog: int32(listed), Tag: 1}, encodePlain6Text(body.String()))
 	if _, err := conn.Write(response); err != nil {
 		return
 	}
 }
 
 func (s *Server) sendPlain6StartPlay(conn net.Conn, name string) {
-	body := fmt.Sprintf("%s/%d", acceptedLocalHost(conn), s.listenerPort("game", 7200))
+	body := fmt.Sprintf("%s/%d", s.advertisedHost(conn), s.listenerPort("game", 7200))
 	s.sendPlain6Command(conn, mir176.Command{Ident: mir176.SMStartPlay}, []byte(body))
 }
 
@@ -399,6 +399,13 @@ func acceptedLocalHost(conn net.Conn) string {
 		return host
 	}
 	return "127.0.0.1"
+}
+
+func (s *Server) advertisedHost(conn net.Conn) string {
+	if s.publicHost != "" {
+		return s.publicHost
+	}
+	return acceptedLocalHost(conn)
 }
 
 func isPlausibleProtocolIdent(ident uint16) bool {

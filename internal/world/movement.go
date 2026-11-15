@@ -181,6 +181,7 @@ func (w *World) HitWithIdent(ch storage.Character, x, y, dir int, attackIdent ui
 			result.MonsterStatus = hit.MonsterStatus
 		}
 		result.MonsterHits = append(result.MonsterHits, hit)
+		result.Drops = append(result.Drops, hit.Drops...)
 		result.Experience += hit.Experience
 		result.CurrentExp = hit.CurrentExp
 		result.LevelUp = result.LevelUp || hit.LevelUp

@@ -834,7 +834,7 @@ func TestWorldReplenishesSpawnOnlyAfterReferenceInterval(t *testing.T) {
 	w2.removeMonsterLocked(old2, true)
 	state2 := w2.spawnStateForLocked(old2.Spawn)
 	state2.lastRegenAt = now.Add(-time.Minute - time.Nanosecond)
-	w2.monsterRegenAt = now.Add(-20 * time.Millisecond)
+	w2.monsterRegenAt = now.Add(-200 * time.Millisecond)
 	result = TickResult{}
 	w2.replenishMonsterSpawnLocked(now, &result)
 	if len(result.SpawnedMonsters) != 1 {

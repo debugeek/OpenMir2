@@ -181,8 +181,8 @@ func TestSummonedMonsterExpiresAfterReferenceMasterTickWindow(t *testing.T) {
 	}, now) {
 		t.Fatal("master tick expiry = false, want forced death")
 	}
-	if monster.HP != 0 || !monster.PendingDeath || monster.DeathHitterID != "" {
-		t.Fatalf("expired master window state = hp:%d pending:%t hitter:%q, want deferred death", monster.HP, monster.PendingDeath, monster.DeathHitterID)
+	if monster.HP != 0 || monster.Alive || monster.DeathHitterID != "" {
+		t.Fatalf("expired master window state = hp:%d alive:%t hitter:%q, want immediate death", monster.HP, monster.Alive, monster.DeathHitterID)
 	}
 }
 
@@ -262,9 +262,6 @@ func TestPoisonDamageTickWaitsPastReferenceInterval(t *testing.T) {
 	}
 	if len(hits) != 1 || monster.HP >= 100 {
 		t.Fatalf("monster poison tick did not fire after interval: hits=%d hp=%d", len(hits), monster.HP)
-	}
-	if monster.PendingDeath {
-		t.Fatalf("nonlethal monster poison tick marked pending death")
 	}
 }
 
@@ -403,8 +400,8 @@ func TestSourceLessMonsterPoisonDeathDefersSettlement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("monster poison death tick error = %v", err)
 	}
-	if !dead || len(hits) != 1 || !monster.PendingDeath || monster.Alive == false {
-		t.Fatalf("source-less poison death = dead:%t hits:%d pending:%t alive:%t, want deferred pending death state", dead, len(hits), monster.PendingDeath, monster.Alive)
+	if !dead || len(hits) != 1 || monster.Alive {
+		t.Fatalf("source-less poison death = dead:%t hits:%d alive:%t, want immediate death", dead, len(hits), monster.Alive)
 	}
 }
 
@@ -422,19 +419,19 @@ func TestSourceLessMonsterPoisonDeathUsesLastHitterOnNextTick(t *testing.T) {
 	w.occupied = map[monsterPosition]string{}
 	w.mu.Unlock()
 
-	first, err := w.Tick([]PlayerSnapshot{{Character: caster}}, now)
+	_, err := w.Tick([]PlayerSnapshot{{Character: caster}}, now)
 	if err != nil {
 		t.Fatalf("first Tick() error = %v", err)
 	}
-	if len(first.MonsterDeaths) != 0 || !monster.PendingDeath {
-		t.Fatalf("first tick = deaths:%d pending:%t, want deferred death", len(first.MonsterDeaths), monster.PendingDeath)
+	if monster.Alive {
+		t.Fatalf("first tick left poison-dead monster alive")
 	}
 	second, err := w.Tick([]PlayerSnapshot{{Character: caster}}, now.Add(time.Second))
 	if err != nil {
 		t.Fatalf("second Tick() error = %v", err)
 	}
-	if len(second.MonsterDeaths) != 1 || second.MonsterDeaths[0].Experience != 25 {
-		t.Fatalf("second tick deaths = %+v, want last-hitter experience", second.MonsterDeaths)
+	if len(second.MonsterDeaths) != 0 {
+		t.Fatalf("second tick repeated poison death = %+v", second.MonsterDeaths)
 	}
 }
 
@@ -483,7 +480,7 @@ func TestMonsterPoisonDeathDoesNotInferOfflineSource(t *testing.T) {
 func TestWorldTickDoesNotUsePoisonSourceAsDeathHitter(t *testing.T) {
 	w, caster := newTestWorldCharacter(t)
 	now := time.Unix(100, 0)
-	mon := &Monster{ID: "poison-fallback", MapID: caster.MapID, X: caster.X, Y: caster.Y, Alive: true, HP: 0, MaxHP: 10, PendingDeath: true, DeathHitterID: caster.ID, PoisonSourceID: caster.ID, Experience: 25}
+	mon := &Monster{ID: "poison-fallback", MapID: caster.MapID, X: caster.X, Y: caster.Y, Alive: false, HP: 0, MaxHP: 10, DeathHitterID: caster.ID, PoisonSourceID: caster.ID, Experience: 25}
 	w.mu.Lock()
 	w.monsters[mon.ID] = mon
 	w.occupied[monsterPosition{MapID: mon.MapID, X: mon.X, Y: mon.Y}] = mon.ID
@@ -492,8 +489,8 @@ func TestWorldTickDoesNotUsePoisonSourceAsDeathHitter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Tick() error = %v", err)
 	}
-	if len(result.MonsterDeaths) != 1 || result.MonsterDeaths[0].Experience != 0 {
-		t.Fatalf("poison death fallback = %+v, want no experience", result.MonsterDeaths)
+	if len(result.MonsterDeaths) != 0 {
+		t.Fatalf("poison death fallback = %+v, want no duplicate death", result.MonsterDeaths)
 	}
 }
 
@@ -506,7 +503,7 @@ func TestMonsterPhysicalDamageUsesOnePoisonArmorMultiplier(t *testing.T) {
 		PoisonArmorStartAt: now.Add(-time.Minute), PoisonArmorUntil: now.Add(time.Minute),
 	}
 
-	hit, err := w.attackMonsterWithDamageModeAndMeatLocked(caster, mon, 100, true, false, true, false, false)
+	hit, err := w.attackMonsterWithDamageModeAndMeatLocked(caster, mon, 100, true, false, true, false)
 	if err != nil {
 		t.Fatalf("attackMonsterWithDamageModeLocked() error = %v", err)
 	}
@@ -1617,21 +1614,21 @@ func TestImmediateMonsterMagicDamageDefersDeathSettlement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("attackMonsterWithImmediateMagicDamageLocked() error = %v", err)
 	}
-	if hit.Dead || hit.Experience != 0 || len(hit.Drops) != 0 || !mon.Alive || !mon.PendingDeath || mon.HP != 0 {
-		t.Fatalf("magic hit settlement = dead:%t exp:%d drops:%d alive:%t pending:%t hp:%d, want deferred death", hit.Dead, hit.Experience, len(hit.Drops), mon.Alive, mon.PendingDeath, mon.HP)
+	if !hit.Dead || hit.Experience == 0 || mon.Alive || mon.HP != 0 {
+		t.Fatalf("magic hit settlement = dead:%t exp:%d drops:%d alive:%t hp:%d, want immediate death", hit.Dead, hit.Experience, len(hit.Drops), mon.Alive, mon.HP)
 	}
 	tick, err := w.Tick([]PlayerSnapshot{{Character: caster}}, time.Now())
 	if err != nil {
 		t.Fatalf("Tick() error = %v", err)
 	}
-	if len(tick.MonsterDeaths) != 1 || tick.MonsterDeaths[0].MonsterID != mon.ID {
-		t.Fatalf("Tick() deaths = %+v, want %q", tick.MonsterDeaths, mon.ID)
+	if len(tick.MonsterDeaths) != 0 {
+		t.Fatalf("Tick() repeated deaths = %+v", tick.MonsterDeaths)
 	}
-	if len(tick.SpellExperience) != 1 || tick.SpellExperience[0].Experience != mon.Experience || tick.SpellExperience[0].CurrentExp != 15 {
-		t.Fatalf("Tick() experience = %+v, want %d", tick.SpellExperience, mon.Experience)
+	if len(tick.SpellExperience) != 0 {
+		t.Fatalf("Tick() repeated experience = %+v", tick.SpellExperience)
 	}
-	if len(tick.Characters) != 1 || tick.Characters[0].ID != caster.ID || tick.Characters[0].Experience != 15 {
-		t.Fatalf("Tick() characters = %+v, want cumulative experience 15", tick.Characters)
+	if len(tick.Characters) != 0 {
+		t.Fatalf("Tick() repeated character update = %+v", tick.Characters)
 	}
 }
 
@@ -2143,28 +2140,6 @@ func TestPendingSpellPhasesMatchReferenceObjectStages(t *testing.T) {
 	}
 	if len(w.pendingSpells) != 0 {
 		t.Fatalf("pending after monster phase = %d, want 0", len(w.pendingSpells))
-	}
-}
-
-func TestPendingShowHealthOpensDeadMonsterLikeReference(t *testing.T) {
-	now := time.Unix(100, 0)
-	w := &World{
-		gameplay: config.DefaultGameplay(),
-		monsters: map[string]*Monster{"monster": {ID: "monster", MapID: "map", Alive: false, HP: 0, MaxHP: 100}},
-		pendingSpells: []pendingSpell{{
-			DueAt: now.Add(-time.Second), TargetMonsterID: "monster",
-			ShowHealthDuration: time.Minute, ShowHealthStartedAt: now.Add(-2 * time.Second),
-		}},
-	}
-	result := TickResult{}
-	if err := w.applyPendingSpellTicksLocked(&result, map[string]storage.Character{}, map[string]storage.Character{}, now); err != nil {
-		t.Fatalf("applyPendingSpellTicksLocked() error = %v", err)
-	}
-	if len(result.ShowHPOpenedMonsters) != 1 || result.ShowHPOpenedMonsters[0].ID != "monster" {
-		t.Fatalf("ShowHPOpenedMonsters = %+v, want dead monster", result.ShowHPOpenedMonsters)
-	}
-	if w.monsters["monster"].ShowHPUntil != now.Add(58*time.Second).UnixNano() {
-		t.Fatalf("ShowHPUntil = %d, want %d", w.monsters["monster"].ShowHPUntil, now.Add(58*time.Second).UnixNano())
 	}
 }
 

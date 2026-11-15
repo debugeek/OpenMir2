@@ -77,7 +77,7 @@ func (s *Server) itemBodyForClient(conn net.Conn, item data.StdItem, desc [14]by
 	client := s.clientForConn(conn)
 	if client != nil {
 		client.mu.Lock()
-		legacy := client.softVersion == 0 || client.clientTick == 0
+		legacy := client.softVersion == 0
 		client.mu.Unlock()
 		if legacy {
 			return LegacyClientItemBody(item, makeIndex, dura, duraMax)

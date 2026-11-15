@@ -15,6 +15,7 @@ import (
 func main() {
 	configPath := flag.String("config", "configs", "server config directory")
 	storagePath := flag.String("storage-path", "", "override the config file's storage_path")
+	publicHost := flag.String("public-host", os.Getenv("OPENMIR2_PUBLIC_HOST"), "host advertised to clients for select and game connections")
 	flag.Parse()
 
 	cfg, err := config.Load(*configPath)
@@ -30,7 +31,9 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := app.New(*configPath, cfg, log).Run(ctx); err != nil {
+	application := app.New(*configPath, cfg, log)
+	application.SetPublicHost(*publicHost)
+	if err := application.Run(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
